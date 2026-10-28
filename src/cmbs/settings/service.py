@@ -3,12 +3,15 @@
 import datetime as dt
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from cmbs import clock
 from cmbs.settings.tables import SettingsVersion
 from cmbs.settings.values import Settings
+
+# An arbitrary constant naming the settings-ledger lock among Postgres advisory locks.
+SETTINGS_LOCK_KEY = 0x5E771265
 
 
 class NoSettings(RuntimeError):
@@ -52,6 +55,9 @@ def store_version(
     approved_by: str,
     approved_at: dt.datetime,
 ) -> SettingsVersion:
+    # Serialize writers: the check below and the insert must see every committed version, even
+    # when the ledger is empty, so concurrent approvals queue on a transaction-scoped lock.
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": SETTINGS_LOCK_KEY})
     latest = db.scalars(
         select(SettingsVersion).order_by(SettingsVersion.version.desc()).limit(1)
     ).one_or_none()

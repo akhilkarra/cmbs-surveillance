@@ -5,7 +5,8 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import select, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.orm import Session
 
 from cmbs import clock
 from cmbs.access.roles import Action, Role
@@ -19,6 +20,7 @@ from cmbs.access.service import (
 from cmbs.audit.service import entries_for_subject, record
 from cmbs.audit.tables import AuditEntry
 from cmbs.checks.service import flags_for, raise_flag
+from cmbs.db import engine
 from cmbs.deals.service import by_name, get_or_create
 from cmbs.filings.service import ConflictingFiling, register_filing, store_file
 from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
@@ -261,3 +263,27 @@ def test_files_are_stored_once_with_their_hash(db):
     assert store_file(db, accession=ACCESSION, name="exh_102.xml", content=b"<assets/>") is stored
     with pytest.raises(ConflictingFiling, match="other content"):
         store_file(db, accession=ACCESSION, name="exh_102.xml", content=b"<changed/>")
+
+
+def test_concurrent_approvals_queue_instead_of_both_passing_the_order_check(seeded):
+    """A second writer waits for the first; it cannot read a stale latest version."""
+
+    def approve(db: Session, version: int, day: int) -> None:
+        store_version(
+            db,
+            version=version,
+            values=Settings(),
+            proposed_by="quinn",
+            approved_by="rae",
+            approved_at=dt.datetime(2026, 10, day, tzinfo=dt.UTC),
+        )
+
+    with Session(engine.engine()) as first, Session(engine.engine()) as second:
+        approve(first, 8, 2)  # holds the ledger lock until it commits
+        second.execute(text("SET LOCAL lock_timeout = '200ms'"))
+        with pytest.raises(OperationalError, match="lock timeout"):
+            approve(second, 9, 1)
+        second.rollback()
+        first.commit()
+        with pytest.raises(OutOfOrderVersion, match="does not follow version 8"):
+            approve(second, 9, 1)
