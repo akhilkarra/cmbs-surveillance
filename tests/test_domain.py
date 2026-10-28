@@ -54,6 +54,10 @@ def test_periods_order_chronologically():
         ("$50,000,000.00", Decimal("50000000.00")),
         ("-$12,000,000.00", Decimal("-12000000.00")),
         ("$-12.5", Decimal("-12.50")),
+        ("1,234.56", Decimal("1234.56")),
+        ("1234567", Decimal("1234567.00")),
+        (".5", Decimal("0.50")),
+        ("  $ 7 ", Decimal("7.00")),
         ("6,500,000", Decimal("6500000.00")),
         ("0.00", Decimal("0.00")),
         ("1.005", Decimal("1.01")),
@@ -65,7 +69,25 @@ def test_money_parses_to_the_cent(text, expected):
     assert money(text) == expected
 
 
-@pytest.mark.parametrize("text", ["abc", "$", "1,2,3.4.5", ""])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "abc",
+        "$",
+        "",
+        "-",
+        "1,2,3.4.5",
+        "1,23",
+        "12,,345",
+        "1234,567",
+        ",123",
+        "--12.00",
+        "-$-1",
+        "12.",
+        "1.2.3",
+        "$1,000.00x",
+    ],
+)
 def test_money_rejects_non_amounts(text):
     with pytest.raises(ValueError, match="not an amount"):
         money(text)

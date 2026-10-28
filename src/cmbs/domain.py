@@ -12,7 +12,13 @@ from decimal import ROUND_HALF_UP, Decimal
 CENT = Decimal("0.01")
 _MONTHS = {name.lower(): number for number, name in enumerate(calendar.month_name) if name}
 _PERIOD = re.compile(r"^\s*([A-Za-z]+)\s+(\d{4})\s*$")
-_MONEY = re.compile(r"^\s*(-)?\s*\$?\s*(-)?([\d,]*\.?\d+)\s*$")
+# One optional minus, before or after the dollar sign but not both. The whole part is plain
+# digits or correctly grouped thousands ("1,234,567"); a fractional part needs digits after the
+# point. "1,23", "12,,345", "--12" and "12." are rejected rather than guessed at.
+_MONEY = re.compile(
+    r"^\s*(?P<minus>-)?\s*\$?\s*(?P<inner_minus>-)?"
+    r"(?P<whole>\d{1,3}(?:,\d{3})+|\d+)?(?:\.(?P<fraction>\d+))?\s*$"
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -62,10 +68,15 @@ def money(text: str | int | Decimal) -> Decimal:
     if isinstance(text, Decimal | int):
         return Decimal(text).quantize(CENT, rounding=ROUND_HALF_UP)
     match = _MONEY.match(text)
-    if not match:
+    if (
+        not match
+        or (match["minus"] and match["inner_minus"])
+        or not (match["whole"] or match["fraction"])
+    ):
         raise ValueError(f"not an amount of money: {text!r}")
-    sign = "-" if (match.group(1) or match.group(2)) else ""
-    value = Decimal(sign + match.group(3).replace(",", ""))
+    sign = "-" if (match["minus"] or match["inner_minus"]) else ""
+    whole = (match["whole"] or "0").replace(",", "")
+    value = Decimal(f"{sign}{whole}.{match['fraction'] or '0'}")
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
