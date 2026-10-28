@@ -1,4 +1,4 @@
-@draft @layer:logic @surface:api @surface:ui
+@approved @layer:logic @surface:api @surface:ui
 Feature: Settings ledger
   Every number that changes what the panel says is a setting with a history: alert
   thresholds, the abstention band, the model and prompt versions, the date tolerance for
