@@ -20,7 +20,7 @@ from cmbs.audit.service import entries_for_subject, record
 from cmbs.audit.tables import AuditEntry
 from cmbs.checks.service import flags_for, raise_flag
 from cmbs.deals.service import by_name, get_or_create
-from cmbs.runs.service import finish_run, start_run
+from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
 from cmbs.settings.service import NoSettings, OutOfOrderVersion, in_force, store_version
 from cmbs.settings.values import Settings
 from tests.conftest import needs_db
@@ -160,6 +160,30 @@ def test_runs_take_a_number_and_finish_once(db):
     assert run.ended_at == dt.datetime(2026, 10, 27, 9, 4, tzinfo=dt.UTC)
     with pytest.raises(ValueError, match="cannot finish as 'running'"):
         finish_run(db, run, status="running", summary={})
+
+
+def test_a_finished_run_keeps_its_outcome(db):
+    run = start_run(db, kind="refresh", started_by="olly")
+    finish_run(db, run, status="succeeded", summary={"deals": 2})
+    with pytest.raises(RunAlreadyFinished, match=r"already finished as 'succeeded'"):
+        finish_run(db, run, status="failed", summary={"error": "late"})
+    assert (run.status, run.summary) == ("succeeded", {"deals": 2})
+
+
+def test_unknown_statuses_cannot_finish_a_run(db):
+    run = start_run(db, kind="refresh", started_by="olly")
+    with pytest.raises(ValueError, match="cannot finish as 'done'"):
+        finish_run(db, run, status="done", summary={})
+
+
+def test_pinned_run_numbers_never_collide_with_later_runs(db):
+    assert start_run(db, kind="refresh", started_by="olly", run_id=42).id == 42
+    assert start_run(db, kind="refresh", started_by="olly").id == 43
+
+
+def test_pinning_a_low_number_on_a_fresh_database_still_advances(db):
+    assert start_run(db, kind="refresh", started_by="olly", run_id=1).id == 1
+    assert start_run(db, kind="backfill", started_by="quinn").id == 2
 
 
 def test_deals_are_registered_once_and_learn_their_cik(db):
