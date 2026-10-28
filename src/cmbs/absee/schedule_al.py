@@ -131,6 +131,7 @@ class LoanRecord:
     noi: str
     dscr_noi: str
     occupancy: str
+    defeased_status: str = ""
 
 
 def parse_date(text: str) -> dt.date | None:
@@ -159,4 +160,5 @@ def iter_loans(path: Path | str) -> Iterator[LoanRecord]:
             noi=field("mostRecentNetOperatingIncomeAmount"),
             dscr_noi=field("mostRecentDebtServiceCoverageNetOperatingIncomePercentage"),
             occupancy=field("mostRecentPhysicalOccupancyPercentage"),
+            defeased_status=field("DefeasedStatusCode"),
         )

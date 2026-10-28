@@ -1,14 +1,19 @@
 """Load an ABS-EE loan tape (EX-102) through raw, bronze and silver.
 
 raw     the filing is registered and the file stored byte for byte with its SHA-256
-bronze  every asset exactly as reported, including companion notes and portfolio properties
+bronze  the loaded tape (with its amendment depth) and every asset exactly as reported,
+        including companion notes and portfolio properties
 silver  one typed row per top-level loan, checked by the loan_period contract first; a loan
         that fails is quarantined with its reason and not loaded
 
-The load is idempotent and safe under concurrency. The deal row and then the filing row are
-locked (in that order, by every load), so two loads of the same filing run one after the other;
-the second finds the tape already stored and changes nothing. Every check runs before any
-bronze or silver row is written. Writes use ON CONFLICT DO NOTHING as a second guard.
+Every check runs before anything is written: the form, the file, the period, the deal's CIK,
+the amendment chain, a clash with another tape of the same day, and the facts already
+registered for the filing. The deal row is locked first and the filing row second, by every
+load, so loads of a deal take turns; the checks that depend on other loads (already loaded,
+same-day clash) run again under those locks before writing. A repeated load changes nothing.
+
+With an actor, every loan row written is audited, and every refusal is recorded in the audit
+trail in its own transaction (`cmbs.audit.service.refuse`), so the caller's rollback keeps it.
 """
 
 import datetime as dt
@@ -21,20 +26,25 @@ from sqlalchemy.orm import Session
 
 from cmbs.absee.schedule_al import Asset, AssetKind, parse_assets
 from cmbs.access.service import Actor
-from cmbs.audit.service import record
-from cmbs.deals.service import get_or_create
+from cmbs.audit.service import LOAN, loan_key, record, refuse
+from cmbs.deals.service import ConflictingDeal, get_or_create
+from cmbs.deals.tables import Deal
 from cmbs.domain import Period
 from cmbs.errors import Refused
-from cmbs.filings.service import register_filing, store_file
-from cmbs.filings.tables import Filing
+from cmbs.filings.service import ConflictingFiling, register_filing, sha256_of, store_file
+from cmbs.filings.tables import Filing, FilingFile
 from cmbs.tape import contract
 from cmbs.tape.convert import LoanPeriodRow, read_date, to_row
-from cmbs.tape.tables import LoanPeriod, QuarantinedLoan, TapeAsset
+from cmbs.tape.tables import LoanPeriod, LoanTape, QuarantinedLoan, TapeAsset
 
 ORIGINAL = "ABS-EE"
 AMENDMENT = "ABS-EE/A"
+TAPE_FORMS = (ORIGINAL, AMENDMENT)
+TAPE_ACTION = "load loan tape"
 LOAD_ACTION = "load loan row"
 QUARANTINE_ACTION = "quarantine loan"
+FILING = "filing"
+MAX_AMENDMENT_DEPTH = 100
 
 
 class TapeRefused(Refused):
@@ -67,15 +77,25 @@ class LoadSummary:
     loans_loaded: int
     quarantined: list[Quarantined]
     already_loaded: bool
+    notes: list[str]
 
     def text(self) -> str:
-        count = len(self.quarantined)
         status = "already loaded, nothing changed" if self.already_loaded else "loaded"
-        return (
+        text = (
             f"{self.deal} {self.period.label} ({self.accession}, filed {self.filing_date}): "
-            f"{status}; {self.assets} assets, {self.loans_loaded} loans loaded, "
-            f"{count} {'loan' if count == 1 else 'loans'} quarantined"
+            f"{status}; {self.assets} assets, {_loans(self.loans_loaded)} loaded, "
+            f"{_loans(len(self.quarantined))} quarantined"
         )
+        if self.notes:
+            text += f", {_loans(len(self.notes))} with property notes"
+        return text
+
+
+def _loans(count: int) -> str:
+    return f"{count} {'loan' if count == 1 else 'loans'}"
+
+
+# ---------------------------------------------------------------------------- pure checks
 
 
 def check_form(form: str, amends: str | None) -> None:
@@ -83,7 +103,7 @@ def check_form(form: str, amends: str | None) -> None:
         raise TapeRefused(f"an {ORIGINAL} amends nothing; file the correction as {AMENDMENT}")
     if form == AMENDMENT and amends is None:
         raise TapeRefused(f"an {AMENDMENT} must name the filing it amends")
-    if form not in (ORIGINAL, AMENDMENT):
+    if form not in TAPE_FORMS:
         raise TapeRefused(f"a loan tape is filed as {ORIGINAL} or {AMENDMENT}, not {form}")
 
 
@@ -145,15 +165,49 @@ def plan(assets: Sequence[Asset]) -> Plan:
     return Plan(loaded=loaded, quarantined=quarantined)
 
 
+# ---------------------------------------------------------------------------- database checks
+
+
+def _locked_deal(db: Session, name: str) -> Deal | None:
+    query = select(Deal).where(Deal.name == name).with_for_update()
+    return db.scalars(query.execution_options(populate_existing=True)).first()
+
+
+def _cik(name: str, deal: Deal | None, cik: int | None) -> int:
+    known = deal.cik if deal is not None else None
+    if known is not None and cik is not None and known != cik:
+        raise ConflictingDeal(f"{name} already has CIK {known}, not {cik}")
+    resolved = cik if cik is not None else known
+    if resolved is None:
+        raise TapeRefused(f"{name} has no CIK, so its filings cannot be registered")
+    return resolved
+
+
+def amendment_chain(db: Session, amends: str | None) -> list[Filing]:
+    """The filings `amends` points to, nearest first, as far as they are registered."""
+    chain: list[Filing] = []
+    while amends is not None and len(chain) < MAX_AMENDMENT_DEPTH:
+        filing = db.get(Filing, amends)
+        if filing is None:
+            break
+        chain.append(filing)
+        amends = filing.amends
+    return chain
+
+
 def _check_amended(
-    db: Session, amends: str, deal_id: int, period: Period, filing_date: dt.date
-) -> None:
+    db: Session, amends: str | None, deal_id: int | None, period: Period, filing_date: dt.date
+) -> int:
+    """The new tape's amendment depth: 0 for an original, one more than what it amends."""
+    if amends is None:
+        return 0
     original = db.get(Filing, amends)
     if (
         original is None
+        or deal_id is None
         or original.deal_id != deal_id
         or original.period != period.first_day
-        or original.form not in (ORIGINAL, AMENDMENT)
+        or original.form not in TAPE_FORMS
     ):
         raise TapeRefused(f"{amends} is not a registered {period.label} loan tape of this deal")
     if original.filing_date > filing_date:
@@ -161,11 +215,78 @@ def _check_amended(
             f"an amendment filed on {filing_date} cannot correct {amends}, "
             f"filed later on {original.filing_date}"
         )
+    return len(amendment_chain(db, amends))
 
 
-def _loaded_files(db: Session, accession: str) -> set[str]:
-    query = select(TapeAsset.file_name).where(TapeAsset.accession == accession).distinct()
-    return set(db.scalars(query))
+def _check_same_day(
+    db: Session,
+    deal: str,
+    deal_id: int | None,
+    accession: str,
+    amends: str | None,
+    period: Period,
+    filing_date: dt.date,
+) -> None:
+    """Two tapes of one period filed the same day must be linked by amendment, or the panel
+    could not tell which one is current."""
+    if deal_id is None:
+        return
+    others = db.scalars(
+        select(Filing).where(
+            Filing.deal_id == deal_id,
+            Filing.period == period.first_day,
+            Filing.filing_date == filing_date,
+            Filing.form.in_(TAPE_FORMS),
+            Filing.accession != accession,
+        )
+    ).all()
+    above = {filing.accession for filing in amendment_chain(db, amends)}
+    for other in sorted(others, key=lambda filing: filing.accession):
+        below = {filing.accession for filing in amendment_chain(db, other.amends)}
+        if other.accession not in above and accession not in below:
+            raise TapeRefused(
+                f"{accession} and {other.accession} are both {period.label} tapes of {deal} "
+                f"filed on {filing_date}, and neither amends the other"
+            )
+
+
+def _check_filing(
+    db: Session,
+    accession: str,
+    *,
+    cik: int,
+    form: str,
+    filing_date: dt.date,
+    deal_id: int | None,
+    period: Period,
+    amends: str | None,
+) -> None:
+    """The facts `register_filing` would refuse, checked before anything is written."""
+    existing = db.get(Filing, accession)
+    if existing is None:
+        return
+    if (existing.cik, existing.form, existing.filing_date) != (cik, form, filing_date):
+        raise ConflictingFiling(f"{accession} is already registered with different facts")
+    if existing.deal_id is not None and existing.deal_id != deal_id:
+        raise ConflictingFiling(f"{accession} is already registered to another deal")
+    for field, value in (("period", period.first_day), ("amends", amends)):
+        current = getattr(existing, field)
+        if value is not None and current is not None and current != value:
+            raise ConflictingFiling(f"{accession} already has {field} {current!r}, not {value!r}")
+
+
+def _loaded(db: Session, accession: str, file_name: str, sha256: str) -> LoanTape | None:
+    """The tape already loaded from this filing, if any; another file or other bytes refuse."""
+    tape = db.get(LoanTape, accession, populate_existing=True)
+    if tape is not None and tape.file_name != file_name:
+        raise TapeRefused(f"{accession} is already loaded from {tape.file_name}")
+    stored = db.get(FilingFile, (accession, file_name))
+    if stored is not None and stored.sha256 != sha256:
+        raise ConflictingFiling(f"{accession}/{file_name} is already stored with other content")
+    return tape
+
+
+# ---------------------------------------------------------------------------- the load
 
 
 def load_tape(
@@ -185,48 +306,112 @@ def load_tape(
     """Load one EX-102 file of one filing. Loading it again changes nothing.
 
     With an actor, every loan row written (or quarantined) gets an audit entry naming the
-    actor and, when given, the run.
+    actor and, when given, the run, and a refusal is recorded before it is raised.
     """
     if run_id is not None and actor is None:
         raise ValueError("a run's writes are audited, so a run id needs an actor")
+    try:
+        return _load(
+            db,
+            deal=deal,
+            content=content,
+            file_name=file_name,
+            accession=accession,
+            filing_date=filing_date,
+            form=form,
+            amends=amends,
+            cik=cik,
+            actor=actor,
+            run_id=run_id,
+        )
+    except Refused as error:
+        if actor is None:
+            raise
+        refuse(
+            db,
+            error,
+            user=actor.user,
+            action=TAPE_ACTION,
+            role=actor.role.value,
+            subject=FILING,
+            subject_key=accession,
+        )
+
+
+def _load(
+    db: Session,
+    *,
+    deal: str,
+    content: bytes,
+    file_name: str,
+    accession: str,
+    filing_date: dt.date,
+    form: str,
+    amends: str | None,
+    cik: int | None,
+    actor: Actor | None,
+    run_id: int | None,
+) -> LoadSummary:
     check_form(form, amends)
     assets = parse_assets(content)
     if not assets:
         raise TapeRefused("the tape lists no assets")
     period = tape_period(assets, filing_date)
+    sha256 = sha256_of(content)
 
-    deal_row = get_or_create(db, deal, cik=cik)  # locks the deal: loads of a deal take turns
-    if deal_row.cik is None:
-        raise TapeRefused(f"{deal} has no CIK, so its filings cannot be registered")
-    if amends is not None:
-        _check_amended(db, amends, deal_row.id, period, filing_date)
+    existing_deal = _locked_deal(db, deal)  # loads of a deal take turns
+    deal_cik = _cik(deal, existing_deal, cik)
+    deal_id = existing_deal.id if existing_deal is not None else None
+    depth = _check_amended(db, amends, deal_id, period, filing_date)
+    _check_filing(
+        db,
+        accession,
+        cik=deal_cik,
+        form=form,
+        filing_date=filing_date,
+        deal_id=deal_id,
+        period=period,
+        amends=amends,
+    )
+    if _loaded(db, accession, file_name, sha256) is not None:
+        return _summary(db, deal, accession, period, filing_date, already_loaded=True)
+    _check_same_day(db, deal, deal_id, accession, amends, period, filing_date)
+
+    deal_row = get_or_create(db, deal, cik=deal_cik)
     register_filing(  # locks the filing row
         db,
         accession=accession,
-        cik=deal_row.cik,
+        cik=deal_cik,
         form=form,
         filing_date=filing_date,
         deal_id=deal_row.id,
         period=period.first_day,
         amends=amends,
     )
-    loaded_from = _loaded_files(db, accession)  # read under the filing lock
-    if loaded_from - {file_name}:
-        raise TapeRefused(f"{accession} is already loaded from {', '.join(sorted(loaded_from))}")
-    already_loaded = file_name in loaded_from
-    stored = store_file(db, accession=accession, name=file_name, content=content)
+    # A load that held the locks before this one may have changed what the checks saw.
+    if _loaded(db, accession, file_name, sha256) is not None:
+        return _summary(db, deal, accession, period, filing_date, already_loaded=True)
+    _check_same_day(db, deal, deal_row.id, accession, amends, period, filing_date)
 
-    if not already_loaded:
-        work = plan(assets)
-        _write_bronze(db, accession, file_name, assets)
-        _write_silver(
-            db, deal_row.id, accession, file_name, stored.sha256, filing_date, period, work
+    store_file(db, accession=accession, name=file_name, content=content)
+    work = plan(assets)
+    db.add(
+        LoanTape(
+            accession=accession,
+            file_name=file_name,
+            file_sha256=sha256,
+            deal_id=deal_row.id,
+            period=period.first_day,
+            filing_date=filing_date,
+            amendment_depth=depth,
         )
-        if actor is not None:
-            _audit(db, deal, accession, period, work, actor, run_id)
-    return _summary(
-        db, deal, accession, file_name, period, filing_date, stored.sha256, already_loaded
     )
+    db.flush()
+    _write_bronze(db, accession, file_name, assets)
+    _write_silver(db, deal_row.id, accession, file_name, sha256, filing_date, period, work)
+    if actor is not None:
+        _audit(db, deal, accession, period, work, actor, run_id)
+    return _summary(db, deal, accession, period, filing_date, already_loaded=False)
 
 
 def _write_bronze(db: Session, accession: str, file_name: str, assets: Sequence[Asset]) -> None:
@@ -320,8 +505,8 @@ def _audit(
             role=actor.role.value,
             run_id=run_id,
             action=action,
-            subject="loan",
-            subject_key=f"{deal}/{asset.asset_number}",
+            subject=LOAN,
+            subject_key=loan_key(deal, asset.asset_number),
             reason=reason,
             detail=detail,
         )
@@ -331,36 +516,37 @@ def _summary(
     db: Session,
     deal: str,
     accession: str,
-    file_name: str,
     period: Period,
     filing_date: dt.date,
-    sha256: str,
+    *,
     already_loaded: bool,
 ) -> LoadSummary:
     """Counted from what is stored, so a repeated load reports the same numbers."""
+    tape = db.get(LoanTape, accession)
+    if tape is None:  # pragma: no cover - only called once the tape is stored
+        raise RuntimeError(f"tape {accession} vanished")
     assets = db.scalar(
-        select(func.count())
-        .select_from(TapeAsset)
-        .where(TapeAsset.accession == accession, TapeAsset.file_name == file_name)
+        select(func.count()).select_from(TapeAsset).where(TapeAsset.accession == accession)
     )
-    loaded = db.scalar(
-        select(func.count()).select_from(LoanPeriod).where(LoanPeriod.accession == accession)
-    )
-    quarantined = db.scalars(
-        select(QuarantinedLoan)
-        .where(QuarantinedLoan.accession == accession, QuarantinedLoan.file_name == file_name)
-        .order_by(QuarantinedLoan.asset_position)
+    rows = db.execute(
+        select(LoanPeriod.loan, LoanPeriod.property_note)
+        .where(LoanPeriod.accession == accession)
+        .order_by(LoanPeriod.asset_position)
     ).all()
     return LoadSummary(
         deal=deal,
         accession=accession,
         period=period,
         filing_date=filing_date,
-        file_sha256=sha256,
+        file_sha256=tape.file_sha256,
         assets=assets or 0,
-        loans_loaded=loaded or 0,
-        quarantined=[Quarantined(q.loan, q.asset_position, q.reason) for q in quarantined],
+        loans_loaded=len(rows),
+        quarantined=[
+            Quarantined(q.loan, q.asset_position, q.reason)
+            for q in quarantined_loans(db, accession)
+        ],
         already_loaded=already_loaded,
+        notes=[f"loan {loan}: {note}" for loan, note in rows if note is not None],
     )
 
 

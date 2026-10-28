@@ -14,10 +14,12 @@ Pure functions over loans from either source: `LoanRecord`s parsed from a file o
 """
 
 import datetime as dt
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
+from fractions import Fraction
 from pathlib import Path
 from typing import Protocol
 
@@ -25,6 +27,7 @@ from cmbs.absee.schedule_al import LoanRecord, iter_loans
 
 COOPERATIVE_HOUSING = "CH"
 DEFEASED = "Defeased"
+FULLY_DEFEASED = "F"
 SIX_MONTHS_DAYS = 183
 NO_UPDATED_FINANCIALS = "no updated financials"
 AT_SECURITIZATION_ONLY = "only at-securitization financials so far"
@@ -44,11 +47,17 @@ class ReportedLoan(Protocol):
     def property_name(self) -> str | None: ...
     @property
     def property_type(self) -> str | None: ...
+    @property
+    def defeased_status(self) -> str | None: ...
 
 
 def exclusion(loan: ReportedLoan) -> Exclusion | None:
-    """Why a loan is left out of staleness, or None when it is active."""
-    if loan.property_name == DEFEASED:
+    """Why a loan is left out of staleness, or None when it is active.
+
+    Defeased means fully defeased: DefeasedStatusCode "F", or the property name "Defeased" that
+    servicers also use. A partially defeased loan ("P") still reports and stays active.
+    """
+    if loan.property_name == DEFEASED or loan.defeased_status == FULLY_DEFEASED:
         return Exclusion.DEFEASED
     if loan.property_type == COOPERATIVE_HOUSING:
         return Exclusion.COOPERATIVE
@@ -64,11 +73,17 @@ def is_active(loan: ReportedLoan) -> bool:
 
 
 def nearest_rank_percentile(values: Sequence[int], q: float) -> int | None:
-    """Percentile by rounding q * (n - 1) to the nearest index. None for no values."""
+    """The nearest-rank percentile: the ceil(q * n)-th smallest value, for q in (0, 1].
+
+    q is read as the decimal it is written as (0.9, not the float just above it), so
+    ceil(0.9 * 10) is 9. None for no values.
+    """
+    if not 0 < q <= 1:
+        raise ValueError(f"a percentile is between 0 (excluded) and 1, not {q}")
     if not values:
         return None
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(q * (len(ordered) - 1) + 0.5))]
+    rank = math.ceil(Fraction(str(q)) * len(values))
+    return sorted(values)[rank - 1]
 
 
 @dataclass(frozen=True)
@@ -114,6 +129,7 @@ class TapeLoan:
     ending_balance: Decimal | None
     property_name: str | None
     property_type: str | None
+    defeased_status: str | None
     reporting_period_end: dt.date
     financials_end: dt.date | None
     filing_date: dt.date

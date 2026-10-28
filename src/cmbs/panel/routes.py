@@ -15,7 +15,7 @@ from cmbs.access.service import authorize
 from cmbs.analysis.staleness import LoanStaleness, StalenessSummary
 from cmbs.api.deps import DB, User
 from cmbs.panel import service
-from cmbs.panel.service import DealTape, NothingPublished
+from cmbs.panel.service import DealTape, NothingPublished, Superseded
 from cmbs.tape.tables import LoanPeriod
 
 router = APIRouter(prefix="/deals", tags=["panel"])
@@ -40,24 +40,51 @@ class LoanRow(BaseModel):
     master_servicer_return_date: dt.date | None
     workout_strategy: str | None
     modification_code: str | None
+    property_count: int
     property_type: str | None
     property_name: str | None
+    defeased_status: str | None
     financials_start: dt.date | None
     financials_end: dt.date | None
+    financials_end_newest: dt.date | None
     noi: Decimal | None
+    ncf: Decimal | None
     dscr: Decimal | None
     occupancy: Decimal | None
+    property_note: str | None
 
     @classmethod
     def of(cls, row: LoanPeriod) -> "LoanRow":
         return cls.model_validate({name: getattr(row, name) for name in cls.model_fields})
 
 
+class SupersededRow(BaseModel):
+    """A loan an earlier tape reported that the current tape leaves out, and why."""
+
+    loan: str
+    accession: str
+    filing_date: dt.date
+    superseded_by: str
+    reason: str
+
+    @classmethod
+    def of(cls, row: Superseded) -> "SupersededRow":
+        return cls(
+            loan=row.loan,
+            accession=row.accession,
+            filing_date=row.filing_date,
+            superseded_by=row.superseded_by,
+            reason=row.reason,
+        )
+
+
 class DealLoans(BaseModel):
     deal: str
     as_of: dt.date
     period: str | None
+    accession: str | None
     loans: list[LoanRow]
+    superseded: list[SupersededRow]
 
 
 class LoanStalenessRow(BaseModel):
@@ -123,7 +150,9 @@ def deal_loans(user: User, db: DB, deal: str, as_of: dt.date | None = None) -> D
         deal=deal,
         as_of=day,
         period=tape.period.label if tape else None,
+        accession=tape.accession if tape else None,
         loans=[LoanRow.of(row) for row in tape.rows] if tape else [],
+        superseded=[SupersededRow.of(row) for row in tape.superseded] if tape else [],
     )
 
 

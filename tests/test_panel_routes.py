@@ -52,13 +52,22 @@ def test_loans_as_of_the_filing_date(loaded, client):
     assert first["paid_through_date"] == "2026-09-01"
     assert first["accession"] == "0009900001-26-000101"
     assert len(first["file_sha256"]) == 64
+    assert (first["property_count"], first["property_note"], first["ncf"]) == (1, None, None)
+    assert (body["accession"], body["superseded"]) == ("0009900001-26-000101", [])
     assert body["loans"][4]["noi"] is None
 
 
 @needs_db
 def test_loans_before_the_filing_date_are_empty(loaded, client):
     response = client.get(f"/deals/{DEAL}/loans", params={"as_of": "2026-09-28"}, headers=QUINN)
-    assert response.json() == {"deal": DEAL, "as_of": "2026-09-28", "period": None, "loans": []}
+    assert response.json() == {
+        "deal": DEAL,
+        "as_of": "2026-09-28",
+        "period": None,
+        "accession": None,
+        "loans": [],
+        "superseded": [],
+    }
 
 
 @needs_db
@@ -115,4 +124,31 @@ def test_staleness_before_any_filing_is_refused(loaded, client):
     assert response.status_code == 422
     assert response.json() == {
         "detail": "no loan tape of Fixture Trust 2026-F1 had been filed by 2026-09-01"
+    }
+
+
+@needs_db
+def test_a_loan_the_current_tape_leaves_out_is_listed_as_superseded(loaded, client):
+    one_loan = fixture_bytes().split(b"<assets>")
+    amended = b"<assets>".join(one_loan[:2]) + b"</assetData>\n"
+    load_tape(
+        loaded,
+        deal=DEAL,
+        content=amended,
+        file_name="ex102.xml",
+        accession="0009900001-26-000102",
+        filing_date=dt.date(2026, 10, 5),
+        form="ABS-EE/A",
+        amends="0009900001-26-000101",
+    )
+    loaded.commit()
+    body = client.get(f"/deals/{DEAL}/loans", params={"as_of": "2026-10-05"}, headers=QUINN).json()
+    assert [loan["loan"] for loan in body["loans"]] == ["1"]
+    assert [s["loan"] for s in body["superseded"]] == ["2", "3", "4", "5", "6", "7"]
+    assert body["superseded"][0] == {
+        "loan": "2",
+        "accession": "0009900001-26-000101",
+        "filing_date": "2026-09-29",
+        "superseded_by": "0009900001-26-000102",
+        "reason": "not reported in 0009900001-26-000102",
     }

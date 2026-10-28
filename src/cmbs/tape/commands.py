@@ -53,6 +53,8 @@ def load(
     typer.echo(summary.text())
     for loan in summary.quarantined:
         typer.echo(f"  quarantined loan {loan.loan}: {loan.reason}")
+    for note in summary.notes:
+        typer.echo(f"  {note}")
 
 
 @app.command("staleness")

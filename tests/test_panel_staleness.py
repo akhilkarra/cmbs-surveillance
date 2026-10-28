@@ -16,6 +16,7 @@ from cmbs.analysis.staleness import (
     is_active,
     loan_staleness,
     measure,
+    nearest_rank_percentile,
     summarize,
 )
 
@@ -29,6 +30,7 @@ def loan(number: str = "1", **values) -> TapeLoan:
         "ending_balance": Decimal("1000000.00"),
         "property_name": "Harbor Office Tower",
         "property_type": "OF",
+        "defeased_status": "N",
         "reporting_period_end": PERIOD_END,
         "financials_end": dt.date(2026, 6, 30),
         "filing_date": FILED,
@@ -50,6 +52,11 @@ def loan(number: str = "1", **values) -> TapeLoan:
         ({"ending_balance": Decimal("-1.00")}, Exclusion.PAID_OFF),
         ({"ending_balance": Decimal("0.01")}, None),
         ({"property_name": None, "property_type": None}, None),
+        ({"defeased_status": "F"}, Exclusion.DEFEASED),
+        ({"defeased_status": "F", "property_name": "Portfolio (2 properties)"}, Exclusion.DEFEASED),
+        ({"defeased_status": "P"}, None),
+        ({"defeased_status": "X"}, None),
+        ({"defeased_status": None}, None),
     ],
 )
 def test_exclusion(values, expected):
@@ -162,3 +169,32 @@ def test_report_loan_lookup_fails_for_an_unknown_loan():
     assert report.loan("2").status == NO_UPDATED_FINANCIALS
     with pytest.raises(KeyError, match="no loan '99' in the report"):
         report.loan("99")
+
+
+@pytest.mark.parametrize(
+    ("values", "q", "expected"),
+    [
+        ([73, 164], 0.5, 73),  # the 1st of 2, not the 2nd that rounding q * (n - 1) gave
+        ([73, 164], 0.9, 164),
+        ([40, 10, 30, 20], 0.25, 10),
+        ([40, 10, 30, 20], 0.5, 20),
+        ([40, 10, 30, 20], 0.75, 30),
+        ([40, 10, 30, 20], 0.9, 40),
+        ([40, 10, 30, 20], 1, 40),
+        ([73, 619, 164], 0.5, 164),
+        ([73, 619, 164], 0.9, 619),
+        (list(range(1, 11)), 0.9, 9),  # ceil(0.9 * 10) is 9, not the 10 a float would give
+        (list(range(1, 11)), 0.3, 3),
+        ([], 0.5, None),
+    ],
+)
+def test_nearest_rank_is_the_ceil_q_n_th_smallest(values, q, expected):
+    assert nearest_rank_percentile(values, q) == expected
+
+
+@pytest.mark.parametrize("q", [0, -0.1, 1.01])
+def test_a_percentile_outside_zero_to_one_is_a_bug(q):
+    with pytest.raises(
+        ValueError, match=f"a percentile is between 0 \\(excluded\\) and 1, not {q}"
+    ):
+        nearest_rank_percentile([1, 2], q)

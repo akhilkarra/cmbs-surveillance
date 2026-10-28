@@ -77,15 +77,21 @@ def test_an_asset_without_property_reads_empty_property_tags():
     assert parsed.kind is AssetKind.LOAN
 
 
-def test_every_property_element_is_kept_and_the_first_one_is_read():
+def test_every_property_element_is_kept_in_file_order():
+    """Each <property> is one real property; bronze keeps them all, and the loan row combines
+    them (tests/test_tape_properties.py), never reading the first one alone."""
     content = tape(
         "<assets><assetNumber>3</assetNumber>"
-        "<property><propertyName>First</propertyName></property>"
+        "<property><propertyName>First</propertyName><propertyTypeCode>OF</propertyTypeCode>"
+        "</property>"
         "<property><propertyName>Second</propertyName></property></assets>"
     )
     [parsed] = parse_assets(content)
-    assert parsed.properties == [{"propertyName": "First"}, {"propertyName": "Second"}]
-    assert parsed.property_tag("propertyName") == "First"
+    assert parsed.properties == [
+        {"propertyName": "First", "propertyTypeCode": "OF"},
+        {"propertyName": "Second"},
+    ]
+    assert parsed.kind is AssetKind.LOAN
 
 
 def test_an_empty_element_reads_as_empty_text():
