@@ -1,5 +1,5 @@
 from cmbs.db.models import Base
-from cmbs.db.registry import load_all_tables
+from cmbs.db.registry import all_route_modules, load_all_tables
 
 
 def test_every_feature_tables_module_is_loaded():
@@ -14,3 +14,9 @@ def test_every_feature_tables_module_is_loaded():
     } <= names
     assert all(".migrations" not in name for name in names)
     assert {"app.user", "app.audit_entry", "silver.deal"} <= set(Base.metadata.tables)
+
+
+def test_route_modules_expose_a_router():
+    modules = all_route_modules()
+    assert "cmbs.access.routes" in {module.__name__ for module in modules}
+    assert all(hasattr(module, "router") for module in modules)
