@@ -19,7 +19,8 @@ class AuditEntry(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    user_name: Mapped[str] = mapped_column(String(64), index=True)
+    # Text, not the users table's length: a refused attempt records the name exactly as given.
+    user_name: Mapped[str] = mapped_column(Text, index=True)
     role: Mapped[str | None] = mapped_column(String(16))
     run_id: Mapped[int | None] = mapped_column(Integer, index=True)
     action: Mapped[str] = mapped_column(String(64))

@@ -43,7 +43,7 @@ def upgrade() -> None:
         "audit_entry",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column("at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("user_name", sa.String(length=64), nullable=False),
+        sa.Column("user_name", sa.Text(), nullable=False),
         sa.Column("role", sa.String(length=16), nullable=True),
         sa.Column("run_id", sa.Integer(), nullable=True),
         sa.Column("action", sa.String(length=64), nullable=False),

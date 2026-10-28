@@ -410,3 +410,12 @@ def test_a_deal_cik_can_be_learned_but_not_changed(db):
     get_or_create(db, "BANK 2018-BNK13", cik=1744707)
     with pytest.raises(ConflictingDeal, match="already has CIK 1744707, not 1"):
         get_or_create(db, "BANK 2018-BNK13", cik=1)
+
+
+def test_an_overlong_unknown_name_is_refused_and_recorded_as_given(seeded):
+    name = "x" * 200
+    with pytest.raises(UnknownUser):
+        authorize(seeded, name, Action.READ_PANEL)
+    seeded.rollback()
+    entry = seeded.scalars(select(AuditEntry).where(AuditEntry.outcome == "refused")).one()
+    assert entry.user_name == name
