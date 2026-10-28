@@ -6,7 +6,7 @@ version and never overwrites), and loans quarantined by the loan_period contract
 reason (silver.loan_quarantine). The CHECK constraints repeat the contract's rules.
 
 Revision ID: 0003
-Revises: 0002
+Revises: 0006
 Create Date: 2026-10-28 09:29:11.597044
 """
 
@@ -17,7 +17,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0003"
-down_revision: str | Sequence[str] | None = "0002"
+down_revision: str | Sequence[str] | None = "0006"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
