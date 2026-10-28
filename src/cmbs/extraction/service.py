@@ -18,6 +18,7 @@ import datetime as dt
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import NoReturn
 
 from sqlalchemy import select
@@ -53,11 +54,13 @@ from cmbs.extraction.tables import (
 from cmbs.filings.tables import Filing
 from cmbs.model.client import Answered, Ask, ModelClient
 from cmbs.model.policy import Classification, check_pinned, key_for
+from cmbs.model.recordings import DbRecordings, export_recordings, import_recordings
 from cmbs.model.types import ModelRequest
 from cmbs.settings.service import InForce, in_force
 
 EXTRACT = "extract comment"
 DECIDE = "decide review item"
+IMPORT_RECORDINGS = "import model recordings"
 DEAL = "deal"
 REVIEW_ITEM = "review item"
 STATUS_OF = {
@@ -694,3 +697,59 @@ def decide_review(db: Session, user: str, item_id: int, *, value: str, sentence:
         },
     )
     return field_view(row, list(extraction.sentences), None)
+
+
+# Recordings as files, and plain-text views for the command line.
+
+
+def import_recording_files(db: Session, user: str, directory: Path) -> int:
+    """Load recording files into the replay cache; a file that does not check out is refused."""
+    actor = authorize(db, user, Action.RUN_REFRESH)
+    try:
+        return import_recordings(DbRecordings(db), directory)
+    except Refused as error:
+        _refuse(db, error, actor, IMPORT_RECORDINGS, "recordings", str(directory))
+
+
+def export_recording_files(db: Session, user: str, directory: Path) -> list[Path]:
+    """Write every recorded call to `directory`, one file each, in the fixture format."""
+    authorize(db, user, Action.EXPORT)
+    return export_recordings(db, directory)
+
+
+def render_summary(summary: ExtractionSummary) -> str:
+    """'Fixture Trust 2026-F1, September 2026: 1 comment, 0 sent to the model' and a line per
+    comment with each field's outcome."""
+    sent = sum(1 for item in summary.comments if not item.replayed)
+    noun = "comment" if len(summary.comments) == 1 else "comments"
+    lines = [
+        f"{summary.deal}, {summary.period}: {len(summary.comments)} {noun}, "
+        f"{sent} sent to the model"
+    ]
+    for item in summary.comments:
+        outcomes = ", ".join(
+            f"{typed_fields.spec(name).label} {outcome}" for name, outcome in item.outcomes.items()
+        )
+        lines.append(f"loan {item.loan} ({item.accession}): {outcomes}")
+    return "\n".join(lines) + "\n"
+
+
+def render_view(view: CommentView) -> str:
+    """A loan's comment, numbered, then each field with its status and evidence."""
+    lines = [
+        f"{view.deal} loan {view.loan}, {view.period} ({view.accession}, filed "
+        f"{view.filing_date}); {view.model}, prompt version {view.prompt_version}, settings "
+        f"version {view.settings_version}"
+    ]
+    lines += [f"  [{number}] {text}" for number, text in enumerate(view.sentences, start=1)]
+    for item in view.fields.values():
+        shown = item.display if item.display is not None else "-"
+        note = item.status
+        if item.sentence is not None:
+            note += f", sentence {item.sentence}"
+        if item.review_reason is not None and item.status == NEEDS_REVIEW:
+            note += f": {item.review_reason}"
+        if item.decided_by is not None:
+            note += f" by {item.decided_by}"
+        lines.append(f"{item.label}: {shown} ({note})")
+    return "\n".join(lines) + "\n"
