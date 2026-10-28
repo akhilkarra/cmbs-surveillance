@@ -2,6 +2,8 @@
 
 app.run_claim holds the run working on each deal; app.run_month records every deal-month a run
 tried to load. Both are logs in `app`, like app.run, so the data fingerprint ignores them.
+Runs are kept however old they get: a trigger refuses deleting rows of app.run and
+app.run_month, as the audit log's trigger does for its entries.
 
 Revision ID: 0009
 Revises: 0003
@@ -17,6 +19,16 @@ revision: str = "0009"
 down_revision: str | Sequence[str] | None = "0003"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+KEEP_RUNS_FUNCTION = """
+CREATE FUNCTION app.refuse_run_deletion() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'runs are kept: the run history is never deleted';
+END;
+$$
+"""
+KEPT_TABLES = ("run", "run_month")
 
 
 def upgrade() -> None:
@@ -76,9 +88,18 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_app_run_started_at"), "run", ["started_at"], unique=False, schema="app"
     )
+    op.execute(KEEP_RUNS_FUNCTION)
+    for table in KEPT_TABLES:
+        op.execute(
+            f"CREATE TRIGGER {table}_kept BEFORE DELETE OR TRUNCATE ON app.{table} "
+            "FOR EACH STATEMENT EXECUTE FUNCTION app.refuse_run_deletion()"
+        )
 
 
 def downgrade() -> None:
+    for table in KEPT_TABLES:
+        op.execute(f"DROP TRIGGER {table}_kept ON app.{table}")
+    op.execute("DROP FUNCTION app.refuse_run_deletion()")
     op.drop_index(op.f("ix_app_run_started_at"), table_name="run", schema="app")
     op.drop_index(op.f("ix_app_run_month_run_id"), table_name="run_month", schema="app")
     op.drop_index("ix_app_run_month_deal_period", table_name="run_month", schema="app")
