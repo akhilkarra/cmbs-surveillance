@@ -5,7 +5,7 @@ coverage report can tell "looked and found nothing" from "never looked", and the
 loan-tape sources configured per deal (Q40). All are application state in `app`.
 
 Revision ID: 0004
-Revises: 0002
+Revises: 0006
 Create Date: 2026-10-28 09:28:38.773760
 """
 
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0004"
-down_revision: str | Sequence[str] | None = "0002"
+down_revision: str | Sequence[str] | None = "0006"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
