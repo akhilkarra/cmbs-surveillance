@@ -37,5 +37,12 @@ jobs:
       - run: uv run pytest
         env:
           DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
+      - name: Chromium for @surface:ui scenarios
+        run: uv run playwright install --with-deps chromium
+      # behavex ignores default_tags in behave.ini, so drafts are excluded here explicitly.
+      - name: Feature scenarios
+        run: uv run behavex -t 'not @draft' --parallel-processes 2 -o output/behavex
+        env:
+          DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
       - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
         run: uv run python tools/check_approved_features.py --range "${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"
