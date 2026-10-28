@@ -18,14 +18,14 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
-from cmbs.audit.service import record
+from cmbs.audit.service import record, refuse
 from cmbs.deals import service as deals
 from cmbs.distribution import values
 from cmbs.distribution.parse import ParsedReport, parse_report
@@ -50,6 +50,10 @@ class WrongPeriod(Refused):
 
 class ConflictingReport(Refused):
     """The filing's report was already parsed from another file."""
+
+
+class WouldLoseItems(Refused):
+    """A reload whose parse finds nothing would erase the items an earlier load stored."""
 
 
 class UnknownDeal(Refused):
@@ -116,6 +120,43 @@ def item_rows(
     }
 
 
+ITEM_TABLES = (ReportComment, ReportAppraisalReduction, ReportDelinquency)
+
+
+def stored_items(db: Session, accession: str) -> int:
+    """How many comments, appraisal reductions and delinquency rows the filing has stored."""
+    return sum(
+        db.scalar(select(func.count()).select_from(table).where(table.accession == accession)) or 0
+        for table in ITEM_TABLES
+    )
+
+
+def check_reload(
+    stored: DistributionReport,
+    items: int,
+    *,
+    accession: str,
+    file_name: str,
+    parsed: ParsedReport,
+) -> None:
+    """Refuse a load that would replace an earlier one wrongly.
+
+    The filing's report must come from the same file. A parse that finds no item at all
+    (a cover page, or a layout the parser no longer recognises) must not erase the items an
+    earlier load stored.
+    """
+    if stored.file_name != file_name:
+        raise ConflictingReport(
+            f"{accession} was already parsed from {stored.file_name}, not {file_name}"
+        )
+    found = len(parsed.comments) + len(parsed.appraisal_reductions) + len(parsed.delinquencies)
+    if items and not found:
+        raise WouldLoseItems(
+            f"{accession}: this parse of {file_name} finds no comments, appraisal reductions or "
+            f"delinquencies, so the {items} items stored from it are kept"
+        )
+
+
 def load_report(
     db: Session,
     *,
@@ -128,42 +169,70 @@ def load_report(
     content: bytes,
     period: Period | None = None,
 ) -> LoadedReport:
-    """Parse a 10-D's EX-99.1 and store what it says about each loan."""
+    """Parse a 10-D's EX-99.1 and store what it says about each loan.
+
+    Every refusal after the permission check is audited on its own connection, so the record
+    survives the rollback. The checks run before anything is written, and again under the lock
+    on the report row, where a concurrent load of the same filing may have got there first.
+    """
     actor = authorize(db, user, Action.RUN_REFRESH)
-    parsed = parse_report(content)
-    covered = report_period(parsed, period)
-    deal_row = deals.get_or_create(db, deal, cik=cik)
-    register_filing(
-        db,
-        accession=accession,
-        cik=cik,
-        form=FORM,
-        filing_date=filing_date,
-        deal_id=deal_row.id,
-        period=covered.first_day,
-    )
-    store_file(db, accession=accession, name=file_name, content=content)
-    db.execute(
-        insert(DistributionReport)
-        .values(
+    try:
+        parsed = parse_report(content)
+        covered = report_period(parsed, period)
+        earlier = db.get(DistributionReport, accession)
+        if earlier is not None:
+            check_reload(
+                earlier,
+                stored_items(db, accession),
+                accession=accession,
+                file_name=file_name,
+                parsed=parsed,
+            )
+        deal_row = deals.get_or_create(db, deal, cik=cik)
+        register_filing(
+            db,
             accession=accession,
-            file_name=file_name,
+            cik=cik,
+            form=FORM,
+            filing_date=filing_date,
             deal_id=deal_row.id,
             period=covered.first_day,
-            administrator=parsed.administrator.value,
-            distribution_date=parsed.distribution_date,
-            summary=parsed.summary,
         )
-        .on_conflict_do_nothing(index_elements=[DistributionReport.accession])
-    )
-    # The lock on the report row makes the replacement below one step for any other load of
-    # this filing: a second load waits here, then replaces whatever the first one stored.
-    stored = db.get(DistributionReport, accession, with_for_update=True, populate_existing=True)
-    if stored is None:  # pragma: no cover - the insert above guarantees the row
-        raise RuntimeError(f"report {accession} vanished after insert")
-    if stored.file_name != file_name:
-        raise ConflictingReport(
-            f"{accession} was already parsed from {stored.file_name}, not {file_name}"
+        store_file(db, accession=accession, name=file_name, content=content)
+        db.execute(
+            insert(DistributionReport)
+            .values(
+                accession=accession,
+                file_name=file_name,
+                deal_id=deal_row.id,
+                period=covered.first_day,
+                administrator=parsed.administrator.value,
+                distribution_date=parsed.distribution_date,
+                summary=parsed.summary,
+            )
+            .on_conflict_do_nothing(index_elements=[DistributionReport.accession])
+        )
+        # The lock on the report row makes the replacement below one step for any other load
+        # of this filing: a second load waits here, then replaces what the first one stored.
+        stored = db.get(DistributionReport, accession, with_for_update=True, populate_existing=True)
+        if stored is None:  # pragma: no cover - the insert above guarantees the row
+            raise RuntimeError(f"report {accession} vanished after insert")
+        check_reload(
+            stored,
+            stored_items(db, accession),
+            accession=accession,
+            file_name=file_name,
+            parsed=parsed,
+        )
+    except Refused as refusal:
+        refuse(
+            db,
+            refusal,
+            user=actor.user,
+            action=AUDIT_ACTION,
+            role=actor.role.value,
+            subject="filing",
+            subject_key=accession,
         )
     stored.administrator = parsed.administrator.value
     stored.distribution_date = parsed.distribution_date
