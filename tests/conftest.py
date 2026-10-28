@@ -54,3 +54,13 @@ def db(db_url) -> Iterator[Session]:
     """A session on the test's own database; committed work is visible to other sessions."""
     with engine.session() as session:
         yield session
+
+
+@pytest.fixture
+def seeded(db) -> Session:
+    """The fixture world: six users and settings version 7."""
+    from cmbs.testing import world
+
+    world.seed(db)
+    db.commit()
+    return db

@@ -1,0 +1,185 @@
+"""Shared services against a real Postgres. Skipped without DATABASE_URL."""
+
+import datetime as dt
+from decimal import Decimal
+
+import pytest
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
+
+from cmbs import clock
+from cmbs.access.roles import Action, Role
+from cmbs.access.service import (
+    PermissionRefused,
+    UnknownUser,
+    authorize,
+    ensure_user,
+    roles_of,
+)
+from cmbs.audit.service import entries_for_subject, record
+from cmbs.audit.tables import AuditEntry
+from cmbs.checks.service import flags_for, raise_flag
+from cmbs.deals.service import by_name, get_or_create
+from cmbs.runs.service import finish_run, start_run
+from cmbs.settings.service import NoSettings, OutOfOrderVersion, in_force, store_version
+from cmbs.settings.values import Settings
+from tests.conftest import needs_db
+
+pytestmark = needs_db
+
+
+def test_authorize_returns_the_acting_role(seeded):
+    assert authorize(seeded, "morgan", Action.PROPOSE_SETTING).role is Role.QUANT
+    assert authorize(seeded, "alex", Action.DECIDE_REVIEW).role is Role.ANALYST
+
+
+def test_a_refusal_is_raised_and_audited_with_user_and_time(seeded):
+    clock.set_now(dt.datetime(2026, 10, 6, 14, 30, tzinfo=dt.UTC))
+    with pytest.raises(PermissionRefused, match="^pm may not decide review items$"):
+        authorize(seeded, "pat", Action.DECIDE_REVIEW)
+    seeded.rollback()  # the caller's work is abandoned; the refusal record must survive
+    entry = seeded.scalars(select(AuditEntry)).one()
+    assert (entry.user_name, entry.outcome, entry.reason) == (
+        "pat",
+        "refused",
+        "pm may not decide review items",
+    )
+    assert entry.at == dt.datetime(2026, 10, 6, 14, 30, tzinfo=dt.UTC)
+
+
+def test_unknown_users_are_refused(seeded):
+    with pytest.raises(UnknownUser):
+        authorize(seeded, "nobody", Action.READ_PANEL)
+
+
+def test_ensure_user_sets_exactly_the_given_roles(seeded):
+    ensure_user(seeded, "quinn", {Role.QUANT, Role.RISK})
+    assert roles_of(seeded, "quinn") == {Role.QUANT, Role.RISK}
+    ensure_user(seeded, "quinn", {Role.RISK})
+    assert roles_of(seeded, "quinn") == {Role.RISK}
+
+
+def test_audit_entries_cannot_be_updated_or_deleted(db):
+    record(db, user="alex", action="decide", subject="loan", subject_key="F1/2")
+    db.commit()
+    for statement in ("UPDATE app.audit_entry SET action = 'x'", "DELETE FROM app.audit_entry"):
+        with pytest.raises(DBAPIError, match="the audit log is append-only"):
+            db.execute(text(statement))
+        db.rollback()
+    assert db.scalars(select(AuditEntry)).one().action == "decide"
+
+
+def test_subject_history_is_newest_first(db):
+    for hour, after in ((9, "first"), (11, "second")):
+        clock.set_now(dt.datetime(2026, 9, 30, hour, tzinfo=dt.UTC))
+        record(db, user="alex", action="decide", subject="loan", subject_key="F1/2", after=after)
+    record(db, user="alex", action="decide", subject="loan", subject_key="F1/7", after="other")
+    assert [e.after for e in entries_for_subject(db, "loan", "F1/2")] == ["second", "first"]
+
+
+def test_settings_in_force_follow_approval_time(seeded):
+    assert in_force(seeded, dt.datetime(2026, 9, 20, tzinfo=dt.UTC)).version == 7
+    store_version(
+        seeded,
+        version=8,
+        values=Settings(dscr_alert_threshold=Decimal("1.05")),
+        proposed_by="quinn",
+        approved_by="rae",
+        approved_at=dt.datetime(2026, 10, 1, tzinfo=dt.UTC),
+    )
+    before = in_force(seeded, dt.datetime(2026, 9, 30, tzinfo=dt.UTC))
+    after = in_force(seeded, dt.datetime(2026, 10, 2, tzinfo=dt.UTC))
+    assert (before.version, before.values.dscr_alert_threshold) == (7, Decimal("1.00"))
+    assert (after.version, after.values.dscr_alert_threshold) == (8, Decimal("1.05"))
+
+
+def test_a_version_is_in_force_from_the_instant_it_is_approved(seeded):
+    approved = dt.datetime(2026, 9, 15, tzinfo=dt.UTC)
+    assert in_force(seeded, approved).version == 7
+    with pytest.raises(NoSettings):
+        in_force(seeded, approved - dt.timedelta(microseconds=1))
+
+
+def test_in_force_defaults_to_now(seeded):
+    clock.set_now(dt.datetime(2026, 10, 27, tzinfo=dt.UTC))
+    assert in_force(seeded).version == 7
+
+
+def test_no_settings_before_the_first_approval(seeded):
+    with pytest.raises(NoSettings, match=r"^no settings approved by 2026-01-01T00:00:00\+00:00$"):
+        in_force(seeded, dt.datetime(2026, 1, 1, tzinfo=dt.UTC))
+
+
+@pytest.mark.parametrize(
+    ("version", "approved_at"),
+    [
+        (7, dt.datetime(2026, 10, 1, tzinfo=dt.UTC)),
+        (6, dt.datetime(2026, 10, 1, tzinfo=dt.UTC)),
+        (8, dt.datetime(2026, 9, 14, tzinfo=dt.UTC)),
+    ],
+)
+def test_versions_must_follow_the_latest_in_number_and_time(seeded, version, approved_at):
+    with pytest.raises(OutOfOrderVersion, match="does not follow version 7"):
+        store_version(
+            seeded,
+            version=version,
+            values=Settings(),
+            proposed_by="quinn",
+            approved_by="rae",
+            approved_at=approved_at,
+        )
+
+
+def test_settings_round_trip_every_field(seeded):
+    values = Settings(
+        dscr_alert_threshold=Decimal("1.05"),
+        abstention_low=Decimal("0.40"),
+        abstention_high=Decimal("0.60"),
+        transfer_date_tolerance_periods=1,
+        model="jev-1.15.0",
+        prompt_version=4,
+        zero_data_retention=True,
+    )
+    store_version(
+        seeded,
+        version=8,
+        values=values,
+        proposed_by="quinn",
+        approved_by="rae",
+        approved_at=dt.datetime(2026, 10, 1, tzinfo=dt.UTC),
+    )
+    assert in_force(seeded, dt.datetime(2026, 10, 1, tzinfo=dt.UTC)).values == values
+
+
+def test_runs_take_a_number_and_finish_once(db):
+    clock.set_now(dt.datetime(2026, 10, 27, 9, tzinfo=dt.UTC))
+    run = start_run(db, kind="refresh", started_by="olly", run_id=42)
+    assert (run.id, run.status) == (42, "running")
+    clock.set_now(dt.datetime(2026, 10, 27, 9, 4, tzinfo=dt.UTC))
+    finish_run(db, run, status="succeeded", summary={"deals": 2})
+    assert run.ended_at == dt.datetime(2026, 10, 27, 9, 4, tzinfo=dt.UTC)
+    with pytest.raises(ValueError, match="cannot finish as 'running'"):
+        finish_run(db, run, status="running", summary={})
+
+
+def test_deals_are_registered_once_and_learn_their_cik(db):
+    first = get_or_create(db, "BANK 2018-BNK13")
+    again = get_or_create(db, "BANK 2018-BNK13", cik=1744707)
+    assert first.id == again.id and again.cik == 1744707
+    assert by_name(db, "BANK 2018-BNK13") is first
+    assert by_name(db, "no such deal") is None
+
+
+def test_flags_keep_both_sides_per_loan(db):
+    deal = get_or_create(db, "Fixture Trust 2026-F1")
+    raise_flag(
+        db,
+        deal_id=deal.id,
+        loan="4",
+        check="report_tape_reconciliation",
+        message="report says delinquent, tape says current",
+        sides={"report": "delinquent", "tape": "current"},
+    )
+    (flag,) = flags_for(db, deal_id=deal.id, loan="4")
+    assert flag.sides == {"report": "delinquent", "tape": "current"}
+    assert flags_for(db, deal_id=deal.id, loan="5") == []
