@@ -90,13 +90,15 @@ def discover_deal(db: Session, source: Source, name: str, on: dt.date, *, user: 
     return found
 
 
-def latest_discovery(db: Session, deal_id: int, on: dt.date) -> FilingDiscovery | None:
-    """The most recent discovery for the deal run as of `on` or earlier."""
+def latest_discovery(
+    db: Session, deal_id: int, on: dt.date | None = None
+) -> FilingDiscovery | None:
+    """The deal's most recent discovery, by the date it ran as of; only up to `on` if given."""
+    query = select(FilingDiscovery).where(FilingDiscovery.deal_id == deal_id)
+    if on is not None:
+        query = query.where(FilingDiscovery.as_of <= on)
     return db.scalars(
-        select(FilingDiscovery)
-        .where(FilingDiscovery.deal_id == deal_id, FilingDiscovery.as_of <= on)
-        .order_by(FilingDiscovery.as_of.desc(), FilingDiscovery.id.desc())
-        .limit(1)
+        query.order_by(FilingDiscovery.as_of.desc(), FilingDiscovery.id.desc()).limit(1)
     ).one_or_none()
 
 

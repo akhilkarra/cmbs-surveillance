@@ -1,8 +1,12 @@
 """The coverage report: for every deal in the book, what the panel can and cannot see.
 
 The report reads only what is stored: the book as of the date, the filings registered for each
-deal and filed by then, the latest filing discovery run by then, and the vendor sources
-configured by then. Refreshing discovery is a separate step (`cmbs.edgar.service`).
+deal and filed by then, and the vendor sources configured by then. Refreshing discovery is a
+separate step (`cmbs.edgar.service`).
+
+Filings are dated public facts, so a discovery run as of a later date knows exactly what was
+public on the report date. A deal never looked up is "not yet checked"; a deal last looked up
+as of an earlier date than the report may have missed filings since, and the report says so.
 """
 
 import datetime as dt
@@ -54,6 +58,12 @@ class DealCoverage:
     detail: str
     overdue_expected_by: dt.date | None
     vendor_sources: tuple[str, ...]
+    # The date the latest filing discovery ran as of; None if it never ran.
+    checked_as_of: dt.date | None = None
+
+    def stale(self, on: dt.date) -> bool:
+        """True when discovery last ran as of a date before `on`, so filings may be missing."""
+        return self.checked_as_of is not None and self.checked_as_of < on
 
 
 @dataclass(frozen=True)
@@ -97,15 +107,20 @@ def _facts(db: Session, deal_id: int, on: dt.date) -> list[FilingFact]:
     return [FilingFact(f.form, f.filing_date) for f in filings_of(db, deal_id, on)]
 
 
-def _public(db: Session, deal: Deal, on: dt.date, facts: Sequence[FilingFact]) -> Classified:
-    if latest_discovery(db, deal.id, on) is None:
+def _public(deal: Deal, checked_as_of: dt.date | None, facts: Sequence[FilingFact]) -> Classified:
+    if checked_as_of is None:
         return NOT_CHECKED
     return classify(facts, has_cik=deal.cik is not None)
 
 
+def _checked_as_of(db: Session, deal_id: int) -> dt.date | None:
+    latest = latest_discovery(db, deal_id)
+    return latest.as_of if latest is not None else None
+
+
 def classify_deal(db: Session, deal: Deal, on: dt.date) -> Classified:
     """The deal's coverage from public filings as of `on`, before vendor sources."""
-    return _public(db, deal, on, _facts(db, deal.id, on))
+    return _public(deal, _checked_as_of(db, deal.id), _facts(db, deal.id, on))
 
 
 def build_report(db: Session, on: dt.date) -> CoverageReport:
@@ -125,7 +140,8 @@ def build_report(db: Session, on: dt.date) -> CoverageReport:
         deal = db.get_one(Deal, deal_ids[name])
         facts = _facts(db, deal.id, on)
         vendors = vendor_sources_of(db, deal.id, on)
-        classified = with_vendor(_public(db, deal, on, facts), vendors)
+        checked_as_of = _checked_as_of(db, deal.id)
+        classified = with_vendor(_public(deal, checked_as_of, facts), vendors)
         rows.append(
             DealCoverage(
                 deal=name,
@@ -135,6 +151,7 @@ def build_report(db: Session, on: dt.date) -> CoverageReport:
                 detail=classified.detail,
                 overdue_expected_by=overdue_since(classified.coverage, facts, on),
                 vendor_sources=tuple(vendors),
+                checked_as_of=checked_as_of,
             )
         )
         per_class[classified.coverage] += exposure[name]
@@ -216,6 +233,14 @@ def render(result: CoverageReport) -> str:
             f"{row.overdue_expected_by.isoformat()}"
             for row in overdue
             if row.overdue_expected_by is not None
+        ]
+    stale = [row for row in result.deals if row.stale(result.on)]
+    if stale:
+        lines += ["", "Filing discovery older than the report date"]
+        lines += [
+            f"{row.deal}: last looked up as of {row.checked_as_of.isoformat()}"
+            for row in stale
+            if row.checked_as_of is not None
         ]
     vendors = [row for row in result.deals if row.vendor_sources]
     if vendors:
