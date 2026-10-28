@@ -92,9 +92,10 @@ def test_match_header_needs_every_required_column_once():
     assert match_header(SPEC, rows("<tr><td>Pros ID Comment</td></tr>")) is None
 
 
-def test_the_header_is_the_smallest_block_after_any_junk_rows():
+def test_the_header_stops_at_a_blank_row_above_it():
     table = rows(
         "<tr><td>Distribution Date: 09/17/26</td><td>comment line</td></tr>"
+        "<tr><td>&nbsp;</td><td>&nbsp;</td></tr>"
         "<tr><td>Pros</td><td>Special Servicing</td></tr>"
         "<tr><td>ID</td><td>Comments</td></tr>"
         "<tr><td>11</td><td>Text</td></tr>"
@@ -105,8 +106,107 @@ def test_the_header_is_the_smallest_block_after_any_junk_rows():
             LOAN: HeaderColumn("pros id", 0, 1),
             "note": HeaderColumn("special servicing comments", 1, 2, True),
         },
-        3,
+        4,
     )
+
+
+def test_header_rows_above_the_smallest_block_are_added_to_it():
+    # Mortgage Loan Detail (Part 2), BANK 2018-BNK13, September 2026: the required columns are
+    # all in the bottom two rows, but "Appraisal" over "Reduction Date" starts a row higher,
+    # in a cell that also spans the two NOI date columns.
+    spec = TableSpec(
+        "Loan Notes",
+        (
+            ID,
+            Column("ara", re.compile("appraisal reduction"), True, re.compile("date")),
+            Column("ara_date", re.compile(r"appraisal reduction date")),
+        ),
+    )
+    table = rows(
+        "<tr><td></td><td></td><td></td><td></td><td></td><td></td></tr>"
+        "<tr><td></td><td colspan='3'>Most Recent Most Recent Appraisal</td><td></td>"
+        "<td>Cumulative</td></tr>"
+        "<tr><td></td><td>NOI Start</td><td>NOI End</td><td>Reduction</td><td>Appraisal</td>"
+        "<td>Servicer</td></tr>"
+        "<tr><td>Pros ID</td><td>Date</td><td>Date</td><td>Date</td><td>Reduction Amount</td>"
+        "<td>Advances</td></tr>"
+        "<tr><td>11</td><td>01/01/26</td><td>03/31/26</td><td>07/27/26</td>"
+        "<td>20,092,857.80</td><td>214,557.19</td></tr>"
+    )
+    layout, start = find_header(spec, table) or ({}, -1)
+    assert start == 4
+    assert layout["ara"] == HeaderColumn("appraisal reduction amount", 4, 5)
+    assert layout["ara_date"] == HeaderColumn(
+        "most recent most recent appraisal reduction date", 3, 4
+    )
+
+
+def test_footnote_markers_keep_columns_under_one_spanning_cell_apart():
+    # Delinquency Loan Detail, CGCMT 2016-C1, September 2026: "Status Strategy Special Serv"
+    # is one cell over three columns, told apart only by "(2)", "(3)" and "Transfer Date".
+    header = rows(
+        "<tr><td>OMCR</td><td colspan='3'>Status Strategy Special Serv</td></tr>"
+        "<tr><td></td><td>(2)</td><td>(3)</td><td>Transfer Date</td></tr>"
+    )
+    assert header_columns(header) == [
+        HeaderColumn("omcr", 0, 1),
+        HeaderColumn("status strategy special serv", 1, 2),
+        HeaderColumn("status strategy special serv", 2, 3),
+        HeaderColumn("status strategy special serv transfer date", 3, 4, last=True),
+    ]
+
+
+def test_a_spec_has_at_most_one_free_text_column():
+    with pytest.raises(ValueError) as error:
+        TableSpec("Bad", (ID, NOTE, Column("more", re.compile("x"), free_text=True)))
+    assert str(error.value) == "Bad: at most one free-text column"
+    assert SPEC.free_text == "note"
+    assert TableSpec("Plain", (ID, STATUS)).free_text is None
+
+
+def test_comment_lines_printed_as_rows_across_the_table_join_the_loan_above():
+    # Specially Serviced Loan Detail - Part 2, BANK 2018-BNK13, September 2026: the loan row
+    # leaves the comment column empty; each comment line is a row of its own that starts after
+    # the loan id column and spans the table, and the last line may span only a few columns.
+    found, notes = read(
+        "<table><tr><td>Loan Notes</td></tr>"
+        "<tr><td>Pros ID</td><td>Loan ID</td><td>Status</td><td></td>"
+        "<td>Special Servicing Comments</td></tr>"
+        "<tr><td>11</td><td>1852535</td><td>2</td><td></td><td></td></tr>"
+        "<tr><td></td><td colspan='4'>The loan transferred to Special Servicing effective "
+        "6/4/2026 due to monetary default.</td></tr>"
+        "<tr><td></td><td colspan='2'>and initiate discussions with t he Borrower.</td>"
+        "<td></td><td></td></tr>"
+        "<tr><td colspan='5'>&nbsp;</td></tr>"
+        "<tr><td>57</td><td>470109040</td><td>0</td><td></td><td></td></tr>"
+        "<tr><td></td><td>taxes ($180k).</td><td></td><td></td><td></td></tr>"
+        "<tr><td colspan='2'>1 Property Type Codes</td><td></td><td>2 Resolution</td></tr>"
+        "</table>"
+    )
+    assert found == [
+        Record(
+            "11",
+            {
+                "status": "2",
+                "note": "The loan transferred to Special Servicing effective 6/4/2026 due to "
+                "monetary default. and initiate discussions with t he Borrower.",
+            },
+        ),
+        Record("57", {"status": "0", "note": "taxes ($180k)."}),
+    ]
+    assert notes == []
+
+
+def test_a_line_inside_another_column_is_not_comment_text():
+    found, _ = read(
+        "<table><tr><td>Loan Notes</td></tr>"
+        "<tr><td>Pros ID</td><td>Status</td><td>Comment</td></tr>"
+        "<tr><td>11</td><td>3</td><td>Text.</td></tr>"
+        "<tr><td></td><td>9</td><td></td></tr>"
+        "<tr><td></td><td></td><td>Not attached.</td></tr>"
+        "</table>"
+    )
+    assert found == [Record("11", {"status": "3", "note": "Text."})]
 
 
 def test_rows_below_the_header_extend_it_until_the_first_loan():
@@ -258,6 +358,30 @@ def test_a_row_that_would_break_a_required_column_is_not_added_to_the_header():
     layout, start = find_header(strict, table) or ({}, -1)
     assert start == 1
     assert layout["status"].label == "status"
+
+
+def test_a_row_above_that_would_break_a_required_column_is_not_added_to_the_header():
+    vetoed = Column("status", re.compile("status"), required=True, exclude=re.compile("veto"))
+    strict = TableSpec("Loan Notes", (ID, vetoed, NOTE))
+    table = rows(
+        "<tr><td>above</td><td>veto</td><td>more</td></tr>"
+        "<tr><td>Pros ID</td><td>Status</td><td>Comment</td></tr>"
+        "<tr><td>11</td><td>3</td><td>Text</td></tr>"
+    )
+    layout, start = find_header(strict, table) or ({}, -1)
+    assert start == 2
+    assert layout[LOAN].label == "pros id"
+
+
+def test_rows_above_are_added_only_while_the_header_has_room():
+    table = rows(
+        "".join(f"<tr><td>a{n}</td><td>b{n}</td></tr>" for n in range(5))
+        + "<tr><td>Pros ID</td><td>Comment</td></tr>"
+        + "<tr><td>11</td><td>Text</td></tr>"
+    )
+    layout, start = find_header(SPEC, table) or ({}, -1)
+    assert start == 6
+    assert layout[LOAN].label == "a2 a3 a4 pros id"
 
 
 def test_a_header_has_at_most_four_rows():

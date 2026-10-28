@@ -2,12 +2,16 @@
 
 A header may be split over several rows and cells: the label of a grid position is the text
 of every header cell above it, top to bottom, so "Special Servicing" over "Comments" reads
-"special servicing comments". The header is the smallest block of rows in which every required
-column is found, extended by the rows that follow it until the first loan.
+"special servicing comments". Positions whose header text differs only in a footnote marker
+("Status (2)", "Strategy (3)" under one spanning cell) stay separate columns. The header is the
+smallest block of rows in which every required column is found, extended by the header-like
+rows just above it and below it.
 
 Rows are matched to loans by the prospectus loan id column. A free-text column (a comment) may
-spread over several cells, run past the last header column, or continue on following rows
-whose only filled cells lie inside it; all of that text is joined in order.
+spread over several cells and run past the last header column. It may also continue on the
+rows below the loan: a row with nothing in the loan id column and nothing inside any other
+column the table reads is more of the text above (Computershare prints each comment line as
+its own row spanning the table). All of that text is joined in order.
 """
 
 import itertools
@@ -15,7 +19,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from cmbs.distribution.grid import Cell, Row, Title, header_label, title_key
+from cmbs.distribution.grid import Cell, Row, Title, clean, header_label, title_key
 from cmbs.distribution.values import loan_id
 
 LOAN = "loan"
@@ -51,6 +55,12 @@ class TableSpec:
     def __post_init__(self) -> None:
         if not self.columns or self.columns[0].name != LOAN or not self.columns[0].required:
             raise ValueError(f"{self.name}: the first column must be the required {LOAN!r}")
+        if sum(column.free_text for column in self.columns) > 1:
+            raise ValueError(f"{self.name}: at most one free-text column")
+
+    @property
+    def free_text(self) -> str | None:
+        return next((column.name for column in self.columns if column.free_text), None)
 
     @property
     def key(self) -> str:
@@ -77,7 +87,11 @@ class Record:
 
 
 def header_columns(rows: Sequence[Row]) -> list[HeaderColumn]:
-    """Runs of grid positions that share one header label, left to right."""
+    """Runs of grid positions that share one header text, left to right.
+
+    Positions are grouped on the text as printed, footnote markers included, and labelled
+    without them, so two columns told apart only by their markers stay two columns.
+    """
     width = max((row.width for row in rows), default=0)
     labels: list[str] = []
     for position in range(width):
@@ -88,12 +102,12 @@ def header_columns(rows: Sequence[Row]) -> list[HeaderColumn]:
                 if cell.start <= position < cell.end and cell.text and cell.ident not in seen:
                     seen.add(cell.ident)
                     parts.append(cell.text)
-        labels.append(header_label(" ".join(parts)))
+        labels.append(clean(" ".join(parts)).lower())
     columns: list[HeaderColumn] = []
     position = 0
-    for label, run in itertools.groupby(labels):
+    for printed, run in itertools.groupby(labels):
         size = len(list(run))
-        if label:
+        if label := header_label(printed):
             columns.append(HeaderColumn(label, position, position + size))
         position += size
     if columns:
@@ -144,7 +158,12 @@ def _continues_header(row: Row, layout: Layout, width: int) -> bool:
 
 
 def find_header(spec: TableSpec, rows: Sequence[Row]) -> tuple[Layout, int] | None:
-    """The layout and the index of the first row after the header, or None."""
+    """The layout and the index of the first row after the header, or None.
+
+    The smallest block of rows with every required column is found first, then widened by the
+    header-like rows below it (up to the first loan) and above it (up to a blank row), as long
+    as every required column is still found and the header stays within MAX_HEADER_ROWS.
+    """
     for size in range(1, MAX_HEADER_ROWS + 1):
         for start in range(len(rows) - size + 1):
             layout = match_header(spec, rows[start : start + size])
@@ -159,6 +178,13 @@ def find_header(spec: TableSpec, rows: Sequence[Row]) -> tuple[Layout, int] | No
                 if wider is None:
                     break
                 layout, end = wider, end + 1
+            while start > 0 and end - start < MAX_HEADER_ROWS:
+                if not _continues_header(rows[start - 1], layout, width):
+                    break
+                wider = match_header(spec, rows[start - 1 : end])
+                if wider is None:
+                    break
+                layout, start = wider, start - 1
             return layout, end
     return None
 
@@ -182,13 +208,13 @@ class _Reader:
 
     def __init__(self, spec: TableSpec) -> None:
         self.spec = spec
-        self.free_text = {column.name for column in spec.columns if column.free_text}
+        self.free_text = spec.free_text
         self.drafts: dict[str, _Draft] = {}
         self.layout: Layout | None = None
         self.width = 0
 
     def _open_ended(self, name: str, column: HeaderColumn) -> bool:
-        return name in self.free_text and column.last
+        return name == self.free_text and column.last
 
     def read_section(self, rows: Sequence[Row]) -> None:
         for _, group in itertools.groupby(rows, key=lambda row: row.table):
@@ -221,24 +247,20 @@ class _Reader:
                 current = None
 
     def _continue_text(self, draft: _Draft, row: Row, layout: Layout) -> bool:
-        """Add a row's text to the loan above when all its filled cells sit in free text."""
-        targets: list[tuple[str, Cell]] = []
-        for cell in row.filled():
-            name = next(
-                (
-                    name
-                    for name in self.free_text
-                    if name in layout
-                    and cell.start >= layout[name].start
-                    and (self._open_ended(name, layout[name]) or cell.end <= layout[name].end)
-                ),
-                None,
-            )
-            if name is None:
-                return False
-            targets.append((name, cell))
-        for name, cell in targets:
-            draft.take(name, [cell])
+        """Add a row's text to the loan above when it can only be more of the free text: the
+        loan id column is empty and no filled cell sits inside another column read here."""
+        name = self.free_text
+        if name is None or name not in layout or _cells_under(row, layout[LOAN], open_ended=False):
+            return False
+        others = [column for key, column in layout.items() if key not in (LOAN, name)]
+        filled = row.filled()
+        if any(
+            column.start <= cell.start and cell.end <= column.end
+            for cell in filled
+            for column in others
+        ):
+            return False
+        draft.take(name, filled)
         return True
 
     def records(self, notes: list[str]) -> list[Record]:
@@ -246,7 +268,7 @@ class _Reader:
         for draft in self.drafts.values():
             values: dict[str, str] = {}
             for name, parts in draft.values.items():
-                if name in self.free_text:
+                if name == self.free_text:
                     values[name] = " ".join(parts)
                     continue
                 values[name] = parts[0]

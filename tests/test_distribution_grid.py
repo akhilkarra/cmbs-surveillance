@@ -33,6 +33,8 @@ def test_clean_collapses_every_kind_of_space():
     zero_width, byte_order_mark = chr(0x200B), chr(0xFEFF)
     assert clean(f"  Pros\xa0 ID{zero_width}\n\t(1) {byte_order_mark}") == "Pros ID (1)"
     assert clean("soft\xadhyphen") == "softhyphen"
+    # Superscript footnote marks survive cleaning, so a header can drop them (header_label).
+    assert clean("Status\u00b9") == "Status\u00b9"
     assert clean("") == ""
 
 
@@ -66,6 +68,9 @@ def test_title_key_keeps_only_the_words(text, key):
         ("Pros\xa0ID", "pros id"),
         ("P&I", "p&i"),
         ("Year (2026)", "year (2026)"),
+        ("Mortgage Loan Status\u00b9", "mortgage loan status"),
+        ("Strategy Code\u00b2", "strategy code"),
+        ("Type\u2074\u2075", "type"),
     ],
 )
 def test_header_label(text, label):

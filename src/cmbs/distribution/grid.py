@@ -30,7 +30,8 @@ _WHITESPACE = re.compile(r"\s+")
 _INVISIBLE: dict[int, None] = dict.fromkeys((0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0xAD))
 _NOT_WORD = re.compile(r"[^a-z0-9&]+")
 _CONTINUED = re.compile(r"\s+(continued|cont d|cont)$")
-_FOOTNOTE = re.compile(r"\(\s*\d{1,2}\s*\)")
+# Footnote markers in headers: "(1)", or superscript digits as in "Status\u00b9".
+_FOOTNOTE = re.compile(r"\(\s*\d{1,2}\s*\)|[\u00b9\u00b2\u00b3\u2070-\u2079]+")
 # Elements whose boundaries separate words even when the markup has no space between them.
 _SEPARATING = ("br", "p", "div", "li", "td", "th", "tr", "table", "h1", "h2", "h3", "h4", "h5")
 _TEXT_BLOCKS = frozenset({"p", "div", "span", "font", "b", "strong", "h1", "h2", "h3", "h4", "h5"})
@@ -41,8 +42,12 @@ class UnreadableReport(Refused):
 
 
 def clean(text: str) -> str:
-    """Collapse whitespace, including non-breaking and zero-width characters."""
-    text = unicodedata.normalize("NFKC", text).translate(_INVISIBLE)
+    """Collapse whitespace, including non-breaking and zero-width characters.
+
+    NFC, not NFKC: compatibility folding would turn a superscript footnote mark into a plain
+    digit ("Status\u00b9" into "Status1"), which no header pattern could then tell apart.
+    """
+    text = unicodedata.normalize("NFC", text).translate(_INVISIBLE)
     return _WHITESPACE.sub(" ", text).strip()
 
 
@@ -56,8 +61,8 @@ def title_key(text: str) -> str:
 
 
 def header_label(text: str) -> str:
-    """Lower-case header text without footnote markers: 'Current P & I Advances (1)' ->
-    'current p&i advances'."""
+    """Lower-case header text without footnote markers: 'Current P & I Advances (1)' and
+    'Current P & I Advances\u00b9' both read 'current p&i advances'."""
     text = _FOOTNOTE.sub(" ", clean(text).lower())
     return clean(re.sub(r"\s*&\s*", "&", text))
 
