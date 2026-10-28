@@ -1,0 +1,25 @@
+{
+ "hits": {
+  "hits": [
+   {
+    "_id": "0001539497-24-001576:n4442-x1_exh1.htm",
+    "_source": {
+     "adsh": "0001539497-24-001576",
+     "ciks": [
+      "0000850779"
+     ],
+     "file_date": "2024-08-06",
+     "form": "ABS-15G",
+     "period_ending": "2024-08-06",
+     "root_forms": [
+      "ABS-15G"
+     ]
+    }
+   }
+  ],
+  "total": {
+   "relation": "eq",
+   "value": 1
+  }
+ }
+}

@@ -1,0 +1,14 @@
+{
+ "recorded_on": "2026-10-28",
+ "responses": {
+  "https://data.sec.gov/submissions/CIK0001610486.json": "submissions/CIK0001610486.json",
+  "https://data.sec.gov/submissions/CIK0001623838.json": "submissions/CIK0001623838.json",
+  "https://data.sec.gov/submissions/CIK0001744707.json": "submissions/CIK0001744707.json",
+  "https://efts.sec.gov/LATEST/search-index?keysTyped=BANK+2018-BNK13": "search/keysTyped_BANK_2018-BNK13.json",
+  "https://efts.sec.gov/LATEST/search-index?keysTyped=COMM+2014-CCRE18": "search/keysTyped_COMM_2014-CCRE18.json",
+  "https://efts.sec.gov/LATEST/search-index?keysTyped=COMM+2014-CR18": "search/keysTyped_COMM_2014-CR18.json",
+  "https://efts.sec.gov/LATEST/search-index?keysTyped=HYT+2024-RGCY": "search/keysTyped_HYT_2024-RGCY.json",
+  "https://efts.sec.gov/LATEST/search-index?keysTyped=WFRBS+2014-C25": "search/keysTyped_WFRBS_2014-C25.json",
+  "https://efts.sec.gov/LATEST/search-index?q=%22HYT+2024-RGCY%22&forms=ABS-15G": "search/q_HYT_2024-RGCY_forms_ABS-15G.json"
+ }
+}
