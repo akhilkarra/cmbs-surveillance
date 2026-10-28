@@ -1,6 +1,8 @@
 """Shared services against a real Postgres. Skipped without DATABASE_URL."""
 
 import datetime as dt
+import subprocess
+import sys
 from decimal import Decimal
 
 import pytest
@@ -287,3 +289,20 @@ def test_concurrent_approvals_queue_instead_of_both_passing_the_order_check(seed
         first.commit()
         with pytest.raises(OutOfOrderVersion, match="does not follow version 8"):
             approve(second, 9, 1)
+
+
+def test_a_fresh_process_can_use_one_service_without_importing_the_others(db_url):
+    """Foreign keys across features resolve even when only one feature's service is imported."""
+    code = (
+        "import datetime as dt\n"
+        "from cmbs.db import engine\n"
+        "from cmbs.filings.service import register_filing\n"
+        "with engine.session() as db:\n"
+        "    register_filing(db, accession='a', cik=1, form='10-D',"
+        " filing_date=dt.date(2026, 9, 29))\n"
+        "print('ok')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=False
+    )
+    assert result.stdout.strip() == "ok", result.stderr[-400:]

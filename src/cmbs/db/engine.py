@@ -3,6 +3,7 @@
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from functools import cache
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
@@ -17,7 +18,20 @@ def database_url() -> str:
     return url
 
 
+@cache
+def _load_tables() -> None:
+    """Import every feature's tables once, so foreign keys between features always resolve.
+
+    Without this, a process that imports only one feature's service (say filings) cannot flush,
+    because the table it references (silver.deal) was never declared in this process.
+    """
+    from cmbs.db.registry import load_all_tables
+
+    load_all_tables()
+
+
 def engine() -> Engine:
+    _load_tables()
     url = database_url()
     if url not in _engines:
         _engines[url] = create_engine(url, pool_pre_ping=True)
