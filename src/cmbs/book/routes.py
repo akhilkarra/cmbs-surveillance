@@ -10,7 +10,7 @@ from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
 from cmbs.api.deps import DB, User
-from cmbs.book.service import exposure_for, load_positions, position_line
+from cmbs.book.service import exposure_for, position_line, store_positions
 
 router = APIRouter(prefix="/book", tags=["book"])
 
@@ -30,13 +30,13 @@ class PositionsFileIn(BaseModel):
 @router.post("/positions")
 def load(body: PositionsFileIn, user: User, db: DB) -> dict[str, Any]:
     # The right is checked before the amounts are read, so a refusal is audited either way.
-    authorize(db, user, Action.LOAD_POSITIONS)
+    actor = authorize(db, user, Action.LOAD_POSITIONS)
     lines = [
         position_line(p.deal, p.tranche, p.face_amount, where=f"position {number}: ")
         for number, p in enumerate(body.positions, start=1)
     ]
-    loaded = load_positions(
-        db, user=user, as_of=body.as_of, lines=lines, source_name=body.source_name
+    loaded = store_positions(
+        db, actor=actor, as_of=body.as_of, lines=lines, source_name=body.source_name
     )
     return {
         "id": loaded.id,

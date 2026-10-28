@@ -16,7 +16,7 @@ A deal's coverage says what the panel can see of it from public filings
 import datetime as dt
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import Decimal
 from enum import StrEnum
 
 from cmbs.domain import Period
@@ -49,6 +49,8 @@ EXPECTED_EVERY = dt.timedelta(days=30)
 class FilingFact:
     form: str
     filing_date: dt.date
+    # The distribution month a 10-D or ABS-EE reports on, when known.
+    period: Period | None = None
 
 
 @dataclass(frozen=True)
@@ -125,9 +127,21 @@ def with_vendor(public: Classified, vendor_sources: Sequence[str]) -> Classified
 
 
 def expected_by(filings: Iterable[FilingFact]) -> dt.date | None:
-    """When the next monthly filing is expected: 30 days after the latest 10-D or ABS-EE."""
-    latest = _dates(filings, [DISTRIBUTION_REPORT, LOAN_TAPE])
-    return latest[-1] + EXPECTED_EVERY if latest else None
+    """When the next monthly filing is expected: 30 days after the latest month was first filed.
+
+    The latest month is the latest reporting period of a 10-D or ABS-EE, so a late filing for
+    an earlier month does not move the date. Without periods, the latest filing date is used.
+    """
+    periodic = [f for f in filings if f.form in (DISTRIBUTION_REPORT, LOAN_TAPE)]
+    if not periodic:
+        return None
+    dated = [f for f in periodic if f.period is not None]
+    if dated:
+        latest = max(f.period for f in dated if f.period is not None)
+        filed = min(f.filing_date for f in dated if f.period == latest)
+    else:
+        filed = max(f.filing_date for f in periodic)
+    return filed + EXPECTED_EVERY
 
 
 def overdue_since(coverage: Coverage, filings: Iterable[FilingFact], on: dt.date) -> dt.date | None:
@@ -141,11 +155,22 @@ def overdue_since(coverage: Coverage, filings: Iterable[FilingFact], on: dt.date
     return expected if expected is not None and on > expected else None
 
 
-def percent(part: Decimal, whole: Decimal) -> int:
-    """Whole percent, rounded half up; 0 of an empty book."""
-    if whole <= 0:
-        return 0
-    return int((part * 100 / whole).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+def shares(amounts: Sequence[Decimal]) -> list[int]:
+    """Whole percents of the total that add up to exactly 100 (largest remainder method).
+
+    Each share is first rounded down; the points left over go to the largest remainders,
+    the earlier amount first on a tie. All zeros when the total is not positive.
+    """
+    total = sum(amounts, Decimal(0))
+    if total <= 0:
+        return [0] * len(amounts)
+    exact = [amount * 100 / total for amount in amounts]
+    whole = [int(value) for value in exact]
+    spare = 100 - sum(whole)
+    by_remainder = sorted(range(len(amounts)), key=lambda i: (whole[i] - exact[i], i))
+    for index in by_remainder[:spare]:
+        whole[index] += 1
+    return whole
 
 
 def exposure_by_class(exposures: Mapping[Coverage, Decimal]) -> list[tuple[Coverage, Decimal]]:

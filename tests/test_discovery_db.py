@@ -29,8 +29,7 @@ def edgar() -> Replay:
 
 def test_a_conduit_is_registered_with_its_cik_filings_and_periods(seeded, edgar):
     clock.set_now(dt.datetime(2026, 10, 28, 8, tzinfo=dt.UTC))
-    discover_deal(seeded, edgar, "BANK 2018-BNK13", ON, user="alex")
-    seeded.commit()
+    discover_deal(edgar, "BANK 2018-BNK13", ON, user="alex")
     deal = by_name(seeded, "BANK 2018-BNK13")
     assert deal is not None
     assert (deal.cik, deal.edgar_name) == (1744707, "BANK 2018-BNK13")
@@ -75,6 +74,7 @@ def test_a_conduit_is_registered_with_its_cik_filings_and_periods(seeded, edgar)
     )
     assert entry.detail == {
         "on": "2026-10-27",
+        "name": "BANK 2018-BNK13",
         "cik": 1744707,
         "edgar_name": "BANK 2018-BNK13",
         "note": None,
@@ -83,13 +83,13 @@ def test_a_conduit_is_registered_with_its_cik_filings_and_periods(seeded, edgar)
 
 
 def test_filings_after_the_discovery_date_are_not_registered(seeded, edgar):
-    discover_deal(seeded, edgar, "BANK 2018-BNK13", dt.date(2026, 10, 26), user="alex")
+    discover_deal(edgar, "BANK 2018-BNK13", dt.date(2026, 10, 26), user="alex")
     assert seeded.get(Filing, "0001888524-26-019175") is None
     assert seeded.get(Filing, "0001888524-26-017705") is not None
 
 
 def test_a_renamed_trust_keeps_its_edgar_name_and_note(seeded, edgar):
-    found = discover_deal(seeded, edgar, "COMM 2014-CR18", ON, user="pat")
+    found = discover_deal(edgar, "COMM 2014-CR18", ON, user="pat")
     deal = by_name(seeded, "COMM 2014-CR18")
     assert deal is not None
     assert (deal.cik, deal.edgar_name) == (1610486, "COMM 2014-CCRE18 Mortgage Trust")
@@ -99,7 +99,7 @@ def test_a_renamed_trust_keeps_its_edgar_name_and_note(seeded, edgar):
 
 
 def test_a_private_deal_is_registered_without_a_cik_and_with_the_depositor_filing(seeded, edgar):
-    discover_deal(seeded, edgar, "HYT 2024-RGCY", ON, user="alex")
+    discover_deal(edgar, "HYT 2024-RGCY", ON, user="alex")
     deal = by_name(seeded, "HYT 2024-RGCY")
     assert deal is not None and deal.cik is None and deal.edgar_name is None
     (filing,) = filings_of(seeded, deal.id, ON)
@@ -114,8 +114,8 @@ def test_a_private_deal_is_registered_without_a_cik_and_with_the_depositor_filin
 
 
 def test_discovering_again_is_idempotent_and_logged_again(seeded, edgar):
-    discover_deal(seeded, edgar, "WFRBS 2014-C25", dt.date(2026, 9, 1), user="alex")
-    discover_deal(seeded, edgar, "WFRBS 2014-C25", ON, user="quinn")
+    discover_deal(edgar, "WFRBS 2014-C25", dt.date(2026, 9, 1), user="alex")
+    discover_deal(edgar, "WFRBS 2014-C25", ON, user="quinn")
     deal = by_name(seeded, "WFRBS 2014-C25")
     assert deal is not None
     assert len(filings_of(seeded, deal.id, ON)) == 171
@@ -130,8 +130,8 @@ def test_discovering_again_is_idempotent_and_logged_again(seeded, edgar):
 
 
 def test_of_two_discoveries_on_one_date_the_later_is_latest(seeded, edgar):
-    discover_deal(seeded, edgar, "WFRBS 2014-C25", ON, user="alex")
-    discover_deal(seeded, edgar, "WFRBS 2014-C25", ON, user="quinn")
+    discover_deal(edgar, "WFRBS 2014-C25", ON, user="alex")
+    discover_deal(edgar, "WFRBS 2014-C25", ON, user="quinn")
     deal = by_name(seeded, "WFRBS 2014-C25")
     assert deal is not None
     latest = latest_discovery(seeded, deal.id, ON)
@@ -140,18 +140,19 @@ def test_of_two_discoveries_on_one_date_the_later_is_latest(seeded, edgar):
 
 def test_a_deal_known_before_learns_its_cik(seeded, edgar):
     get_or_create(seeded, "BANK 2018-BNK13")
-    discover_deal(seeded, edgar, "BANK 2018-BNK13", ON, user="alex")
+    seeded.commit()
+    discover_deal(edgar, "BANK 2018-BNK13", ON, user="alex")
     deal = by_name(seeded, "BANK 2018-BNK13")
     assert deal is not None and deal.cik == 1744707
 
 
 def test_users_who_cannot_read_the_panel_cannot_look_deals_up(seeded, edgar):
     with pytest.raises(PermissionRefused, match="^operator may not read the panel$"):
-        discover_deal(seeded, edgar, "BANK 2018-BNK13", ON, user="olly")
+        discover_deal(edgar, "BANK 2018-BNK13", ON, user="olly")
 
 
 def test_a_failed_lookup_writes_nothing(seeded):
     with pytest.raises(MissingRecording):
-        discover_deal(seeded, Replay(RECORDINGS), "KSL 2026-HT3", ON, user="alex")
+        discover_deal(Replay(RECORDINGS), "KSL 2026-HT3", ON, user="alex")
     assert by_name(seeded, "KSL 2026-HT3") is None
     assert seeded.scalars(select(FilingDiscovery)).all() == []

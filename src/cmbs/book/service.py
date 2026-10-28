@@ -19,13 +19,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cmbs import clock
-from cmbs.access.roles import Action
-from cmbs.access.service import authorize
+from cmbs.access.roles import PERMISSIONS, Action
+from cmbs.access.service import Actor, authorize
 from cmbs.audit.service import record
 from cmbs.book.tables import Position, PositionsFile
-from cmbs.deals.service import get_or_create
 from cmbs.deals.tables import Deal
 from cmbs.domain import format_money, money
+from cmbs.edgar.service import deal_for
 from cmbs.errors import Refused
 
 COLUMNS = ("deal", "class", "face amount")
@@ -144,10 +144,36 @@ def load_positions(
 ) -> PositionsFile:
     """Store a positions file as the book from `as_of`. Needs the right to load positions."""
     actor = authorize(db, user, Action.LOAD_POSITIONS)
+    return store_positions(db, actor=actor, as_of=as_of, lines=lines, source_name=source_name)
+
+
+def store_positions(
+    db: Session,
+    *,
+    actor: Actor,
+    as_of: dt.date,
+    lines: Sequence[PositionLine],
+    source_name: str | None = None,
+) -> PositionsFile:
+    """Store a positions file for an actor already authorized to load positions.
+
+    Deals are looked up, and their rows locked, in name order: two files naming the same deals
+    in different orders, loaded at once, would otherwise wait on each other's locks.
+    """
+    if Action.LOAD_POSITIONS not in PERMISSIONS[actor.role]:
+        raise ValueError(f"an actor acting as {actor.role.value} cannot load positions")
     check_lines(lines)
-    deal_ids = {line.deal: get_or_create(db, line.deal).id for line in lines}
+    deal_ids = {name: deal_for(db, name).id for name in sorted({line.deal for line in lines})}
+    held: dict[tuple[int, str], str] = {}
+    for line in lines:
+        key = (deal_ids[line.deal], line.tranche)
+        if key in held:
+            raise InvalidPositions(
+                f"Class {line.tranche} of {held[key]} is listed twice, also as {line.deal}"
+            )
+        held[key] = line.deal
     loaded = PositionsFile(
-        as_of=as_of, loaded_by=user, loaded_at=clock.now(), source_name=source_name
+        as_of=as_of, loaded_by=actor.user, loaded_at=clock.now(), source_name=source_name
     )
     db.add(loaded)
     db.flush()
@@ -170,13 +196,14 @@ def load_positions(
         subject="positions_file",
         subject_key=str(loaded.id),
         after=(
-            f"{len(lines)} positions in {len(deal_ids)} deals as of {as_of.isoformat()}, "
+            f"{len(lines)} positions in {len(set(deal_ids.values()))} deals as of "
+            f"{as_of.isoformat()}, "
             f"face {format_money(total)}"
         ),
         detail={
             "as_of": as_of.isoformat(),
             "positions": len(lines),
-            "deals": len(deal_ids),
+            "deals": len(set(deal_ids.values())),
             "total_face": str(money(total)),
             "source_name": source_name,
         },

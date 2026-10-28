@@ -20,7 +20,7 @@ from cmbs.book.service import (
     parse_positions,
 )
 from cmbs.book.tables import Position, PositionsFile
-from cmbs.deals.service import by_name
+from cmbs.deals.service import by_name, get_or_create
 from tests.conftest import needs_db
 
 F1, F2 = "Fixture Trust 2026-F1", "Fixture Trust 2026-F2"
@@ -219,3 +219,53 @@ def test_an_empty_file_is_an_empty_book(seeded):
     book = book_as_of(seeded, dt.date(2026, 10, 31))
     assert book is not None and book.positions == ()
     assert exposure_by_deal(seeded, dt.date(2026, 10, 31)) == {}
+
+
+# Found in review
+
+
+@needs_db
+def test_two_files_naming_deals_in_opposite_orders_load_together(seeded, monkeypatch):
+    """Each load pauses after its first deal; locking in file order would deadlock here."""
+    import contextlib
+    import threading
+
+    from cmbs.book import service
+    from cmbs.db import engine
+
+    for name in ("Deal X 2026-1", "Deal Y 2026-1"):
+        get_or_create(seeded, name)
+    seeded.commit()
+    barrier = threading.Barrier(2, timeout=2)
+    real = service.deal_for
+    calls = threading.local()
+
+    def pausing(db, name):
+        deal = real(db, name)
+        if not getattr(calls, "paused", False):
+            calls.paused = True
+            with contextlib.suppress(threading.BrokenBarrierError):
+                barrier.wait()
+        return deal
+
+    monkeypatch.setattr(service, "deal_for", pausing)
+    errors: list[BaseException] = []
+
+    def load(order):
+        lines = [PositionLine(name, "A", Decimal("1.00")) for name in order]
+        try:
+            with engine.session() as db:
+                load_positions(db, user="quinn", as_of=dt.date(2026, 9, 30), lines=lines)
+        except BaseException as error:  # noqa: BLE001 - reported below
+            errors.append(error)
+
+    threads = [
+        threading.Thread(target=load, args=(order,))
+        for order in (("Deal X 2026-1", "Deal Y 2026-1"), ("Deal Y 2026-1", "Deal X 2026-1"))
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=20)
+    assert errors == []
+    assert len(seeded.scalars(select(PositionsFile)).all()) == 2

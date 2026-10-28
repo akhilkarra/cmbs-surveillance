@@ -31,8 +31,9 @@ def book(seeded):
             PositionLine("HYT 2024-RGCY", "E", Decimal("30000000.00")),
         ],
     )
+    seeded.commit()
     for deal in ("BANK 2018-BNK13", "HYT 2024-RGCY"):
-        discover_deal(seeded, Replay(RECORDINGS), deal, dt.date(2026, 10, 27), user="quinn")
+        discover_deal(Replay(RECORDINGS), deal, dt.date(2026, 10, 27), user="quinn")
     seeded.commit()
     return seeded
 

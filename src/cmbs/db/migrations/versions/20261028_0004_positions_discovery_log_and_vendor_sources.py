@@ -1,8 +1,10 @@
-"""Positions, the filing discovery log and vendor sources
+"""Positions, the filing discovery log, vendor sources, deal aliases and depositor links
 
 The book's positions files and their lines (Q38), a log of every filing discovery so the
 coverage report can tell "looked and found nothing" from "never looked", and the vendor
-loan-tape sources configured per deal (Q40). All are application state in `app`.
+loan-tape sources configured per deal (Q40), all application state in `app`. In `silver`:
+other names of a deal ("COMM 2014-CCRE18" for "COMM 2014-CR18"), and the many-to-many link
+from a depositor's filing (an ABS-15G) to each private deal it names.
 
 Revision ID: 0004
 Revises: 0006
@@ -115,9 +117,55 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_app_position_file_id"), "position", ["file_id"], unique=False, schema="app"
     )
+    op.create_table(
+        "deal_alias",
+        sa.Column("name", sa.String(length=128), nullable=False),
+        sa.Column("deal_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["deal_id"], ["silver.deal.id"], name=op.f("fk_deal_alias_deal_id_deal")
+        ),
+        sa.PrimaryKeyConstraint("name", name=op.f("pk_deal_alias")),
+        schema="silver",
+    )
+    op.create_index(
+        op.f("ix_silver_deal_alias_deal_id"),
+        "deal_alias",
+        ["deal_id"],
+        unique=False,
+        schema="silver",
+    )
+    op.create_table(
+        "deal_filing",
+        sa.Column("deal_id", sa.Integer(), nullable=False),
+        sa.Column("accession", sa.String(length=20), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["accession"],
+            ["raw.filing.accession"],
+            name=op.f("fk_deal_filing_accession_filing"),
+            ondelete="CASCADE",
+        ),
+        sa.ForeignKeyConstraint(
+            ["deal_id"], ["silver.deal.id"], name=op.f("fk_deal_filing_deal_id_deal")
+        ),
+        sa.PrimaryKeyConstraint("deal_id", "accession", name=op.f("pk_deal_filing")),
+        schema="silver",
+    )
+    op.create_index(
+        op.f("ix_silver_deal_filing_accession"),
+        "deal_filing",
+        ["accession"],
+        unique=False,
+        schema="silver",
+    )
 
 
 def downgrade() -> None:
+    op.drop_index(
+        op.f("ix_silver_deal_filing_accession"), table_name="deal_filing", schema="silver"
+    )
+    op.drop_table("deal_filing", schema="silver")
+    op.drop_index(op.f("ix_silver_deal_alias_deal_id"), table_name="deal_alias", schema="silver")
+    op.drop_table("deal_alias", schema="silver")
     op.drop_index(op.f("ix_app_position_file_id"), table_name="position", schema="app")
     op.drop_index(op.f("ix_app_position_deal_id"), table_name="position", schema="app")
     op.drop_table("position", schema="app")

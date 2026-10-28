@@ -11,7 +11,7 @@ import typer
 from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
-from cmbs.book.service import exposure_for, load_positions, parse_positions
+from cmbs.book.service import exposure_for, parse_positions, store_positions
 from cmbs.db import engine
 from cmbs.domain import format_money
 from cmbs.errors import Refused
@@ -43,10 +43,10 @@ def load(
     """Load a positions file as the book from its as-of date."""
     with refusals(), engine.session() as db:
         # The right is checked before the file is read, so a refusal is audited either way.
-        authorize(db, user, Action.LOAD_POSITIONS)
+        actor = authorize(db, user, Action.LOAD_POSITIONS)
         lines = parse_positions(path.read_text())
-        loaded = load_positions(
-            db, user=user, as_of=as_of.date(), lines=lines, source_name=path.name
+        loaded = store_positions(
+            db, actor=actor, as_of=as_of.date(), lines=lines, source_name=path.name
         )
     deals = len({line.deal for line in lines})
     typer.echo(

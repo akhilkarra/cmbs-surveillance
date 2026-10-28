@@ -17,10 +17,11 @@ from cmbs.coverage.rules import (
     exposure_by_class,
     issued_on,
     overdue_since,
-    percent,
+    shares,
     with_vendor,
 )
 from cmbs.coverage.service import ClassExposure, CoverageReport, DealCoverage, render
+from cmbs.domain import Period
 
 
 def fact(form: str, day: str) -> FilingFact:
@@ -205,14 +206,6 @@ def test_a_reporting_deal_without_filings_is_not_overdue():
 # Shares
 
 
-def test_percent_rounds_half_up_to_whole_percent():
-    assert percent(Decimal("12000000.00"), Decimal("50000000.00")) == 24
-    assert percent(Decimal("1"), Decimal("8")) == 13  # 12.5
-    assert percent(Decimal("1"), Decimal("3")) == 33
-    assert percent(Decimal("2"), Decimal("3")) == 67
-    assert percent(Decimal("5"), Decimal("0")) == 0
-
-
 def test_exposure_by_class_keeps_report_order_and_drops_empty_classes():
     exposures = {
         Coverage.NOT_PUBLIC: Decimal("30"),
@@ -319,3 +312,58 @@ def test_a_lookup_is_stale_only_when_it_ran_as_of_an_earlier_date():
     assert not row("A", Coverage.FULL, "", "1", checked=on).stale(on)
     unchecked = DealCoverage("A", ("D",), Decimal(1), Coverage.NOT_CHECKED, "", None, ())
     assert unchecked.checked_as_of is None and not unchecked.stale(on)
+
+
+# Found in review
+
+
+def test_a_deal_with_loan_tapes_that_files_a_form_15_is_suspended():
+    filings = [
+        fact("424B2", "2018-08-02"),
+        fact("10-D", "2024-08-27"),
+        fact("ABS-EE", "2024-08-27"),
+        fact("10-D", "2024-09-27"),
+        fact("ABS-EE", "2024-09-27"),
+        fact("15-15D", "2024-10-09"),
+    ]
+    assert classify(filings, has_cik=True) == Classified(
+        Coverage.SUSPENDED, "Form 15-15D, last 10-D September 2024"
+    )
+
+
+def test_three_equal_classes_share_exactly_100_percent():
+    third = Decimal("10000000.00")
+    assert shares([third, third, third]) == [34, 33, 33]
+    assert sum(shares([third, third, third])) == 100
+
+
+def test_shares_give_the_spare_points_to_the_largest_remainders():
+    amounts = [Decimal("12"), Decimal("6"), Decimal("2"), Decimal("30")]
+    assert shares(amounts) == [24, 12, 4, 60]
+    # 1/7, 2/7, 4/7 = 14.29, 28.57, 57.14: the spare point goes to 28.57.
+    assert shares([Decimal(1), Decimal(2), Decimal(4)]) == [14, 29, 57]
+    assert shares([]) == []
+    assert shares([Decimal(0)]) == [0]
+
+
+def period_fact(form: str, filed: str, period: tuple[int, int]) -> FilingFact:
+    return FilingFact(form, dt.date.fromisoformat(filed), Period(*period))
+
+
+def test_a_late_filing_for_an_earlier_month_does_not_move_the_due_date():
+    filings = [
+        period_fact("10-D", "2026-07-29", (2026, 7)),
+        period_fact("10-D", "2026-09-29", (2026, 9)),
+        period_fact("10-D", "2026-10-10", (2026, 8)),  # August, filed late
+    ]
+    assert expected_by(filings) == dt.date(2026, 10, 29)
+    assert overdue_since(Coverage.FULL, filings, dt.date(2026, 11, 5)) == dt.date(2026, 10, 29)
+
+
+def test_the_due_date_runs_from_the_first_filing_for_the_latest_month():
+    filings = [
+        period_fact("ABS-EE", "2026-09-29", (2026, 9)),
+        period_fact("10-D", "2026-10-02", (2026, 9)),
+        period_fact("10-D", "2026-08-27", (2026, 8)),
+    ]
+    assert expected_by(filings) == dt.date(2026, 10, 29)

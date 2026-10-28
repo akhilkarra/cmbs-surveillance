@@ -64,22 +64,25 @@ def step_book_holds(context):
 
 
 def _run_report(context, on: dt.date) -> None:
+    """Discovery for every deal in the book, as a refresh would, then the report."""
     source = _source(context)
 
-    def run(db):
+    def names(db):
         book = book_as_of(db, on)
         assert book is not None, f"no positions file on or before {on}"
-        for deal in sorted({held.deal for held in book.positions}):
-            discover_deal(db, source, deal, on, user=QUANT)
-        return report(db, user=PM, on=on)
+        return sorted({held.deal for held in book.positions})
 
-    context.coverage = in_session(run)
+    for deal in in_session(names):
+        discover_deal(source, deal, on, user=QUANT)
+    context.coverage = in_session(lambda db: report(db, user=PM, on=on))
     context.report = render(context.coverage)
 
 
 @when("the coverage report runs on {day}")
 def step_report_runs_on(context, day):
-    _run_report(context, dt.date.fromisoformat(day))
+    on = dt.date.fromisoformat(day)
+    clock.set_now(on)  # the report "runs on" this day: it is today
+    _run_report(context, on)
 
 
 @when("the coverage report runs")

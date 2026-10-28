@@ -31,14 +31,13 @@ from cmbs.coverage.rules import (
     classify,
     exposure_by_class,
     overdue_since,
-    percent,
+    shares,
     with_vendor,
 )
 from cmbs.coverage.tables import VendorSource
-from cmbs.deals.service import get_or_create
 from cmbs.deals.tables import Deal
-from cmbs.domain import money
-from cmbs.edgar.service import filings_of, latest_discovery
+from cmbs.domain import Period, money
+from cmbs.edgar.service import deal_for, filings_of, latest_discovery
 from cmbs.errors import Refused
 
 VENDOR_NAME_LIMIT = 128
@@ -104,7 +103,10 @@ def vendor_sources_of(db: Session, deal_id: int, on: dt.date) -> list[str]:
 
 
 def _facts(db: Session, deal_id: int, on: dt.date) -> list[FilingFact]:
-    return [FilingFact(f.form, f.filing_date) for f in filings_of(db, deal_id, on)]
+    return [
+        FilingFact(f.form, f.filing_date, Period.of(f.period) if f.period is not None else None)
+        for f in filings_of(db, deal_id, on)
+    ]
 
 
 def _public(deal: Deal, checked_as_of: dt.date | None, facts: Sequence[FilingFact]) -> Classified:
@@ -155,9 +157,12 @@ def build_report(db: Session, on: dt.date) -> CoverageReport:
             )
         )
         per_class[classified.coverage] += exposure[name]
+    classes = exposure_by_class(per_class)
     by_class = tuple(
-        ClassExposure(coverage, money(amount), percent(amount, total))
-        for coverage, amount in exposure_by_class(per_class)
+        ClassExposure(coverage, money(amount), share)
+        for (coverage, amount), share in zip(
+            classes, shares([amount for _, amount in classes]), strict=True
+        )
     )
     return CoverageReport(on, book.as_of, tuple(rows), by_class, total)
 
@@ -259,7 +264,7 @@ def configure_vendor_source(db: Session, *, user: str, deal: str, source: str) -
         raise InvalidVendorSource(
             f"a vendor source name is at most {VENDOR_NAME_LIMIT} characters, not {len(name)}"
         )
-    stored_deal = get_or_create(db, " ".join(deal.split()))
+    stored_deal = deal_for(db, deal)
     added = db.execute(
         insert(VendorSource)
         .values(deal_id=stored_deal.id, name=name, configured_by=user, configured_at=clock.now())

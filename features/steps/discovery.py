@@ -10,11 +10,12 @@ from pathlib import Path
 from behave import given, then, when  # pyright: ignore[reportAttributeAccessIssue]
 from sqlalchemy import select
 
+from cmbs import clock
+from cmbs.coverage.rules import ASSET_LEVEL_COMPLIANCE
 from cmbs.coverage.service import classify_deal
-from cmbs.deals.service import by_name
 from cmbs.domain import Period
 from cmbs.edgar.replay import Replay
-from cmbs.edgar.service import discover_deal, filings_of
+from cmbs.edgar.service import deal_named, discover_deal, filings_of
 from cmbs.filings.tables import Filing
 from cmbs.testing.bdd import attempt, in_session
 
@@ -23,7 +24,7 @@ ANALYST = "alex"
 
 
 def _deal(db, name):
-    deal = by_name(db, name)
+    deal = deal_named(db, name)
     assert deal is not None, f"no deal named {name!r} was registered"
     return deal
 
@@ -37,12 +38,10 @@ def step_analyst_looks_up(context, deal):
 @when("filing discovery runs on {day}")
 def step_discovery_runs(context, day):
     on = dt.date.fromisoformat(day)
+    clock.set_now(on)  # discovery "runs on" this day: it is today
     context.discovery_on = on
     context.discovery = attempt(
-        context,
-        lambda: in_session(
-            lambda db: discover_deal(db, context.edgar, context.deal, on, user=ANALYST)
-        ),
+        context, lambda: discover_deal(context.edgar, context.deal, on, user=ANALYST)
     )
     assert context.refusal is None, f"discovery was refused: {context.refusal}"
 
@@ -83,10 +82,32 @@ def _coverage(context):
     return in_session(lambda db: classify_deal(db, _deal(db, context.deal), context.discovery_on))
 
 
+def _reason_from_filings(context) -> str:
+    """The reason the stored filings give for the deal's class, worked out independently."""
+
+    def read(db):
+        deal = _deal(db, context.deal)
+        return deal.cik, list(filings_of(db, deal.id, context.discovery_on))
+
+    cik, filings = in_session(read)
+    forms = {f.form for f in filings}
+    if cik is None:
+        dates = sorted(f.filing_date.isoformat() for f in filings if f.form == "ABS-15G")
+        assert len(dates) == 1, f"depositor filings: {dates}"
+        return f"only the depositor's ABS-15G of {dates[0]}"
+    if "10-D" in forms and "ABS-EE" not in forms:
+        offered = min(f.filing_date for f in filings if f.form.startswith("424"))
+        assert offered < ASSET_LEVEL_COMPLIANCE, f"offered {offered}"
+        return "issued before November 2016, no loan tape"
+    assert {"10-D", "ABS-EE"} <= forms, forms
+    return "loan tape and distribution reports monthly"
+
+
 @then('the deal is marked "{coverage}"')
 def step_deal_marked(context, coverage):
     classified = _coverage(context)
     assert classified.coverage.value == coverage, classified
+    assert classified.detail == _reason_from_filings(context), classified.detail
 
 
 @then('the deal is marked "{coverage}" because it filed a Form {form}')

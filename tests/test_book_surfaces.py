@@ -103,3 +103,26 @@ def test_api_refuses_a_bad_amount_and_a_user_without_the_right(seeded, client):
     # The right is checked before the amounts are read.
     both = client.post("/book/positions", json=bad, headers={"X-CMBS-User": "alex"})
     assert both.status_code == 403
+
+
+def test_api_checks_the_load_right_once(seeded, client, monkeypatch):
+    from cmbs.access import service as access
+    from cmbs.book import routes
+    from cmbs.book import service as book
+
+    calls: list[str] = []
+    real = access.authorize
+
+    def counting(db, user, action):
+        calls.append(user)
+        return real(db, user, action)
+
+    monkeypatch.setattr(routes, "authorize", counting)
+    monkeypatch.setattr(book, "authorize", counting)
+    body = {
+        "as_of": "2026-09-30",
+        "positions": [{"deal": "X 2026-1", "class": "A", "face_amount": "1"}],
+    }
+    loaded = client.post("/book/positions", json=body, headers={"X-CMBS-User": "olly"})
+    assert loaded.status_code == 200, loaded.text
+    assert calls == ["olly"]

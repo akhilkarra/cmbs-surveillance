@@ -9,10 +9,9 @@ from pydantic import BaseModel
 from cmbs import clock
 from cmbs.api.deps import DB, User
 from cmbs.coverage.service import classify_deal
-from cmbs.deals.service import by_name
 from cmbs.edgar.discovery import Discovery
 from cmbs.edgar.replay import default_source
-from cmbs.edgar.service import discover_deal
+from cmbs.edgar.service import deal_named, discover_deal
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -45,10 +44,13 @@ def as_json(found: Discovery) -> dict[str, Any]:
 
 @router.post("")
 def run_discovery(request: DiscoveryRequest, user: User, db: DB) -> dict[str, Any]:
-    """Look the deal up as of `on` (default today), register its filings, and class it."""
+    """Look the deal up as of `on` (default today), register its filings, and class it.
+
+    The lookup opens its own transactions; this request's session is used only afterwards.
+    """
     on = request.on or clock.today()
-    found = discover_deal(db, default_source(), request.deal, on, user=user)
-    deal = by_name(db, found.deal)
+    found = discover_deal(default_source(), request.deal, on, user=user)
+    deal = deal_named(db, found.deal)
     if deal is None:  # pragma: no cover - discover_deal registers the deal
         raise RuntimeError(f"{found.deal} was not registered")
     classified = classify_deal(db, deal, on)

@@ -22,6 +22,7 @@ from cmbs.coverage.service import (
     vendor_sources_of,
 )
 from cmbs.coverage.tables import VendorSource
+from cmbs.db import engine
 from cmbs.deals.service import by_name
 from cmbs.edgar.replay import Replay
 from cmbs.edgar.service import discover_deal
@@ -41,9 +42,10 @@ BOOK = [
 
 def load_and_discover(db, on: dt.date = ON) -> None:
     load_positions(db, user="olly", as_of=dt.date(2026, 9, 30), lines=BOOK)
+    db.commit()
     edgar = Replay(RECORDINGS)
     for line in BOOK:
-        discover_deal(db, edgar, line.deal, on, user="quinn")
+        discover_deal(edgar, line.deal, on, user="quinn")
 
 
 def test_each_deal_is_classed_from_its_filings(seeded):
@@ -121,7 +123,8 @@ def test_filings_after_the_report_date_are_not_seen(seeded):
 
 def test_a_deal_never_looked_up_is_not_yet_checked(seeded):
     load_positions(seeded, user="olly", as_of=dt.date(2026, 9, 30), lines=BOOK)
-    discover_deal(seeded, Replay(RECORDINGS), "BANK 2018-BNK13", ON, user="quinn")
+    seeded.commit()
+    discover_deal(Replay(RECORDINGS), "BANK 2018-BNK13", ON, user="quinn")
     result = build_report(seeded, ON)
     assert result.deal("HYT 2024-RGCY").coverage is Coverage.NOT_CHECKED
     assert result.deal("HYT 2024-RGCY").detail == "filing discovery has not run for this deal"
@@ -204,3 +207,19 @@ def test_the_report_needs_the_right_to_read_the_panel(seeded):
     assert report(seeded, user="pat", on=ON).deals == ()
     with pytest.raises(PermissionRefused, match="^operator may not read the panel$"):
         report(seeded, user="olly", on=ON)
+
+
+def test_the_report_reads_a_discovery_stored_by_an_earlier_run(seeded):
+    load_and_discover(seeded, dt.date(2026, 10, 27))
+    seeded.commit()
+    # A later report, in a new session, with no discovery run before it.
+    with engine.session() as db:
+        result = build_report(db, dt.date(2026, 11, 5))
+    assert [(r.deal, r.coverage) for r in result.deals] == [
+        ("HYT 2024-RGCY", Coverage.NOT_PUBLIC),
+        ("BANK 2018-BNK13", Coverage.FULL),
+        ("WFRBS 2014-C25", Coverage.DISTRIBUTION_ONLY),
+        ("COMM 2014-CR18", Coverage.SUSPENDED),
+    ]
+    assert all(r.checked_as_of == dt.date(2026, 10, 27) for r in result.deals)
+    assert "WFRBS 2014-C25: last looked up as of 2026-10-27" in render(result)

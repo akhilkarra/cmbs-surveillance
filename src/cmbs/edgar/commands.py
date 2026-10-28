@@ -15,10 +15,9 @@ from cmbs import clock
 from cmbs.book.service import book_as_of
 from cmbs.coverage.service import classify_deal
 from cmbs.db import engine
-from cmbs.deals.service import by_name
 from cmbs.edgar.discovery import Discovery, discover
 from cmbs.edgar.replay import Live, Recorder, Source, default_source
-from cmbs.edgar.service import discover_deal
+from cmbs.edgar.service import deal_named, discover_deal
 from cmbs.errors import Refused
 
 NAME = "discover"
@@ -67,8 +66,7 @@ def _day(on: dt.datetime | None) -> dt.date:
 def _look_up(name: str, day: dt.date, user: str, source: Source) -> Discovery | None:
     """One deal in its own transaction; a refusal is printed and the next deal still runs."""
     try:
-        with engine.session() as db:
-            return discover_deal(db, source, name, day, user=user)
+        return discover_deal(source, name, day, user=user)
     except Refused as refused:
         typer.echo(f"{' '.join(name.split()) or repr(name)}: {refused}", err=True)
         return None
@@ -90,7 +88,7 @@ def discover_one(
             failed = True
             continue
         with engine.session() as db:
-            deal = by_name(db, found.deal)
+            deal = deal_named(db, found.deal)
             if deal is None:  # pragma: no cover - discover_deal registers the deal
                 raise RuntimeError(f"{found.deal} was not registered")
             classified = classify_deal(db, deal, day)
