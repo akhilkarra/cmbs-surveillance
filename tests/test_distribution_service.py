@@ -42,7 +42,7 @@ from tests.conftest import needs_db
 
 FIXTURES = Path(__file__).parent / "fixtures" / "distribution"
 REPORT = FIXTURES / "fixture-trust-2026-f1_10d_2026-09.htm"
-CITI = FIXTURES / "cgcmt-2016-c1_ex99_1_2026-09.reconstructed.htm"
+CITI = FIXTURES / "0001628297-26-000742" / "ex99_1.htm"
 DEAL = "Fixture Trust 2026-F1"
 ACCESSION = "0009900001-26-000009"
 FILED = dt.date(2026, 9, 29)
@@ -211,11 +211,26 @@ def test_a_period_mismatch_writes_nothing(seeded):
 
 @needs_db
 def test_a_citi_report_stores_no_comments_and_says_why(seeded):
-    loaded = load(seeded, path=CITI)
+    citi_accession = "0001628297-26-000742"
+    loaded = load_report(
+        seeded,
+        user="quinn",
+        deal="CGCMT 2016-C1",
+        accession=citi_accession,
+        cik=1673255,
+        filing_date=dt.date(2026, 9, 25),
+        file_name=CITI.name,
+        content=CITI.read_bytes(),
+    )
     seeded.commit()
-    assert loaded.comments == 0
-    assert NO_COMMENT_COLUMN in (summary_of(seeded, ACCESSION) or "")
-    assert counts(seeded)["comments"] == 0
+    assert (loaded.period, loaded.comments, loaded.appraisal_reductions, loaded.delinquencies) == (
+        SEPTEMBER,
+        0,
+        5,
+        9,
+    )
+    assert NO_COMMENT_COLUMN in (summary_of(seeded, citi_accession) or "")
+    assert counts(seeded) == {"reports": 1, "comments": 0, "appraisals": 5, "delinquencies": 9}
 
 
 @needs_db

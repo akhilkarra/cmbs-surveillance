@@ -1,7 +1,8 @@
 """Administrator formats and whole-report parsing (cmbs.distribution.layouts and .parse).
 
-The BANK 2018-BNK13 and CGCMT 2016-C1 files used here are reconstructions, not the filed
-documents (see the comment at the top of each); the fixture deal's report is synthetic.
+The BANK 2018-BNK13 and CGCMT 2016-C1 reports are the real September 2026 filings, with
+personal contact details redacted (tests/fixtures/distribution/README.md); the fixture deal's
+report is synthetic.
 """
 
 import datetime as dt
@@ -25,6 +26,8 @@ from cmbs.distribution.parse import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "distribution"
+BNK13 = "0001888524-26-017704/wcm18b13_ex991-202609.htm"
+CGCMT = "0001628297-26-000742/ex99_1.htm"
 SS2 = "Specially Serviced Loan Detail - Part 2"
 ML2 = "Mortgage Loan Detail (Part 2)"
 DLD = "Delinquency Loan Detail"
@@ -177,29 +180,103 @@ def test_the_fixture_deals_report():
     )
 
 
-def test_the_reconstructed_computershare_report():
-    parsed = parse_report(fixture("bank-2018-bnk13_ex991_2026-09.reconstructed.htm"))
+def test_the_real_computershare_report():
+    """BANK 2018-BNK13, September 2026: two specially serviced loans, one appraisal reduction."""
+    parsed = parse_report(fixture(BNK13))
     assert parsed.administrator is Administrator.COMPUTERSHARE
     assert parsed.distribution_date == dt.date(2026, 9, 17)
-    assert [(comment.loan, comment.source_table) for comment in parsed.comments] == [
-        ("11", SS2),
-        ("57", SS2),
-    ]
-    assert parsed.comments[0].text == (
-        "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default. "
-        "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%."
+    # Verbatim but for whitespace: "Avenu e" and "t he" are in the filed document.
+    assert parsed.comments == (
+        Comment(
+            "11",
+            "The loan transferred to Special Servicing effective 6/4/2026 due to monetary "
+            "default. The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower "
+            "level) Class B office building located on East 34th Street between Madison Avenue "
+            "and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan. It was built in "
+            "the year 1907 and renovated later in 2016. As of 3/31/2026, DSCR NOI was 0.03x and "
+            "occupancy was 28.29%. Special servicer will engage counsel, execute PNA and "
+            "initiate discussions with t he Borrower.",
+            SS2,
+        ),
+        Comment(
+            "57",
+            "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers. "
+            "Borrower entered into an agreement with a cell tower provider without consent in "
+            "2024. Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes "
+            "($180k).",
+            SS2,
+        ),
     )
-    assert parsed.notes == ("no appraisal reduction table", "no Delinquency Loan Detail table")
+    assert parsed.appraisal_reductions == (
+        AppraisalReduction("11", Decimal("20092857.80"), ML2, dt.date(2026, 7, 27)),
+    )
+    assert parsed.delinquencies == (
+        Delinquency(
+            "11",
+            DLD,
+            status="6",
+            paid_through=dt.date(2026, 3, 1),
+            current_advances=Decimal("80953.06"),
+            outstanding_advances=Decimal("1039791.66"),
+            actual_balance=Decimal("37500000.00"),
+        ),
+        Delinquency(
+            "22",
+            DLD,
+            status="B",
+            paid_through=dt.date(2026, 8, 1),
+            current_advances=Decimal("70490.67"),
+            outstanding_advances=Decimal("70490.67"),
+            actual_balance=Decimal("11032552.34"),
+        ),
+    )
+    assert parsed.notes == ()
+    assert parsed.summary == (
+        "computershare format\n2 special-servicing comments\n1 appraisal reductions\n"
+        "2 loans in delinquency detail"
+    )
 
 
-def test_the_reconstructed_citi_report_says_it_has_no_comment_column():
-    parsed = parse_report(fixture("cgcmt-2016-c1_ex99_1_2026-09.reconstructed.htm"))
+def test_the_real_citi_report_says_it_has_no_comment_column():
+    """CGCMT 2016-C1, September 2026: no comment text, five appraisal reductions."""
+    parsed = parse_report(fixture(CGCMT))
     assert parsed.administrator is Administrator.CITI
     assert parsed.distribution_date == dt.date(2026, 9, 14)
     assert parsed.comments == ()
     assert parsed.has_comment_column is False
+    reduced = dt.date(2026, 9, 8)
+    table = "Appraisal Reduction Detail"
+    # Loans 2, 2A and 2B print a reduction date with a "-" amount: not reported, not stored.
+    assert parsed.appraisal_reductions == (
+        AppraisalReduction("14", Decimal("3500000.00"), table, reduced),
+        AppraisalReduction("49", Decimal("54991.02"), table, reduced),
+        AppraisalReduction("6", Decimal("11598363.58"), table, reduced),
+        AppraisalReduction("17", Decimal("7444340.21"), table, reduced),
+        AppraisalReduction("23", Decimal("2036291.82"), table, reduced),
+    )
+    assert [(item.loan, item.status) for item in parsed.delinquencies] == [
+        ("11", "5"),
+        ("14", "5"),
+        ("17", "5"),
+        ("2", "5"),
+        ("23", "5"),
+        ("2A", "5"),
+        ("2B", "5"),
+        ("2C", "5"),
+        ("6", "5"),
+    ]
+    assert parsed.delinquencies[2] == Delinquency(
+        "17",
+        DLD,
+        status="5",
+        paid_through=dt.date(2025, 5, 1),
+        current_advances=Decimal("23203.67"),
+        outstanding_advances=Decimal("480153.44"),
+        actual_balance=Decimal("12700000.00"),
+    )
+    assert parsed.notes == ()
     assert parsed.summary == (
-        f"citi format\n{NO_COMMENT_COLUMN}\n0 appraisal reductions\n0 loans in delinquency detail"
+        f"citi format\n{NO_COMMENT_COLUMN}\n5 appraisal reductions\n9 loans in delinquency detail"
     )
     assert NO_COMMENT_COLUMN == "this administrator's format has no comment column"
 
