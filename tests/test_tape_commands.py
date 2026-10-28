@@ -30,9 +30,14 @@ def accession(deal: str) -> str:
     return f"0009900001-26-{100 + int(deal.rsplit(' ', 1)[-1]):06d}"
 
 
+def cik(deal: str) -> str:
+    """Each test's deal is its own trust, so it has its own CIK (Command Trust 3: 9900103)."""
+    return str(9_900_100 + int(deal.rsplit(" ", 1)[-1]))
+
+
 def load(runner: CliRunner, deal: str, *, path: Path = TAPE, user: str = "quinn"):
     arguments = ["tape", "load", str(path), deal, accession(deal), "2026-09-29", "--user", user]
-    return runner.invoke(app, [*arguments, "--cik", "9900001"])
+    return runner.invoke(app, [*arguments, "--cik", cik(deal)])
 
 
 def loan_rows(db, deal: str) -> int:

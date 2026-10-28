@@ -16,11 +16,12 @@ from cmbs.access.roles import Role
 from cmbs.access.service import Actor
 from cmbs.audit.tables import AuditEntry
 from cmbs.db import engine
-from cmbs.deals.service import ConflictingDeal, get_or_create
+from cmbs.deals.service import ConflictingDeal, SeparateDeals, by_name, get_or_create
 from cmbs.deals.tables import Deal
 from cmbs.domain import Period
 from cmbs.filings.service import ConflictingFiling, register_filing, sha256_of, store_file
 from cmbs.filings.tables import Filing, FilingFile
+from cmbs.panel.service import current_tapes
 from cmbs.tape.service import (
     LOAD_ACTION,
     MAX_AMENDMENT_DEPTH,
@@ -138,6 +139,23 @@ def test_plan_loads_loans_only_and_quarantines_with_reasons_in_file_order():
         ("3", "ending balance is not a number: 'abc'"),
         ("4", "beginning balance is negative; ending balance is negative"),
     ]
+
+
+def test_an_amount_too_large_to_store_is_quarantined():
+    """Money is stored as numeric(18, 2): sixteen digits before the point."""
+    assets = parse_assets(
+        tape(
+            asset("1", reportPeriodEndActualBalanceAmount="10000000000000000.00"),
+            asset("2", reportPeriodEndActualBalanceAmount="9999999999999999.99"),
+            asset("3", prop={"mostRecentNetOperatingIncomeAmount": "-10000000000000000.00"}),
+        )
+    )
+    result = plan(assets)
+    assert [(a.asset_number, reason) for a, reason in result.quarantined] == [
+        ("1", "ending balance is too large to store"),
+        ("3", "most recent NOI is too large to store"),
+    ]
+    assert [row.ending_balance for _, row in result.loaded] == [Decimal("9999999999999999.99")]
 
 
 def test_plan_of_the_fixture_loads_seven_loans():
@@ -357,6 +375,17 @@ def test_a_portfolio_note_reaches_the_summary(tx):
 
 
 @needs_db
+def test_the_largest_storable_amount_loads_and_a_larger_one_is_quarantined(tx):
+    content = tape(
+        asset("1", reportPeriodEndActualBalanceAmount="10000000000000000.00"),
+        asset("2", reportPeriodEndActualBalanceAmount="9999999999999999.99"),
+    )
+    result = load(tx, content)
+    assert (result.loans_loaded, [q.loan for q in result.quarantined]) == (1, ["1"])
+    assert tx.scalar(select(LoanPeriod.ending_balance)) == Decimal("9999999999999999.99")
+
+
+@needs_db
 def test_the_database_refuses_a_negative_balance_the_contract_missed(tx):
     load(tx)
     tx.flush()
@@ -507,7 +536,7 @@ def test_a_filing_registered_with_other_facts_is_refused_before_writing(tx, regi
 
 @needs_db
 def test_a_filing_registered_to_another_deal_is_refused_before_creating_this_one(tx):
-    other = get_or_create(tx, "Fixture Trust 2026-F2", cik=CIK)
+    other = get_or_create(tx, "Fixture Trust 2026-F2", cik=CIK + 1)
     register_filing(
         tx, accession=ACCESSION, cik=CIK, form="ABS-EE", filing_date=FILED, deal_id=other.id
     )
@@ -755,6 +784,99 @@ def test_tapes_of_other_periods_or_days_do_not_clash(tx):
     assert load(tx, august, accession="0000950123-26-000002").period == Period(2026, 8)
     later = load(tx, accession="0000950123-26-000003", filing_date=dt.date(2026, 9, 30))
     assert later.loans_loaded == 1
+
+
+LATER = dt.date(2026, 10, 5)
+THIRD = "0009900001-26-000103"
+
+
+def discovered(db: Session, *filings: tuple[str, str, dt.date]) -> None:
+    """Register filings as discovery does: an ABS-EE/A with no amendment link yet."""
+    deal = get_or_create(db, DEAL, cik=CIK)
+    for accession, form, filed in filings:
+        register_filing(
+            db,
+            accession=accession,
+            cik=CIK,
+            form=form,
+            filing_date=filed,
+            deal_id=deal.id,
+            period=SEPTEMBER.first_day,
+        )
+
+
+@needs_db
+def test_ranks_follow_links_learned_after_an_amendment_was_loaded(tx):
+    """THIRD corrects AMENDMENT before AMENDMENT's own link to the original is known."""
+    discovered(tx, (ACCESSION, "ABS-EE", FILED), (AMENDMENT, "ABS-EE/A", LATER))
+    amend(tx, THIRD, LATER, AMENDMENT)
+    amend(tx, AMENDMENT, LATER, ACCESSION)
+    load(tx)
+    depths = dict(tx.execute(select(LoanTape.accession, LoanTape.amendment_depth)).all())
+    assert depths == {ACCESSION: 0, AMENDMENT: 1, THIRD: 2}
+    assert [t.accession for t in current_tapes(tx, LATER)] == [THIRD]
+
+
+@needs_db
+def test_an_amendment_that_would_close_a_loop_is_refused(tx):
+    discovered(tx, (AMENDMENT, "ABS-EE/A", LATER))
+    amend(tx, THIRD, LATER, AMENDMENT)
+    with pytest.raises(TapeRefused) as refusal:
+        amend(tx, AMENDMENT, LATER, THIRD)
+    assert str(refusal.value) == f"{AMENDMENT} cannot amend {THIRD}, which already amends it"
+    assert tx.get(Filing, AMENDMENT).amends is None  # pyright: ignore[reportOptionalMemberAccess]
+    assert count(tx, LoanTape) == 1
+
+
+@needs_db
+def test_a_filing_cannot_amend_itself(tx):
+    discovered(tx, (AMENDMENT, "ABS-EE/A", LATER))
+    with pytest.raises(TapeRefused) as refusal:
+        amend(tx, AMENDMENT, LATER, AMENDMENT)
+    assert str(refusal.value) == f"{AMENDMENT} cannot amend itself"
+
+
+@needs_db
+def test_a_same_day_filing_that_is_registered_but_not_loaded_does_not_block(tx):
+    """Only loaded tapes compete for current: discovery's unlinked amendment does not."""
+    discovered(tx, (ACCESSION, "ABS-EE", FILED), (AMENDMENT, "ABS-EE/A", FILED))
+    assert load(tx).loans_loaded == 1
+    assert amend(tx, AMENDMENT, FILED, ACCESSION).loans_loaded == 1
+
+
+@needs_db
+def test_a_tape_under_another_name_of_the_trust_loads_into_that_deal(tx):
+    owner = get_or_create(tx, DEAL, cik=CIK)
+    result = load(tx, deal="FIXTURE TRUST 2026-F1 (ISSUING ENTITY)")
+    assert result.loans_loaded == 1
+    assert tx.scalars(select(Deal)).all() == [owner]
+    assert tx.get(LoanTape, ACCESSION).deal_id == owner.id  # pyright: ignore[reportOptionalMemberAccess]
+    assert by_name(tx, "FIXTURE TRUST 2026-F1 (ISSUING ENTITY)") is owner
+
+
+@needs_db
+def test_an_amendment_under_another_name_of_the_trust_is_checked_against_that_deal(tx):
+    load(tx)
+    result = load(
+        tx,
+        deal="FIXTURE TRUST 2026-F1 (ISSUING ENTITY)",
+        accession=AMENDMENT,
+        filing_date=LATER,
+        form="ABS-EE/A",
+        amends=ACCESSION,
+    )
+    assert result.loans_loaded == 1
+    assert tx.get(LoanTape, AMENDMENT).amendment_depth == 1  # pyright: ignore[reportOptionalMemberAccess]
+
+
+@needs_db
+def test_a_name_registered_apart_from_the_trust_is_refused_before_anything_is_written(tx):
+    get_or_create(tx, DEAL, cik=CIK)
+    get_or_create(tx, "Fixture Trust 2026-F1 Copy")
+    with pytest.raises(SeparateDeals):
+        load(tx, deal="Fixture Trust 2026-F1 Copy")
+    assert count(tx, Filing) == 0
+    assert count(tx, LoanTape) == 0
 
 
 # ---------------------------------------------------------------------------- audit

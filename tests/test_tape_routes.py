@@ -1,6 +1,6 @@
 """POST /deals/{deal}/tapes: load an EX-102 file sent as the request body.
 
-The tests share one module database (`app_database`); each posts under its own deal and
+The tests share one module database (`app_database`); each posts under its own deal, CIK and
 accession, so what one test commits never changes what another sees.
 """
 
@@ -29,11 +29,12 @@ def client() -> TestClient:
 
 
 def post(client: TestClient, number: int, user: str = "quinn", content: bytes = SMALL, **params):
-    """Post as deal "Route Trust <number>", accession ...-26-000<number>, unless overridden."""
+    """Post as deal "Route Trust <number>" with CIK 99002<number> and accession
+    ...-26-000<number>, unless overridden."""
     query = {
         "accession": f"0009900001-26-{number:06d}",
         "filing_date": "2026-09-29",
-        "cik": "9900001",
+        "cik": str(9_900_200 + number),
     } | params
     headers = XML | {"X-CMBS-User": user}
     return client.post(

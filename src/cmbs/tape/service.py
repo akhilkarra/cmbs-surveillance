@@ -6,12 +6,18 @@ bronze  the loaded tape (with its amendment depth) and every asset exactly as re
 silver  one typed row per top-level loan, checked by the loan_period contract first; a loan
         that fails is quarantined with its reason and not loaded
 
-Every check runs before anything is written: the form, the file, the period, the deal's CIK,
-the amendment chain, a clash with another tape of the same day, and the facts already
+Every check runs before anything is written: the form, the file, the period, the deal (a new
+name of a trust whose CIK another deal holds is that deal), the amendment chain (which must
+not loop back), a clash with another loaded tape of the same day, and the facts already
 registered for the filing. Then the deal row is locked and the filing row second, by every
 load, so loads of a deal take turns; the checks that depend on other loads (already loaded,
 same-day clash) run again under those locks before anything else is written. A repeated load
 changes nothing.
+
+A tape's amendment depth is the length of its chain of registered amendment links. A link can
+be learned after a tape that depends on it was loaded (discovery registers an ABS-EE/A without
+its link; loading it fills the link in), so every load recomputes the depths of its deal's
+tapes for that period, under the deal lock.
 
 With an actor, every loan row written is audited, and every refusal is recorded in the audit
 trail in its own transaction (`cmbs.audit.service.refuse`), so the caller's rollback keeps it.
@@ -28,7 +34,7 @@ from sqlalchemy.orm import Session
 from cmbs.absee.schedule_al import Asset, AssetKind, parse_assets
 from cmbs.access.service import Actor
 from cmbs.audit.service import LOAN, loan_key, record, refuse
-from cmbs.deals.service import ConflictingDeal, by_name, get_or_create
+from cmbs.deals.service import ConflictingDeal, get_or_create, resolve
 from cmbs.deals.tables import Deal
 from cmbs.domain import Period
 from cmbs.errors import Refused
@@ -196,11 +202,18 @@ def amendment_chain(db: Session, amends: str | None) -> list[Filing]:
 
 
 def _check_amended(
-    db: Session, amends: str | None, deal_id: int | None, period: Period, filing_date: dt.date
+    db: Session,
+    accession: str,
+    amends: str | None,
+    deal_id: int | None,
+    period: Period,
+    filing_date: dt.date,
 ) -> int:
     """The new tape's amendment depth: 0 for an original, one more than what it amends."""
     if amends is None:
         return 0
+    if amends == accession:
+        raise TapeRefused(f"{accession} cannot amend itself")
     original = db.get(Filing, amends)
     if (
         original is None
@@ -215,7 +228,21 @@ def _check_amended(
             f"an amendment filed on {filing_date} cannot correct {amends}, "
             f"filed later on {original.filing_date}"
         )
-    return len(amendment_chain(db, amends))
+    chain = amendment_chain(db, amends)
+    if any(filing.accession == accession for filing in chain):
+        raise TapeRefused(f"{accession} cannot amend {amends}, which already amends it")
+    return len(chain)
+
+
+def _rerank(db: Session, deal_id: int, period: Period) -> None:
+    """Recompute the depths of the deal's tapes for the period from the links known now."""
+    tapes = db.scalars(
+        select(LoanTape).where(LoanTape.deal_id == deal_id, LoanTape.period == period.first_day)
+    ).all()
+    for tape in tapes:
+        filing = db.get_one(Filing, tape.accession)
+        tape.amendment_depth = len(amendment_chain(db, filing.amends))
+    db.flush()
 
 
 def _check_same_day(
@@ -227,12 +254,15 @@ def _check_same_day(
     period: Period,
     filing_date: dt.date,
 ) -> None:
-    """Two tapes of one period filed the same day must be linked by amendment, or the panel
-    could not tell which one is current."""
+    """Two loaded tapes of one period filed the same day must be linked by amendment, or the
+    panel could not tell which one is current. A filing registered but not loaded competes
+    with nothing."""
     if deal_id is None:
         return
     others = db.scalars(
-        select(Filing).where(
+        select(Filing)
+        .join(LoanTape, LoanTape.accession == Filing.accession)
+        .where(
             Filing.deal_id == deal_id,
             Filing.period == period.first_day,
             Filing.filing_date == filing_date,
@@ -359,10 +389,10 @@ def _load(
     period = tape_period(assets, filing_date)
     sha256 = sha256_of(content)
 
-    existing_deal = by_name(db, deal)  # read only: nothing is written before the checks
+    existing_deal = resolve(db, deal, cik=cik)  # read only: nothing is written before the checks
     deal_cik = _cik(deal, existing_deal, cik)
     deal_id = existing_deal.id if existing_deal is not None else None
-    depth = _check_amended(db, amends, deal_id, period, filing_date)
+    depth = _check_amended(db, accession, amends, deal_id, period, filing_date)
     _check_filing(
         db,
         accession,
@@ -407,6 +437,7 @@ def _load(
         )
     )
     db.flush()
+    _rerank(db, deal_row.id, period)
     _write_bronze(db, accession, file_name, assets)
     _write_silver(db, deal_row.id, accession, file_name, sha256, filing_date, period, work)
     if actor is not None:

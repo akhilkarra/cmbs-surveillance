@@ -21,6 +21,8 @@ from cmbs.tape.properties import PropertyValues, combine
 # no thousands separators.
 _NUMBER = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
 CENT = Decimal("0.01")
+# Money columns are numeric(18, 2): an amount must be below 10^16 in size to be stored.
+MONEY_LIMIT = Decimal(10) ** 16
 
 
 @dataclass(frozen=True)
@@ -151,6 +153,14 @@ PROPERTY_SOURCES: dict[str, Source] = {
         "mostRecentPhysicalOccupancyPercentage", "most recent occupancy", read_decimal
     ),
 }
+
+# The money fields of a loan row, in row order, with the label a quarantine reason uses. A
+# portfolio's NOI and NCF are sums, so they are checked on the row, not only as read.
+MONEY_LABELS = {
+    name: source.label
+    for name, source in (LOAN_SOURCES | PROPERTY_SOURCES).items()
+    if source.read is read_money and name in ROW_FIELDS
+}
 OUT_OF_ORDER = "most recent financials end before they start"
 
 
@@ -186,7 +196,7 @@ def to_row(asset: Asset) -> LoanPeriodRow | list[str]:
     if reasons:
         return reasons
     combined = combine(properties)
-    return LoanPeriodRow(
+    row = LoanPeriodRow(
         loan=asset.asset_number,
         **values,  # pyright: ignore[reportArgumentType]
         property_count=combined.property_count,
@@ -202,3 +212,9 @@ def to_row(asset: Asset) -> LoanPeriodRow | list[str]:
         occupancy=combined.occupancy,
         property_note=combined.note,
     )
+    too_large = [
+        f"{label} is too large to store"
+        for name, label in MONEY_LABELS.items()
+        if (value := getattr(row, name)) is not None and abs(value) >= MONEY_LIMIT
+    ]
+    return too_large or row
