@@ -5,3 +5,7 @@ secret:
     # Vendored Anthropic skills. Their docs contain placeholder example passwords
     # such as `qpdf --password=...`, which trip the generic CLI secret detector.
     - ".claude/skills/**"
+  ignored_matches:
+    # Local development database from compose.yaml (.env.example). Not a real credential.
+    - name: local dev DATABASE_URL
+      match: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs

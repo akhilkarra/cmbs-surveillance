@@ -89,8 +89,8 @@ Each decision records the question, the answer, who decided, and the date. "Prop
 ## Facts to check
 - **Jev** is TypeSafe AI's decision model.
   - Secondary sources describe it as returning a probability distribution over the answer options you define, with a confidence value, via a hosted API.
-  - It is reportedly **early access behind a waitlist**.
-  - Not yet verified from primary docs.
+  - Access is now **public and open** (per you, 2026-10-27); it was earlier reported as waitlisted.
+  - Verified from TypeSafe's docs and OpenAPI spec (2026-10-27): one decision endpoint and a model list, no embeddings.
 - **behavex**: latest seen is 4.6.0, built on behave 1.2.6, and not all behave arguments are supported. Still to verify.
 
 ## Round 4 (proposed 2026-10-27)
@@ -127,8 +127,16 @@ Context: implementation is reordered so that feature files for every feature are
 | Q34 | **Status tags instead of folders** (replaces the folder split in Q33). Feature files live in `features/<group>/` and carry exactly one status tag on the Feature line: `@draft` or `@approved`. Approval is per feature; a partly ready feature is split. The reviewer approves with `tools/approve_feature.py`, which flips the tag and updates `features/APPROVED.sha256`. The agent proposes changes to an approved feature as `<name>.revision.feature`. Enforcement keeps Q33's three layers: a Claude Code hook (now reading tags, since a path rule can no longer tell approved from draft), the CI hash check, and the `Approved-by:` trailer on any commit that changes an approved file. Trade-off: shell commands that reach files by wildcard can get past the hook, so CI is the backstop. | Decided by you |
 | Q35 | **Only approved scenarios run.** `behave.ini` sets `default_tags = @approved`. Drafts are never executed and never count as failures. | Decided by you |
 
+## Round 6 (2026-10-27): Postgres image, text extensions and migrations
+Context: you asked for pgvector for the NLP work, and for Alembic + SQLAlchemy so schemas are managed in Python. Q20 left the Postgres version to be pinned at setup. Checked locally today: `pgvector/pgvector:pg18` runs PostgreSQL 18.6 with `vector` 0.8.7 and the contrib `pg_trgm` 1.6. PostgreSQL 19 is still a release candidate (GA planned 2026-11-19), so 18 is the pin. Jev was re-checked against TypeSafe's OpenAPI spec today: its only endpoints are `POST /v1/systemone` and `GET /v1/models`, so it has no embeddings.
+
+| # | Decision | Status |
+|---|---|---|
+| Q53 | **Image and extensions.** The `db` Compose service uses `pgvector/pgvector:pg18`, pinned by digest; CI runs the same image. Migration `0001` enables `vector` and `pg_trgm` and creates the raw/bronze/silver/gold schemas. `pg_trgm` covers the text work already planned: deciding whether a month's comment is new, lightly edited or unchanged (Q25), and near-miss diagnostics when the exact evidence check fails. Built-in full-text search (`tsvector`) covers keyword retrieval for `/cmbs-ask`. `vector` stays unused until an embedding model is chosen, because Jev returns probabilities, not embeddings. The Jev-native alternative to embeddings is re-ranking: Choice or Score questions over candidate passages ([cookbook](https://docs.typesafe.ai/cookbooks/rerank_typesafe)). If embeddings are added, they follow the same record/replay rule as `llm_calls`: the model ID is pinned and every vector is stored with it. VectorChord, pgvectorscale and ParadeDB were considered and rejected: a few thousand comment sentences don't need their indexes, and each one adds an image we would have to maintain. | Proposed |
+| Q54 | **SQLAlchemy 2.1 + Alembic** replace "plain versioned SQL files" in Q20. Models live in `cmbs.db.models`; migrations ship inside the package at `src/cmbs/db/migrations`, configured in `pyproject.toml` (no `alembic.ini`), with the database URL taken from `DATABASE_URL`. The driver is psycopg 3. Each migration is tested up, down and up again on a real Postgres, locally and in CI. Tables are added as their features are approved (Q29). | Decided by you |
+
 ## Round 7 (2026-10-27): the feature files, grilled by stakeholder
-Context: the 14 drafts were read as a PM, an analyst, a desk quant, a risk officer, an operator and a compliance reviewer would read them. They held up on correctness but described a single-user pipeline. The gaps were all about the panel being shared. Note: the uncommitted "Round 6" entry from another session reuses Q34; it should take Q51.
+Context: the 14 drafts were read as a PM, an analyst, a desk quant, a risk officer, an operator and a compliance reviewer would read them. They held up on correctness but described a single-user pipeline. The gaps were all about the panel being shared. Note: Round 6 was written in parallel and first numbered Q36 to Q38; it now uses Q53 to Q55.
 
 | # | Decision | Status |
 |---|---|---|

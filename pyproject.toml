@@ -4,13 +4,22 @@ version = "0.1.0"
 description = "Public CMBS filings turned into a verified, point-in-time surveillance panel."
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = ["typer>=0.20"]
+dependencies = [
+    "alembic>=1.20.1",
+    "pgvector>=0.5.1",
+    "psycopg[binary]>=3.3.6",
+    "sqlalchemy>=2.1.6",
+    "typer>=0.20",
+]
 
 [project.scripts]
 cmbs = "cmbs.cli:app"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.17"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.17",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -31,3 +40,22 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.alembic]
+# Migrations ship inside the package so the `api` container can run them.
+# The database URL comes from DATABASE_URL (see src/cmbs/db/migrations/env.py).
+script_location = "%(here)s/src/cmbs/db/migrations"
+file_template = "%%(year)d%%(month).2d%%(day).2d_%%(rev)s_%%(slug)s"
+prepend_sys_path = ["."]
+
+[[tool.alembic.post_write_hooks]]
+name = "ruff_check"
+type = "module"
+module = "ruff"
+options = "check --fix REVISION_SCRIPT_FILENAME"
+
+[[tool.alembic.post_write_hooks]]
+name = "ruff_format"
+type = "module"
+module = "ruff"
+options = "format REVISION_SCRIPT_FILENAME"

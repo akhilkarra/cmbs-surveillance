@@ -1,0 +1,21 @@
+# Local services (grill log Q19, Q20). The credentials are for local development only.
+services:
+  db:
+    # PostgreSQL 18 with pgvector (grill log Q53), pinned by digest.
+    image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    environment:
+      POSTGRES_USER: cmbs
+      POSTGRES_PASSWORD: cmbs
+      POSTGRES_DB: cmbs
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmbs -d cmbs"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:

@@ -11,6 +11,21 @@ permissions:
 jobs:
   py:
     runs-on: ubuntu-latest
+    services:
+      # Same image as compose.yaml, so migrations are tested against the real extensions.
+      db:
+        image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+        env:
+          POSTGRES_USER: cmbs
+          POSTGRES_PASSWORD: cmbs
+          POSTGRES_DB: cmbs
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cmbs -d cmbs"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -20,5 +35,7 @@ jobs:
       - run: uv run ruff check
       - run: uv run ruff format --check
       - run: uv run pytest
+        env:
+          DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
       - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
         run: uv run python tools/check_approved_features.py --range "${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"
