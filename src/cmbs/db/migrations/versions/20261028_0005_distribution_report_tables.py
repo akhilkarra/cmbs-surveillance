@@ -5,7 +5,7 @@ file it was read from, and the per-loan items taken from it (special-servicing c
 appraisal reductions, delinquency detail), each keyed by accession, loan and source table.
 
 Revision ID: 0005
-Revises: 0006
+Revises: 0004
 Create Date: 2026-10-28 09:31:31.899789
 """
 
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0005"
-down_revision: str | Sequence[str] | None = "0006"
+down_revision: str | Sequence[str] | None = "0004"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
