@@ -32,6 +32,8 @@ private/
 mutants/
 .stryker-tmp/
 
-# coverage
+# coverage reports (pytest-cov at the root, Vitest in web/); anchored so the
+# src/cmbs/coverage/ package is not ignored
 .coverage
-coverage/
+/coverage/
+web/coverage/
