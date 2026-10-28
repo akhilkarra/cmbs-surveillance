@@ -370,6 +370,13 @@ def test_a_dedicated_appraisal_table_and_the_loan_detail_are_both_kept():
         ("STATEMENT TO NOTEHOLDERS September 14, 2026 TRANSACTION PARTIES", dt.date(2026, 9, 14)),
         ("Statement to Certificateholders March 2, 2026", dt.date(2026, 3, 2)),
         ("STATEMENT TO NOTEHOLDERS Smarch 14, 2026", None),
+        # The bare label wins over Next / Prior dates printed before it.
+        ("Next Distribution Date: 10/19/26 Distribution Date: 09/17/26", dt.date(2026, 9, 17)),
+        ("Prior Distribution Date: 08/17/26 Distribution Date: 09/17/26", dt.date(2026, 9, 17)),
+        ("PREVIOUS DISTRIBUTION DATE 8/17/2026 DISTRIBUTION DATE 9/17/2026", dt.date(2026, 9, 17)),
+        ("Record Date: 08/31/26 Distribution Date: 09/17/26", dt.date(2026, 9, 17)),
+        ("Next Distribution Date: 10/19/26", None),
+        ("Prior Statement to Noteholders August 14, 2026", None),
         ("Distribution Date: 13/45/26 STATEMENT TO NOTEHOLDERS September 14, 2026", None),
     ],
 )

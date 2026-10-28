@@ -33,10 +33,16 @@ from cmbs.errors import Refused
 NO_COMMENT_COLUMN = "this administrator's format has no comment column"
 # Where each format states the distribution date on its first page: Computershare as
 # "Distribution Date: 09/17/26", Citi as "STATEMENT TO NOTEHOLDERS September 14, 2026".
+# The label itself, not "Next Distribution Date" or "Prior Distribution Date": the word before
+# it, if any, is captured so those can be skipped.
 _DISTRIBUTION_DATES = (
-    re.compile(r"distribution date\s*:?\s*(\d{1,2}/\d{1,2}/\d{2,4})", re.I),
-    re.compile(r"statement to (?:note|certificate)holders\s+([a-z]+ \d{1,2}, \d{4})", re.I),
+    re.compile(r"(?:([a-z]+)\s+)?distribution date\s*:?\s*(\d{1,2}/\d{1,2}/\d{2,4})", re.I),
+    re.compile(
+        r"(?:([a-z]+)\s+)?statement to (?:note|certificate)holders\s+([a-z]+ \d{1,2}, \d{4})",
+        re.I,
+    ),
 )
+_OTHER_DATES = frozenset({"next", "prior", "previous", "last", "preceding", "following", "first"})
 
 
 class UnrecognisedFormat(Refused):
@@ -103,15 +109,20 @@ class ParsedReport:
 
 
 def distribution_date(text: str) -> dt.date | None:
-    """The report's distribution date, from the first place a known format states it."""
+    """The report's distribution date, from the first place a known format states it.
+
+    Only the bare label counts: "Next Distribution Date: 10/19/26" printed before
+    "Distribution Date: 09/17/26" must not move the report a month on.
+    """
     for pattern in _DISTRIBUTION_DATES:
-        match = pattern.search(text)
-        if match is None:
-            continue
-        try:
-            return values.date(match.group(1))
-        except ValueError:
-            return None
+        for match in pattern.finditer(text):
+            before, stated = match.groups()
+            if before is not None and before.lower() in _OTHER_DATES:
+                continue
+            try:
+                return values.date(stated)
+            except ValueError:
+                return None
     return None
 
 
