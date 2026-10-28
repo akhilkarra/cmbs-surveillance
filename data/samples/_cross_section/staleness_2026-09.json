@@ -1,0 +1,21 @@
+{
+ "_provenance": "Computed 2026-10-24 in-browser (scripts/stage0/browser_extract.js) from the Sept-2026 ABS-EE EX-102 of each deal. staleness = reportingPeriodEndDate(09-11-2026) - mostRecentFinancialsEndDate, active non-co-op loans with financials. medianVsFiling uses ABS-EE filing date.",
+ "pooled_seasoned_7_deals": {"n_loans": 246, "p25_days": 73, "median_days": 73, "p75_days": 164, "p90_days": 254, "share_gt_6m": 0.142, "share_gt_12m": 0.024, "median_vs_filing_days": 91},
+ "deals": [
+  {"deal":"BANK 2017-BNK6","cik":1710261,"acc":"0001888524-26-017781","bytes":755636,"active":37,"withFin":37,"median":73,"p75":164,"p90":254,"max":2811,"mean":204,"gt6m":0.162,"gt12m":0.081,"periodLenMonths":{"3":8,"6":21,"12":8}},
+  {"deal":"BANK 2017-BNK9","cik":1721373,"acc":"0001888524-26-017879","bytes":379993,"active":33,"withFin":33,"median":73,"p75":73,"p90":164,"max":254,"mean":97,"gt6m":0.061,"gt12m":0.0,"periodLenMonths":{"3":4,"6":23,"12":6}},
+  {"deal":"BANK 2018-BNK13","cik":1744707,"acc":"0001888524-26-017705","bytes":334517,"active":34,"withFin":34,"median":73,"p75":164,"p90":164,"max":985,"mean":129,"gt6m":0.088,"gt12m":0.029,"periodLenMonths":{"3":6,"6":21,"12":7}},
+  {"deal":"Benchmark 2018-B8","cik":1758901,"acc":"0001888524-26-017400","bytes":678047,"active":36,"withFin":22,"noFin":14,"median":73,"p75":164,"p90":164,"max":164,"mean":102,"gt6m":0.0,"gt12m":0.0,"periodLenMonths":{"3":5,"6":11,"12":6}},
+  {"deal":"BANK 2019-BNK19","cik":1780859,"acc":"0001888524-26-018003","bytes":553505,"active":43,"withFin":43,"median":73,"p75":164,"p90":254,"max":1350,"mean":155,"gt6m":0.209,"gt12m":0.047,"periodLenMonths":{"3":6,"6":23,"12":14}},
+  {"deal":"BANK 2022-BNK39","cik":1902565,"acc":"0001888524-26-017794","bytes":554914,"active":50,"withFin":50,"median":73,"p75":254,"p90":254,"max":346,"mean":144,"gt6m":0.28,"gt12m":0.0,"periodLenMonths":{"3":10,"6":27,"9":1,"12":12}},
+  {"deal":"BANK5 2025-5YR16","cik":2078775,"acc":"0001888524-26-017881","bytes":710389,"active":40,"withFin":27,"noFin":13,"median":73,"p75":73,"p90":164,"max":254,"mean":97,"gt6m":0.037,"gt12m":0.0,"periodLenMonths":{"3":5,"6":18,"12":4}},
+  {"deal":"BANK5 2026-5YR23","cik":2140978,"acc":"0001888524-26-018152","bytes":483466,"active":33,"withFin":0,"noFin":33,"note":"new issue (closed 2026-06); no mostRecent* financial fields reported yet, only at-securitization fields"},
+  {"deal":"Benchmark 2026-B43","cik":2121298,"acc":"0001628297-26-000812","file":"ex102.xml","bytes":266537,"active":32,"withFin":0,"noFin":32,"note":"new issue; same as above"}
+ ],
+ "specially_serviced_examples": [
+  {"deal":"BANK 2017-BNK6","id":"4","name":"Starwood Capital Hotel Portfolio","status":"B","ssTransfer":"03-06-2025","workout":"11","finEnd":"12-31-2024","stale_days_at_2026-09-11":619},
+  {"deal":"BANK 2018-BNK13","id":"11","name":"Ditson Building","status":"3","ssTransfer":"06-04-2026","workout":"2","finEnd":"03-31-2026","dscr":0.0348,"occ":0.28},
+  {"deal":"BANK 2019-BNK19","id":"7","name":"445 South Street","status":"3","ssTransfer":"07-01-2026","workout":"13","finEnd":"03-31-2026","dscr":0.4648},
+  {"deal":"Benchmark 2018-B8","id":"11","name":"Crowne Plaza Melbourne","status":"0","ssTransfer":"08-07-2026","workout":"98","finEnd":"03-31-2026","dscr":0.9007}
+ ]
+}

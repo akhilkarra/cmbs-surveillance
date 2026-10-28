@@ -1,0 +1,17 @@
+source: https://www.sec.gov/Archives/edgar/data/1744707/000188852426017704/wcm18b13_ex991-202609.htm
+(10-D filed 2026-09-29, distribution 09/17/26, determination 09/11/26; Computershare as certificate administrator; 1,572,068 bytes HTML, 28 pages)
+
+Table of contents (sections): Certificate Distribution Detail; Certificate Factor Detail; Certificate Interest
+Reconciliation Detail; Additional Information; Bond/Collateral Reconciliation - Cash Flows; Bond/Collateral
+Reconciliation - Balances; Current Mortgage Loan and Property Stratification; Mortgage Loan Detail (Part 1);
+Mortgage Loan Detail (Part 2); Principal Prepayment Detail; Historical Detail; Delinquency Loan Detail;
+Collateral Stratification and Historical Detail; Specially Serviced Loan Detail - Part 1; Specially Serviced
+Loan Detail - Part 2 (has a free-text "Special Servicing Comments" column); Modified Loan Detail; Historical
+Liquidated Loan Detail; Historical Bond/Collateral Loss Reconciliation Detail; Interest Shortfall Detail -
+Collateral Level; Supplemental Notes.
+No servicer watchlist section. Modified Loan Detail footnote points to "Servicer Reports for modification comments".
+
+Short excerpts (Specially Serviced Loan Detail - Part 2):
+- Pros ID 11 (Ditson Building): "transferred to Special Servicing effective 6/4/2026 due to monetary default"
+- Pros ID 11: "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%"
+- Pros ID 57 (co-op, transferred 11/24/25): "Borrower entered into an agreement with a cell tower provider without consent"
