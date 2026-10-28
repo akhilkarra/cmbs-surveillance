@@ -3,8 +3,9 @@
 Usage:
   python tools/check_accepted_features.py [--range BASE..HEAD]
 
-With --range, every commit in the range that touches features/accepted/ must have an
-`Approved-by:` trailer.
+With --range, every commit in the range that changes an accepted .feature file must have an
+`Approved-by:` trailer. Manifest-only changes need no trailer: the hash check above fails
+whenever the manifest and the accepted files disagree.
 """
 
 import argparse
@@ -14,6 +15,7 @@ import sys
 from accepted_features import ACCEPTED_DIR, current_hashes, manifest_problems, read_manifest
 
 ZERO_SHA = "0" * 40
+ACCEPTED_FEATURES = f":(glob){ACCEPTED_DIR.as_posix()}/**/*.feature"
 
 
 def unapproved_commits(rev_range: str) -> list[str]:
@@ -21,7 +23,7 @@ def unapproved_commits(rev_range: str) -> list[str]:
     if not base or base == ZERO_SHA:
         rev_range = rev_range.partition("..")[2]  # first push: check the whole history
     shas = subprocess.run(
-        ["git", "log", "--format=%H", rev_range, "--", str(ACCEPTED_DIR)],
+        ["git", "log", "--format=%H", rev_range, "--", ACCEPTED_FEATURES],
         check=True,
         capture_output=True,
         text=True,
@@ -46,7 +48,7 @@ def main(argv: list[str]) -> int:
     problems = manifest_problems(read_manifest(), current_hashes())
     if args.rev_range:
         problems += [
-            f"commit {sha[:12]} changes {ACCEPTED_DIR}/ without an Approved-by trailer"
+            f"commit {sha[:12]} changes an accepted feature without an Approved-by trailer"
             for sha in unapproved_commits(args.rev_range)
         ]
     for problem in problems:
