@@ -1,4 +1,8 @@
-"""behave hooks: a Chromium page for every scenario tagged @surface:ui.
+"""behave hooks: a fresh database per scenario, and a Chromium page for @surface:ui scenarios.
+
+Database: a template database is migrated once per process; every scenario runs in its own
+clone, seeded with the fixture world (six users, settings version 7). Before each When step the
+data layers are fingerprinted, so a Then step can check that nothing stored changed.
 
 The browser starts on the first UI scenario, so runs without one never launch it. Each scenario
 gets a fresh browser context, and a failing one leaves a Playwright trace in output/traces/
@@ -9,6 +13,7 @@ Environment variables:
   HEADED=1      show the browser instead of running headless
 """
 
+import itertools
 import os
 import re
 from pathlib import Path
@@ -16,17 +21,37 @@ from types import SimpleNamespace
 
 from playwright.sync_api import sync_playwright
 
+from cmbs import clock
+from cmbs.db import engine
+from cmbs.testing import databases, world
+from cmbs.testing.bdd import data_snapshot
+
 UI_TAG = "surface:ui"
 TRACE_DIR = Path("output/traces")
 
 
 def before_all(context):
     # behave drops attributes a scenario hook sets on `context` when the scenario ends, so the
-    # browser lives on an object created here, which every scenario shares.
+    # browser and the database template live on objects created here, shared by every scenario.
     context.ui = SimpleNamespace(playwright=None, browser=None)
+    server = os.environ.get("DATABASE_URL")
+    if not server:
+        raise SystemExit("Feature scenarios need Postgres: set DATABASE_URL (see CLAUDE.md).")
+    os.environ["CMBS_TEST_SERVER_URL"] = server
+    template = f"cmbs_bdd_template_{os.getpid()}"
+    databases.create_template(template)
+    context.dbs = SimpleNamespace(template=template, counter=itertools.count(1), current=None)
 
 
 def before_scenario(context, scenario):
+    clock.set_now(None)
+    name = f"cmbs_bdd_{os.getpid()}_{next(context.dbs.counter)}"
+    os.environ["DATABASE_URL"] = databases.clone(context.dbs.template, name)
+    context.dbs.current = name
+    with engine.session() as db:
+        world.seed(db)
+    context.snapshot = None
+    context.refusal = None
     if UI_TAG not in scenario.effective_tags:
         return
     ui = context.ui
@@ -40,7 +65,15 @@ def before_scenario(context, scenario):
     context.page = context.browser_context.new_page()
 
 
+def before_step(context, step):
+    if step.step_type == "when":
+        context.snapshot = data_snapshot()
+
+
 def after_scenario(context, scenario):
+    engine.dispose(os.environ["DATABASE_URL"])
+    databases.drop(context.dbs.current)
+    clock.set_now(None)
     if UI_TAG not in scenario.effective_tags:
         return
     if scenario.status.name in ("failed", "error"):
@@ -53,6 +86,8 @@ def after_scenario(context, scenario):
 
 
 def after_all(context):
+    engine.dispose()
+    databases.drop(context.dbs.template)
     ui = context.ui
     if ui.browser is not None:
         ui.browser.close()

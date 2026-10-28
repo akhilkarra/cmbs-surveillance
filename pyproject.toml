@@ -6,8 +6,13 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "alembic>=1.20.1",
+    "fastapi>=0.162.0",
+    "lxml>=6",
+    "pandera[polars]>=0.34",
     "pgvector>=0.5.1",
+    "polars>=2.0",
     "psycopg[binary]>=3.3.6",
+    "pydantic>=2.14.1",
     "sqlalchemy>=2.1.6",
     "typer>=0.20",
 ]
@@ -19,6 +24,7 @@ cmbs = "cmbs.cli:app"
 dev = [
     "basedpyright>=1.40.2",
     "behavex>=4.6.8",
+    "httpx2>=2.16.0",
     "mutmut>=3.8.0",
     "playwright>=1.64.1",
     "pytest>=8,<9.2",  # mutmut 3.8.0 reads item._nodeid, which pytest 9.2.0 removed
@@ -69,7 +75,8 @@ options = "format REVISION_SCRIPT_FILENAME"
 # `uv run mutmut run`, then `uv run mutmut results` and `uv run mutmut show <name>`.
 # Migrations are declarative and tested directly against Postgres (tests/test_migrations.py).
 source_paths = ["src/cmbs"]
-do_not_mutate = ["src/cmbs/db/migrations/*"]
+# Test infrastructure (scratch databases, the fixture world) is not product logic.
+do_not_mutate = ["src/cmbs/db/migrations/*", "src/cmbs/testing/*"]
 pytest_add_cli_args_test_selection = ["tests"]
 
 [tool.basedpyright]
