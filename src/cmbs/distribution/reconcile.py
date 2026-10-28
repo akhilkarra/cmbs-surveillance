@@ -26,10 +26,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cmbs import clock
+from cmbs.access.roles import Action
+from cmbs.access.service import authorize
+from cmbs.audit.service import record, refuse
 from cmbs.checks.service import raise_flag
 from cmbs.checks.tables import CheckFlag
+from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
 from cmbs.distribution.layouts import DELINQUENCY_TABLES, Administrator
+from cmbs.distribution.service import UnknownDeal
 from cmbs.distribution.tables import DistributionReport, ReportDelinquency
 from cmbs.domain import Period
 from cmbs.errors import Refused
@@ -37,6 +42,7 @@ from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
 
 CHECK = "report_tape_reconciliation"
+AUDIT_ACTION = "reconcile report with tape"
 
 # Schedule AL payment status codes (paymentStatusLoanCode), the CREFC loan status codes that
 # certificate administrators also print in their delinquency tables.
@@ -284,3 +290,41 @@ def flags(db: Session, *, deal_id: int, period: Period) -> Sequence[CheckFlag]:
         )
         .order_by(CheckFlag.id)
     ).all()
+
+
+def reconcile_month(
+    db: Session, *, user: str, deal: str, period: Period, as_of: dt.date | None = None
+) -> Reconciliation:
+    """`reconcile` for a user who may load filings, audited; refusals are audited too."""
+    actor = authorize(db, user, Action.RUN_REFRESH)
+    try:
+        deal_row = by_name(db, deal)
+        if deal_row is None:
+            raise UnknownDeal(f"no deal named {deal!r}")
+        result = reconcile(db, deal_id=deal_row.id, period=period, as_of=as_of)
+    except Refused as refusal:
+        refuse(
+            db,
+            refusal,
+            user=actor.user,
+            role=actor.role.value,
+            action=AUDIT_ACTION,
+            subject="deal",
+            subject_key=deal,
+        )
+    record(
+        db,
+        user=actor.user,
+        role=actor.role.value,
+        action=AUDIT_ACTION,
+        subject="deal",
+        subject_key=deal_row.name,
+        detail={
+            "period": period.label,
+            "report": result.report_accession,
+            "tape": result.tape_accession,
+            "disagreements": len(result.disagreements),
+            "flags_raised": result.flags_raised,
+        },
+    )
+    return result

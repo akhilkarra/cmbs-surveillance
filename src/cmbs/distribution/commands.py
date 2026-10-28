@@ -7,6 +7,7 @@ from typing import Annotated
 import typer
 
 from cmbs.db import engine
+from cmbs.distribution.reconcile import reconcile_month
 from cmbs.distribution.service import load_report
 from cmbs.domain import Period
 from cmbs.errors import Refused
@@ -65,3 +66,28 @@ def parse(
         raise typer.Exit(1) from refusal
     typer.echo(f"{loaded.deal} {loaded.period} ({loaded.accession})")
     typer.echo(loaded.summary)
+
+
+@app.command("reconcile")
+def reconcile(
+    deal: Annotated[str, typer.Option(help="Deal name, as in the deal registry.")],
+    period: Annotated[str, typer.Option(help="Distribution month, like 'September 2026'.")],
+    user: Annotated[str, typer.Option(envvar="CMBS_USER", help="Who is reconciling.")],
+    as_of: Annotated[
+        dt.datetime | None,
+        typer.Option(formats=["%Y-%m-%d"], help="Read both sides as of this day (default today)."),
+    ] = None,
+) -> None:
+    """Compare the month's delinquency detail with the tape; flag each disagreement once."""
+    month = _period(period)
+    if month is None:  # pragma: no cover - the option is required
+        raise typer.BadParameter("give the period")
+    try:
+        with engine.session() as db:
+            result = reconcile_month(
+                db, user=user, deal=deal, period=month, as_of=as_of.date() if as_of else None
+            )
+    except Refused as refusal:
+        typer.echo(str(refusal), err=True)
+        raise typer.Exit(1) from refusal
+    typer.echo(result.text())
