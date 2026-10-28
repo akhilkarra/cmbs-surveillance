@@ -1,7 +1,8 @@
 @draft @layer:logic @surface:cli @surface:api
 Feature: Monthly surveillance alerts
-  Each month a PM sees what changed since the month before. Every alert has a severity
-  and links to the filing it came from.
+  Each month a PM sees what changed since the month before. Every alert has a severity,
+  links to the filing it came from, and records the settings version that produced it.
+  The thresholds below are the values in settings version 7.
 
   Background:
     Given "Fixture Trust 2026-F1" has been ingested for August 2026 and September 2026
@@ -23,10 +24,12 @@ Feature: Monthly surveillance alerts
     When the September 2026 alerts are built
     Then a medium alert "paid-through date did not advance" is raised for loan "5"
 
-  Scenario: A DSCR falling below 1.00x raises a medium alert
-    Given loan "7"'s DSCR was 1.12x in August 2026 and 0.96x in September 2026
+  Scenario: A DSCR falling below the threshold raises a medium alert
+    Given the DSCR alert threshold is 1.00x in settings version 7
+    And loan "7"'s DSCR was 1.12x in August 2026 and 0.96x in September 2026
     When the September 2026 alerts are built
     Then a medium alert "DSCR fell below 1.00x: 1.12x to 0.96x" is raised for loan "7"
+    And the alert records settings version 7
 
   Scenario: A changed workout strategy raises a medium alert
     Given loan "2"'s workout strategy was "to be determined" in August 2026 and "full payoff" in September 2026

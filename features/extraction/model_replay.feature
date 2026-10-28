@@ -27,3 +27,22 @@ Feature: Model replay
     When the answer is recorded
     Then the run stops with "model version mismatch: asked for jev-1.14.0, got jev-1.15.0"
     And nothing is recorded
+
+  Scenario: Public text may always be sent to the model provider
+    Given loan "2"'s comment comes from a 10-D on EDGAR, classified "public"
+    When the comment is extracted with no recording available
+    Then the request is sent to the model provider
+
+  Scenario: Restricted text is never sent without zero data retention
+    Given a watchlist comment comes from an investor portal, classified "restricted"
+    And the model provider is configured without zero data retention
+    When the comment is extracted with no recording available
+    Then the run stops with "restricted text cannot be sent to the provider without zero data retention"
+    And no request is sent to the model provider
+
+  Scenario: Restricted text may be sent once zero data retention is configured
+    Given a watchlist comment comes from an investor portal, classified "restricted"
+    And the model provider is configured with zero data retention, approved in settings version 9
+    When the comment is extracted with no recording available
+    Then the request is sent to the model provider
+    And the recording notes settings version 9

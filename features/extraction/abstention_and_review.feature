@@ -2,7 +2,7 @@
 Feature: Abstention and human review
   When the model is unsure, the field goes to a review queue instead of the panel.
   A wrong value that looks confident is worse than a blank marked "needs review".
-  Probabilities between 0.30 and 0.70 count as unsettled.
+  Probabilities between 0.30 and 0.70 count as unsettled; that band is a setting (version 7).
 
   Scenario: A confident, supported answer goes straight to the panel
     Given the model gives "maturity extension" a probability of 0.93 as loan "2"'s borrower request
@@ -25,7 +25,7 @@ Feature: Abstention and human review
 
   Scenario: A reviewer's decision fills the panel and is attributed
     Given a review item for loan "2"'s borrower request
-    When reviewer "analyst" chooses "forbearance" and cites sentence 3
+    When "alex" chooses "forbearance" and cites sentence 3
     Then the panel records the borrower request "forbearance" with the reviewer and the review time
     And the field is marked "human-reviewed"
 
