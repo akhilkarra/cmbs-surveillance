@@ -8,6 +8,7 @@ from cmbs.audit.tables import AuditEntry
 from cmbs.cli import app
 from cmbs.tape.tables import LoanPeriod
 from tests.conftest import FIXTURES, needs_db
+from tests.fixtures.tape.tapes import asset, tape
 
 DEAL = "Fixture Trust 2026-F1"
 ACCESSION = "0009900001-26-000101"
@@ -59,6 +60,27 @@ def test_quarantined_loans_are_listed(seeded, runner, tmp_path):
     assert result.exit_code == 0, result.output
     assert result.output.endswith(
         "1 loan quarantined\n  quarantined loan 5: ending balance is negative\n"
+    )
+
+
+@needs_db
+def test_property_notes_are_listed(seeded, runner, tmp_path):
+    portfolio = tmp_path / "ex102.xml"
+    portfolio.write_bytes(
+        tape(
+            asset("1").replace(
+                "</assets>",
+                "<property><mostRecentFinancialsEndDate>06-30-2026</mostRecentFinancialsEndDate>"
+                "</property><property></property></assets>",
+            )
+        )
+    )
+    arguments = ["tape", "load", str(portfolio), DEAL, ACCESSION, "2026-09-29", "--user", "olly"]
+    result = runner.invoke(app, [*arguments, "--cik", "9900001"])
+    assert result.exit_code == 0, result.output
+    assert result.output.endswith(
+        "1 loan with property notes\n  loan 1: 1 of 2 properties report no most recent "
+        "financials, so the loan's NOI, NCF and DSCR are not reported\n"
     )
 
 
