@@ -35,9 +35,10 @@ from cmbs.coverage.rules import (
     with_vendor,
 )
 from cmbs.coverage.tables import VendorSource
+from cmbs.deals.service import get_or_create
 from cmbs.deals.tables import Deal
 from cmbs.domain import Period, money
-from cmbs.edgar.service import deal_for, filings_of, latest_discovery
+from cmbs.edgar.service import filings_of, latest_discovery
 from cmbs.errors import Refused
 
 VENDOR_NAME_LIMIT = 128
@@ -264,7 +265,7 @@ def configure_vendor_source(db: Session, *, user: str, deal: str, source: str) -
         raise InvalidVendorSource(
             f"a vendor source name is at most {VENDOR_NAME_LIMIT} characters, not {len(name)}"
         )
-    stored_deal = deal_for(db, deal)
+    stored_deal = get_or_create(db, deal)
     added = db.execute(
         insert(VendorSource)
         .values(deal_id=stored_deal.id, name=name, configured_by=user, configured_at=clock.now())

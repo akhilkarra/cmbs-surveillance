@@ -4,8 +4,8 @@ The deal goes into the deal registry with its issuing-entity CIK (when it has on
 filing into the filings registry, and the discovery itself into a log, so the coverage report
 can tell a deal that was looked up and found nothing from one never looked up.
 
-One trust is one deal, whatever it is called: a lookup that resolves to a CIK already held by
-a deal registered under another name records the name as an alias of that deal. A depositor's
+One trust is one deal, whatever it is called: the shared deals service records a name whose
+CIK another deal already holds as an alias of that deal (`cmbs.deals.service`). A depositor's
 filing (an ABS-15G) can cover several private deals, so it is linked to each through
 `silver.deal_filing` and never takes a `deal_id` of its own.
 
@@ -17,7 +17,7 @@ authorizes again, since roles may change while the fetch runs.
 import datetime as dt
 from collections.abc import Sequence
 
-from sqlalchemy import or_, select, text
+from sqlalchemy import or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -26,8 +26,8 @@ from cmbs.access.roles import Action
 from cmbs.access.service import authorize
 from cmbs.audit.service import record
 from cmbs.db import engine
-from cmbs.deals.service import ConflictingDeal, by_name, get_or_create, normalized
-from cmbs.deals.tables import Deal, DealAlias
+from cmbs.deals.service import by_name, get_or_create
+from cmbs.deals.tables import Deal
 from cmbs.edgar.discovery import Discovery, discover
 from cmbs.edgar.replay import Source
 from cmbs.edgar.tables import DealFiling, FilingDiscovery
@@ -35,17 +35,9 @@ from cmbs.errors import Refused
 from cmbs.filings.service import register_filing
 from cmbs.filings.tables import Filing
 
-# Names one Postgres advisory-lock space per CIK, so two names of one trust registered at once
-# cannot both create a deal for it.
-CIK_LOCK_SPACE = 0x0C1C
-
 
 class DiscoveryInFuture(Refused):
     """Filings cannot be known as of a date that has not come yet."""
-
-
-class SeparateDeals(Refused):
-    """A name registered as its own deal turns out to be a trust already registered."""
 
 
 def deal_named(db: Session, name: str) -> Deal | None:
@@ -53,68 +45,11 @@ def deal_named(db: Session, name: str) -> Deal | None:
     return by_name(db, name)
 
 
-def _lock(db: Session, deal_id: int) -> Deal:
-    return db.scalars(
-        select(Deal)
-        .where(Deal.id == deal_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    ).one()
-
-
-def _add_alias(db: Session, name: str, deal: Deal) -> None:
-    db.execute(
-        insert(DealAlias)
-        .values(name=name, deal_id=deal.id)
-        .on_conflict_do_nothing(index_elements=[DealAlias.name])
-    )
-    stored = db.get_one(DealAlias, name, populate_existing=True)
-    if stored.deal_id != deal.id:
-        raise SeparateDeals(f'"{name}" already names another deal, not "{deal.name}"')
-
-
-def deal_for(db: Session, name: str, *, cik: int | None = None) -> Deal:
-    """The deal a name refers to, created if new, with its row locked.
-
-    With a CIK, the result is the one deal holding that CIK: a deal registered under another
-    name gains this name as an alias. A name that is already a separate deal of its own is
-    refused rather than merged, since other records may point at either.
-    """
-    name = normalized(name)
-    alias = db.get(DealAlias, name)
-    if alias is not None:
-        deal = _lock(db, alias.deal_id)
-        if cik is not None and deal.cik != cik:
-            if deal.cik is not None:
-                raise ConflictingDeal(f"{deal.name} already has CIK {deal.cik}, not {cik}")
-            deal.cik = cik
-            db.flush()
-        return deal
-    if cik is None:
-        return get_or_create(db, name)
-    db.execute(
-        text("SELECT pg_advisory_xact_lock(CAST(:space AS integer), CAST(:cik AS integer))"),
-        {"space": CIK_LOCK_SPACE, "cik": cik},
-    )
-    owner = db.scalars(select(Deal).where(Deal.cik == cik).order_by(Deal.id).limit(1)).first()
-    if owner is None:
-        return get_or_create(db, name, cik=cik)
-    named = by_name(db, name)
-    if named is not None and named.id != owner.id:
-        raise SeparateDeals(
-            f'"{name}" is registered apart from "{owner.name}", which already has CIK {cik}; '
-            "they are the same trust"
-        )
-    if named is None:
-        _add_alias(db, name, owner)
-    return _lock(db, owner.id)
-
-
 def register(db: Session, found: Discovery, *, user: str) -> Deal:
     """Store a discovery: the deal, each filing, and the log entry. Idempotent per filing."""
-    deal = deal_for(db, found.deal, cik=found.match.cik)
+    deal = get_or_create(db, found.deal, cik=found.match.cik)
     if found.match.edgar_name is not None:
-        # deal_for holds the deal's row lock, so this update cannot race another.
+        # get_or_create holds the deal's row lock, so this update cannot race another.
         deal.edgar_name = found.match.edgar_name
     own = found.match.cik is not None
     for filing in found.filings:
