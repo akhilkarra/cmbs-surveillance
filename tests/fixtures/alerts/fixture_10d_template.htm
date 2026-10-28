@@ -1,0 +1,31 @@
+<html>
+<head>
+<!-- Synthetic distribution report template for the alert scenarios: one month of a fixture deal,
+     in the layout of a Computershare report, with only the special-servicing comments table.
+     Not a filed document. features/steps/alerts.py fills the placeholders in braces. -->
+<title>{deal} Distribution Date Statement</title>
+</head>
+<body>
+<table width="100%"><tr><td>
+  <table>
+    <tr><td colspan="3"><b>{deal}</b></td></tr>
+    <tr><td>Commercial Mortgage Pass-Through Certificates</td><td>Distribution Date:</td><td>{distribution_date}</td></tr>
+    <tr><td>Investor site: www.ctslink.com</td><td>Determination Date:</td><td>{determination_date}</td></tr>
+  </table>
+</td></tr>
+<tr><td>
+  <table>
+    <tr><td colspan="3">Specially Serviced Loan Detail - Part 2</td></tr>
+    <tr><td>Pros ID</td><td>Loan ID</td><td>Special Servicing Comments</td></tr>
+{rows}
+  </table>
+</td></tr>
+<tr><td>
+  <table>
+    <tr><td>Supplemental Notes</td></tr>
+    <tr><td>None.</td></tr>
+  </table>
+</td></tr>
+</table>
+</body>
+</html>
