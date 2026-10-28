@@ -19,9 +19,9 @@ Feature: Users and roles
       | role     | may                                                                      |
       | pm       | read the panel, ask questions, acknowledge, assign and close alerts     |
       | analyst  | everything a pm may, decide review items, override values with a reason |
-      | quant    | read the panel, run refreshes and backfills, export, propose settings   |
-      | risk     | read everything including the audit log, approve or reject settings     |
-      | operator | run refreshes and backfills, see run history, manage users and roles    |
+      | quant    | read the panel, run refreshes and backfills, export, propose settings, load positions |
+      | risk     | read everything including the audit log and run history, approve or reject settings |
+      | operator | run refreshes and backfills, see run history, manage users and roles, read the audit log, load positions |
 
   Scenario: An action outside a user's roles is refused and recorded
     When "pat" tries to decide a review item for loan "2"
