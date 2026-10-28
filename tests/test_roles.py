@@ -2,7 +2,15 @@
 
 import pytest
 
-from cmbs.access.roles import PERMISSIONS, Action, Role, acting_role, refusal_message
+from cmbs.access.roles import (
+    PERMISSIONS,
+    Action,
+    Role,
+    acting_role,
+    format_roles,
+    parse_roles,
+    refusal_message,
+)
 
 A = Action
 EXPECTED = {
@@ -62,3 +70,19 @@ def test_no_permitting_role_means_none():
 )
 def test_refusal_messages(roles, action, message):
     assert refusal_message(frozenset(roles), action) == message
+
+
+def test_roles_are_written_in_role_order():
+    assert format_roles(frozenset({Role.RISK, Role.QUANT})) == "quant, risk"
+    assert format_roles(frozenset({Role.OPERATOR, Role.PM, Role.ANALYST})) == (
+        "pm, analyst, operator"
+    )
+    assert format_roles(frozenset()) == "none"
+
+
+def test_roles_are_read_from_a_list():
+    assert parse_roles("analyst, quant") == {Role.ANALYST, Role.QUANT}
+    assert parse_roles(" risk ,") == {Role.RISK}
+    assert parse_roles("") == frozenset()
+    with pytest.raises(ValueError, match="^no role named 'trader'$"):
+        parse_roles("quant, trader")
