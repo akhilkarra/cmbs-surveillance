@@ -184,12 +184,16 @@ def _cik(name: str, deal: Deal | None, cik: int | None) -> int:
 
 
 def amendment_chain(db: Session, amends: str | None) -> list[Filing]:
-    """The filings `amends` points to, nearest first, as far as they are registered."""
+    """The filings `amends` points to, nearest first, as far as they are registered.
+
+    A bounded loop, not `while`: a chain that loops back on itself (or a broken edit) must
+    end, never spin.
+    """
     chain: list[Filing] = []
-    while amends is not None and len(chain) < MAX_AMENDMENT_DEPTH:
-        filing = db.get(Filing, amends)
+    for _ in range(MAX_AMENDMENT_DEPTH):
+        filing = db.get(Filing, amends) if amends is not None else None
         if filing is None:
-            break
+            return chain
         chain.append(filing)
         amends = filing.amends
     return chain

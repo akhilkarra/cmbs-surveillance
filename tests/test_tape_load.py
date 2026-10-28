@@ -23,6 +23,7 @@ from cmbs.filings.service import ConflictingFiling, register_filing, sha256_of, 
 from cmbs.filings.tables import Filing, FilingFile
 from cmbs.tape.service import (
     LOAD_ACTION,
+    MAX_AMENDMENT_DEPTH,
     QUARANTINE_ACTION,
     TAPE_ACTION,
     LoadSummary,
@@ -684,6 +685,25 @@ def test_amendment_chain_follows_registered_filings_only(tx):
 
 
 @needs_db
+def test_an_amendment_chain_that_loops_back_ends(tx):
+    """Two filings registered as amending each other: the walk stops at its bound."""
+    for accession, amends in (
+        ("0000000000-26-000001", "0000000000-26-000002"),
+        ("0000000000-26-000002", "0000000000-26-000001"),
+    ):
+        register_filing(
+            tx, accession=accession, cik=CIK, form="ABS-EE/A", filing_date=FILED, amends=amends
+        )
+    chain = amendment_chain(tx, "0000000000-26-000001")
+    assert len(chain) == MAX_AMENDMENT_DEPTH == 100
+    assert [f.accession for f in chain[:3]] == [
+        "0000000000-26-000001",
+        "0000000000-26-000002",
+        "0000000000-26-000001",
+    ]
+
+
+@needs_db
 def test_two_unlinked_tapes_of_one_period_filed_the_same_day_are_refused(tx):
     load(tx)
     with pytest.raises(TapeRefused) as refusal:
@@ -859,7 +879,7 @@ def run_while_first_holds_its_locks(first, second):
 
     with Session(engine.engine()) as holder:
         value = first(holder)
-        thread = threading.Thread(target=in_thread)
+        thread = threading.Thread(target=in_thread, daemon=True)  # never keeps a run alive
         thread.start()
         time.sleep(0.3)  # let the second load reach the deal row the first one holds
         assert thread.is_alive(), "the second load did not wait for the first"
