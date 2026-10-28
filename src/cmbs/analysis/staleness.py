@@ -210,7 +210,10 @@ class StalenessReport:
     summary: StalenessSummary
 
     def loan(self, loan: str) -> LoanStaleness:
-        return next(row for row in self.loans if row.loan == loan)
+        for row in self.loans:
+            if row.loan == loan:
+                return row
+        raise KeyError(f"no loan {loan!r} in the report")
 
 
 def measure(loans: Sequence[TapeLoan]) -> StalenessReport:

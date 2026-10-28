@@ -79,9 +79,11 @@ def rejections(rows: Sequence[ModelInput]) -> list[Rejection]:
     try:
         AsOfContract.validate(frame, lazy=True)
     except SchemaErrors as errors:
-        failed = {case["index"] for case in errors.failure_cases.iter_rows(named=True)}
-        if None in failed:
-            raise  # a schema problem, not look-ahead: a bug in the caller
+        failed: set[int] = set()
+        for case in errors.failure_cases.iter_rows(named=True):
+            if case["check"] != LOOK_AHEAD or case["index"] is None:
+                raise  # a missing date or a wrong type is a bug in the caller, not look-ahead
+            failed.add(case["index"])
         return [
             Rejection(rows[index], f"uses data published after {rows[index].as_of.isoformat()}")
             for index in sorted(failed)

@@ -92,9 +92,6 @@ def violations(rows: Sequence[LoanPeriodRow]) -> dict[int, list[str]]:
         for case in errors.failure_cases.iter_rows(named=True):
             if case["index"] is None:
                 raise  # a schema problem (a missing column, a wrong type): a bug, not data
-            reasons = found.setdefault(case["index"], [])
-            reason = _reason(case["check"], case["column"])
-            if reason not in reasons:
-                reasons.append(reason)
+            found.setdefault(case["index"], []).append(_reason(case["check"], case["column"]))
         return found
     return {}

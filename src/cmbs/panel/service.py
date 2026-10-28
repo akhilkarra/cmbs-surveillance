@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
 from cmbs.analysis.staleness import StalenessReport, TapeLoan, measure
@@ -59,7 +60,7 @@ def as_of(
         query = query.where(LoanPeriod.period == period.first_day)
     if loan is not None:
         query = query.where(LoanPeriod.loan == loan)
-    query = query.distinct(LoanPeriod.deal_id, LoanPeriod.loan, LoanPeriod.period).order_by(
+    query = query.ext(distinct_on(LoanPeriod.deal_id, LoanPeriod.loan, LoanPeriod.period)).order_by(
         LoanPeriod.deal_id,
         LoanPeriod.loan,
         LoanPeriod.period,
@@ -104,11 +105,13 @@ class DealTape:
     rows: list[LoanPeriod]
 
 
-def latest_tape(db: Session, deal: str, day: dt.date) -> DealTape:
+def tape_as_of(db: Session, deal: str, day: dt.date, period: Period | None = None) -> DealTape:
+    """One period of a deal as the panel showed it on `day`; by default the latest period."""
     deal_row = deal_named(db, deal)
-    visible = as_of(db, day, deal_id=deal_row.id)
+    visible = as_of(db, day, deal_id=deal_row.id, period=period)
     if not visible:
-        raise NothingPublished(f"no loan tape of {deal} had been filed by {day}")
+        which = f"{period.label} " if period else ""
+        raise NothingPublished(f"no {which}loan tape of {deal} had been filed by {day}")
     latest = periods(visible)[-1]
     rows = [row for row in visible if Period.of(row.period) == latest]
     return DealTape(deal=deal, as_of=day, period=latest, rows=rows)
@@ -126,7 +129,9 @@ def tape_loan(row: LoanPeriod) -> TapeLoan:
     )
 
 
-def staleness(db: Session, deal: str, day: dt.date) -> tuple[DealTape, StalenessReport]:
-    """Staleness of the deal's latest tape visible on `day`."""
-    tape = latest_tape(db, deal, day)
+def staleness(
+    db: Session, deal: str, day: dt.date, period: Period | None = None
+) -> tuple[DealTape, StalenessReport]:
+    """Staleness of the deal's tape as the panel showed it on `day` (latest period by default)."""
+    tape = tape_as_of(db, deal, day, period)
     return tape, measure([tape_loan(row) for row in tape.rows])
