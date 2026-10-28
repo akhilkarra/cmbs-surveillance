@@ -1,4 +1,4 @@
-@layer:model @surface:cli @surface:api
+@draft @layer:model @surface:cli @surface:api
 Feature: Comment extraction with evidence
   Each special-servicing comment becomes typed fields. Every value is backed by one sentence
   of the comment, quoted exactly, so a reader can check it in seconds.

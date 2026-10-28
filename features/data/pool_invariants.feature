@@ -1,4 +1,4 @@
-@layer:data @surface:cli @surface:api
+@draft @layer:data @surface:cli @surface:api
 Feature: Pool invariants
   Three identities must hold for every deal and every period. Each one is proved in Lean
   for all possible pools, so when a check fails on real data, the data is wrong, not the math.

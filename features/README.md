@@ -4,10 +4,23 @@ The requirements for this project, written as Gherkin scenarios before any code 
 
 ## Workflow
 
-1. Drafts are written in `features/proposed/`.
-2. The reviewer accepts a draft by running `uv run python tools/accept_feature.py <file>`. It moves the file to `features/accepted/` and updates `features/accepted/MANIFEST.sha256`.
-3. The acceptance commit carries an `Approved-by:` trailer.
-4. Accepted files are never edited by the agent. A change is proposed as a new draft in `features/proposed/` and goes through the same review. CI fails if an accepted file no longer matches the manifest.
+Every feature file carries exactly one status tag on its Feature line, and its scenarios inherit it.
+
+| Tag | Meaning |
+|---|---|
+| `@draft` | Written by the agent, awaiting review. Never run as a test |
+| `@approved` | Accepted by the reviewer. Run as a test, and protected from the agent |
+
+1. The agent writes a feature as `@draft`.
+2. The reviewer approves it with `uv run python tools/approve_feature.py <file>`. The tool turns `@draft` into `@approved`, updates `features/APPROVED.sha256` and stages both.
+3. The approval commit carries an `Approved-by:` trailer.
+4. The agent never edits an approved feature. A change is proposed as a `@draft` file named `<name>.revision.feature` next to the original. Approving the revision replaces the original and removes the revision file.
+
+Approval is per feature, not per scenario. When only part of a feature is ready, it is split into two files.
+
+**Enforcement.** A Claude Code hook stops the agent from editing approved files, adding the `@approved` tag or touching the manifest. CI checks that every file has one status tag, that approved files match the manifest, and that any commit changing an approved file carries an `Approved-by:` trailer.
+
+**Runs.** `behave.ini` sets `default_tags = @approved`, so only approved scenarios run. Drafts never execute and never count as failures.
 
 ## Layout
 

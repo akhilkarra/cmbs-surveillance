@@ -1,4 +1,4 @@
-@layer:logic @surface:cli @surface:api
+@draft @layer:logic @surface:cli @surface:api
 Feature: Monthly surveillance alerts
   Each month a PM sees what changed since the month before. Every alert has a severity
   and links to the filing it came from.

@@ -1,4 +1,4 @@
-@layer:logic @surface:cli @surface:api
+@draft @layer:logic @surface:cli @surface:api
 Feature: Abstention and human review
   When the model is unsure, the field goes to a review queue instead of the panel.
   A wrong value that looks confident is worse than a blank marked "needs review".

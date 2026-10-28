@@ -1,4 +1,4 @@
-@surface:skill
+@draft @surface:skill
 Feature: Refresh routine
   One command refreshes a deal end to end: it finds new filings, loads them, extracts the
   comments, runs every check and reports what changed. It never reports success when a

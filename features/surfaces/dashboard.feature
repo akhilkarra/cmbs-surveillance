@@ -1,4 +1,4 @@
-@layer:ui @surface:ui
+@draft @layer:ui @surface:ui
 Feature: Surveillance dashboard
   A PM opens one page to see this month's alerts, opens a loan, and checks any value against
   its source in one click.

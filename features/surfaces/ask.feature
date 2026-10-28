@@ -1,4 +1,4 @@
-@surface:skill
+@draft @surface:skill
 Feature: Ask the panel
   An analyst asks a question in plain English and gets an answer drawn only from the panel,
   with a citation for every fact. Asking can read the data but never change it.

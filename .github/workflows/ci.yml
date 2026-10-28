@@ -20,5 +20,5 @@ jobs:
       - run: uv run ruff check
       - run: uv run ruff format --check
       - run: uv run pytest
-      - name: Accepted feature files match the manifest and carry approval
-        run: uv run python tools/check_accepted_features.py --range "${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"
+      - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
+        run: uv run python tools/check_approved_features.py --range "${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"

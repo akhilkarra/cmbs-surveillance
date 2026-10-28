@@ -1,4 +1,4 @@
-@layer:data @surface:cli @surface:api
+@draft @layer:data @surface:cli @surface:api
 Feature: Financials staleness
   NOI and DSCR in the loan tape are often months old. Every loan shows how old its financials
   are, measured from the period end and from the filing date, when a reader first sees them.

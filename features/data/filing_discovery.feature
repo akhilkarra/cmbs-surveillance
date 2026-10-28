@@ -1,4 +1,4 @@
-@layer:data @surface:cli @surface:api
+@draft @layer:data @surface:cli @surface:api
 Feature: Filing discovery
   An analyst names a CMBS deal and learns which public filings exist for it.
   The pipeline then knows which months it can load, and which deals it cannot see at all.

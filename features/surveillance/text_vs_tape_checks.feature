@@ -1,4 +1,4 @@
-@layer:logic @surface:cli @surface:api
+@draft @layer:logic @surface:cli @surface:api
 Feature: Text versus tape cross-checks
   When a servicer comment and the loan tape disagree, the disagreement is recorded with both
   values and their dates. Neither source overwrites the other. Transfer dates within two

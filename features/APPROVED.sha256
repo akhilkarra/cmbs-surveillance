@@ -1,0 +1,2 @@
+# SHA-256 of every feature file tagged @approved. Updated only by tools/approve_feature.py.
+# CI fails if an approved file does not match this list.

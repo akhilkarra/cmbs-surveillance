@@ -1,4 +1,4 @@
-@layer:data @surface:cli @surface:api
+@draft @layer:data @surface:cli @surface:api
 Feature: Distribution reports
   The monthly 10-D distribution report carries what the loan tape lacks: special-servicing
   comments, appraisal reductions and delinquency detail. Each item must attach to the right
