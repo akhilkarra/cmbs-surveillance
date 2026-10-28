@@ -22,7 +22,7 @@ from cmbs.book.service import (
 from cmbs.coverage.service import configure_vendor_source, vendor_sources_of
 from cmbs.db import engine
 from cmbs.deals.service import ConflictingDeal, get_or_create
-from cmbs.deals.tables import Deal
+from cmbs.deals.tables import Deal, DealAlias
 from cmbs.edgar import search
 from cmbs.edgar.replay import Replay
 from cmbs.edgar.service import (
@@ -34,7 +34,6 @@ from cmbs.edgar.service import (
     filings_of,
     latest_discovery,
 )
-from cmbs.edgar.tables import DealAlias
 from cmbs.filings.tables import Filing
 from tests.conftest import needs_db
 

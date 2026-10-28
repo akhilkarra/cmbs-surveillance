@@ -5,4 +5,10 @@ plas = "plas"    # plasTeX, the LaTeX-to-HTML tool behind leanblueprint
 pn = "pn"        # property name in tools/browser/absee_loan_rows.js
 
 [files]
-extend-exclude = ["data/samples/", ".claude/skills/", "uv.lock", "web/package-lock.json"]
+extend-exclude = [
+    "data/samples/",
+    ".claude/skills/",
+    "uv.lock",
+    "web/package-lock.json",
+    "tests/fixtures/distribution/*/",  # real filings: CUSIPs and property-type codes read as typos
+]
