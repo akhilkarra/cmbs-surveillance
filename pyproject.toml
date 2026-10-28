@@ -78,6 +78,8 @@ source_paths = ["src/cmbs"]
 # Test infrastructure (scratch databases, the fixture world) is not product logic.
 do_not_mutate = ["src/cmbs/db/migrations/*", "src/cmbs/testing/*"]
 pytest_add_cli_args_test_selection = ["tests"]
+# Tests of the developer tools (tests/test_mutation_tools.py) load them from tools/.
+also_copy = ["tools"]
 
 [tool.basedpyright]
 # basedpyright is pyright with its own Node binary, so nothing is installed on the host.

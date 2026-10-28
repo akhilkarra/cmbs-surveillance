@@ -53,37 +53,28 @@ def test_results_listing_is_parsed_to_names():
 
 
 def stats(shard: int = 0, of: int = 2, planned: int = 5, **counts) -> dict:
-    base = dict.fromkeys(("killed", "survived", "timeout", "no_tests", "skipped", "suspicious"), 0)
-    return {
-        **base,
-        "total": 10,
-        "not_checked": 10,
-        "shard": shard,
-        "of": of,
-        "planned": planned,
-        **counts,
-    }
+    """A shard's stats file as mutmut exports it: outcome counts only, no "not checked"."""
+    outcomes = dict.fromkeys(check.OUTCOMES, 0)
+    return {**outcomes, "total": 10, "shard": shard, "of": of, "planned": planned, **counts}
 
 
 def test_shards_combine_into_one_record():
-    first = stats(shard=0, killed=4, survived=1, not_checked=5)
-    second = stats(shard=1, killed=3, timeout=1, no_tests=1, not_checked=5)
+    first = stats(shard=0, killed=4, survived=1)
+    second = stats(shard=1, killed=3, timeout=1, no_tests=1)
     combined = check.combine([first, second])
     assert combined == {
+        **dict.fromkeys(check.OUTCOMES, 0),
         "killed": 7,
         "survived": 1,
         "timeout": 1,
         "no_tests": 1,
-        "skipped": 0,
-        "suspicious": 0,
         "total": 10,
-        "not_checked": 0,
     }
     assert check.score(combined) == 80.0
 
 
 def test_a_duplicated_shard_cannot_hide_a_missing_one():
-    same = stats(shard=0, killed=5, not_checked=5)
+    same = stats(shard=0, killed=5)
     with pytest.raises(
         check.ShardMismatch, match=r"expected shards 0 to 1 once each, got \[0, 0\]"
     ):
@@ -91,21 +82,21 @@ def test_a_duplicated_shard_cannot_hide_a_missing_one():
 
 
 def test_a_shard_that_ran_less_than_it_planned_is_caught():
-    short = stats(shard=0, planned=5, killed=4, not_checked=6)
-    other = stats(shard=1, planned=5, killed=5, not_checked=5)
+    short = stats(shard=0, planned=5, killed=4)
+    other = stats(shard=1, planned=5, killed=5)
     with pytest.raises(check.ShardMismatch, match="shard 0 checked 4 mutants but planned 5"):
         check.combine([short, other])
 
 
 def test_files_without_shard_stamps_are_refused():
-    unstamped = {k: v for k, v in stats(killed=5, not_checked=5).items() if k != "of"}
+    unstamped = {k: v for k, v in stats(killed=5).items() if k != "of"}
     with pytest.raises(check.ShardMismatch, match="how many shards there are"):
         check.combine([unstamped, unstamped])
 
 
 def test_shards_that_together_miss_mutants_are_caught():
-    first = stats(shard=0, planned=4, killed=4, not_checked=6)
-    second = stats(shard=1, planned=4, killed=4, not_checked=6)
+    first = stats(shard=0, planned=4, killed=4)
+    second = stats(shard=1, planned=4, killed=4)
     with pytest.raises(check.ShardMismatch, match="checked 8 mutants, but there are 10"):
         check.combine([first, second])
 
@@ -114,8 +105,8 @@ def test_shards_from_different_code_are_caught():
     with pytest.raises(check.ShardMismatch, match="different numbers of mutants"):
         check.combine(
             [
-                stats(shard=0, killed=5, not_checked=5),
-                {**stats(shard=1, killed=5), "total": 12, "not_checked": 7},
+                stats(shard=0, killed=5),
+                {**stats(shard=1, killed=5), "total": 12},
             ]
         )
 
@@ -127,8 +118,8 @@ def test_no_files_is_caught():
 
 def test_the_check_fails_below_the_floor_and_passes_above(tmp_path, capsys):
     a, b = tmp_path / "a.json", tmp_path / "b.json"
-    a.write_text(json.dumps(stats(shard=0, killed=4, survived=1, not_checked=5)))
-    b.write_text(json.dumps(stats(shard=1, killed=3, survived=2, not_checked=5)))
+    a.write_text(json.dumps(stats(shard=0, killed=4, survived=1)))
+    b.write_text(json.dumps(stats(shard=1, killed=3, survived=2)))
     assert check.main(["--min", "70", str(a), str(b)]) == 0
     assert "mutation score 70.0% (floor 70.0%)" in capsys.readouterr().out
     assert check.main(["--min", "71", str(a), str(b)]) == 1
@@ -136,6 +127,11 @@ def test_the_check_fails_below_the_floor_and_passes_above(tmp_path, capsys):
 
 def test_mismatched_shards_fail_the_check(tmp_path, capsys):
     a = tmp_path / "a.json"
-    a.write_text(json.dumps(stats(shard=0, killed=5, not_checked=5)))
+    a.write_text(json.dumps(stats(shard=0, killed=5)))
     assert check.main(["--min", "0", str(a), str(a)]) == 1
     assert "do not add up" in capsys.readouterr().out
+
+
+def test_every_exported_outcome_counts_as_checked():
+    one_each = {outcome: 1 for outcome in check.OUTCOMES}
+    assert check.checked(one_each) == len(check.OUTCOMES)

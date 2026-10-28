@@ -75,7 +75,11 @@ def main(argv: list[str]) -> int:
     print(f"shard {args.shard} of {args.shards}: {len(names)} mutants")
     if names:
         command = ["mutmut", "run", "--max-children", str(args.max_children), *names]
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            # mutmut reports failures on stdout; show the end of it so CI says what went wrong.
+            print(result.stdout[-4000:], result.stderr[-2000:], sep="\n", file=sys.stderr)
+            return result.returncode
     subprocess.run(["mutmut", "export-cicd-stats"], check=True)
     stamped = {
         **json.loads(CICD_STATS.read_text()),

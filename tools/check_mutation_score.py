@@ -15,7 +15,22 @@ import sys
 from pathlib import Path
 
 STATS = Path("mutants/mutmut-cicd-stats.json")
-COUNTED = ("killed", "survived", "timeout", "no_tests", "skipped", "suspicious")
+# Every outcome mutmut exports. A mutant that was checked has exactly one; one that was not has
+# none (mutmut does not export a "not checked" count).
+OUTCOMES = (
+    "killed",
+    "survived",
+    "timeout",
+    "no_tests",
+    "skipped",
+    "suspicious",
+    "check_was_interrupted_by_user",
+    "segfault",
+)
+
+
+def checked(stats: dict) -> int:
+    return sum(stats.get(outcome, 0) for outcome in OUTCOMES)
 
 
 class ShardMismatch(ValueError):
@@ -41,7 +56,7 @@ def combine(shards: list[dict]) -> dict:
     if seen != list(range(expected)):
         raise ShardMismatch(f"expected shards 0 to {expected - 1} once each, got {seen}")
     for shard in shards:
-        ran = shard["total"] - shard["not_checked"]
+        ran = checked(shard)
         if ran != shard["planned"]:
             raise ShardMismatch(
                 f"shard {shard['shard']} checked {ran} mutants but planned {shard['planned']}"
@@ -50,11 +65,11 @@ def combine(shards: list[dict]) -> dict:
     if len(totals) != 1:
         raise ShardMismatch(f"shards saw different numbers of mutants: {sorted(totals)}")
     total = totals.pop()
-    checked = sum(shard["total"] - shard["not_checked"] for shard in shards)
-    if checked != total:
-        raise ShardMismatch(f"the shards checked {checked} mutants, but there are {total}")
-    combined = {key: sum(shard.get(key, 0) for shard in shards) for key in COUNTED}
-    return {**combined, "total": total, "not_checked": 0}
+    together = sum(checked(shard) for shard in shards)
+    if together != total:
+        raise ShardMismatch(f"the shards checked {together} mutants, but there are {total}")
+    combined = {key: sum(shard.get(key, 0) for shard in shards) for key in OUTCOMES}
+    return {**combined, "total": total}
 
 
 def score(stats: dict) -> float:
