@@ -34,7 +34,7 @@ class Recording(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     format: Literal[1] = 1
-    key: str
+    call_id: str
     model: str
     prompt_version: int
     questions_sha256: str
@@ -65,7 +65,7 @@ def make_recording(
 ) -> Recording:
     hashes = request_hashes(request, input_text)
     return Recording(
-        key=recording_key(model=request.model, prompt_version=prompt_version, **hashes),
+        call_id=recording_key(model=request.model, prompt_version=prompt_version, **hashes),
         model=request.model,
         prompt_version=prompt_version,
         classification=classification,
@@ -97,14 +97,14 @@ def check_recording(recording: Recording) -> None:
         recording.model != recording.request.model
         or recording.questions_sha256 != dumped["questions_sha256"]
         or recording.state_sha256 != dumped["state_sha256"]
-        or recording.key != expected
+        or recording.call_id != expected
     ):
-        raise BadRecording(f"recording {recording.key[:12]} does not match its own request")
+        raise BadRecording(f"recording {recording.call_id[:12]} does not match its own request")
     check_answered_by(recording.model, recording.response.model)
     try:
         check_answers(recording.request, recording.response)
     except MalformedAnswer as error:
-        raise BadRecording(f"recording {recording.key[:12]}: {error}") from None
+        raise BadRecording(f"recording {recording.call_id[:12]}: {error}") from None
 
 
 class Recordings(Protocol):
@@ -119,18 +119,18 @@ class MemoryRecordings:
     """Recordings in a dict, for tests that need no database."""
 
     def __init__(self, recordings: list[Recording] | None = None) -> None:
-        self.stored = {recording.key: recording for recording in recordings or []}
+        self.stored = {recording.call_id: recording for recording in recordings or []}
 
     def get(self, key: str) -> Recording | None:
         return self.stored.get(key)
 
     def put(self, recording: Recording) -> Recording:
-        return self.stored.setdefault(recording.key, recording)
+        return self.stored.setdefault(recording.call_id, recording)
 
 
 def _from_row(row: ModelCall) -> Recording:
     return Recording(
-        key=row.key,
+        call_id=row.call_id,
         model=row.model,
         prompt_version=row.prompt_version,
         questions_sha256=row.questions_sha256,
@@ -161,7 +161,7 @@ class DbRecordings:
         self.db.execute(
             insert(ModelCall)
             .values(
-                key=recording.key,
+                call_id=recording.call_id,
                 model=recording.model,
                 answered_by=recording.response.model,
                 prompt_version=recording.prompt_version,
@@ -175,15 +175,15 @@ class DbRecordings:
                 request=recording.request.model_dump(mode="json"),
                 response=recording.response.model_dump(mode="json"),
             )
-            .on_conflict_do_nothing(index_elements=[ModelCall.key])
+            .on_conflict_do_nothing(index_elements=[ModelCall.call_id])
         )
-        stored = self.db.get(ModelCall, recording.key, populate_existing=True)
+        stored = self.db.get(ModelCall, recording.call_id, populate_existing=True)
         if stored is None:  # pragma: no cover - the insert above guarantees the row
-            raise RuntimeError(f"recording {recording.key} vanished after insert")
+            raise RuntimeError(f"recording {recording.call_id} vanished after insert")
         return _from_row(stored)
 
     def all(self) -> list[Recording]:
-        rows = self.db.scalars(select(ModelCall).order_by(ModelCall.recorded_at, ModelCall.key))
+        rows = self.db.scalars(select(ModelCall).order_by(ModelCall.recorded_at, ModelCall.call_id))
         return [_from_row(row) for row in rows]
 
 
@@ -194,7 +194,7 @@ def read_file(path: Path) -> Recording:
 
 
 def file_name(recording: Recording) -> str:
-    return f"{recording.key[:16]}.json"
+    return f"{recording.call_id[:16]}.json"
 
 
 def write_file(directory: Path, recording: Recording) -> Path:

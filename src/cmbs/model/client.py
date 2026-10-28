@@ -18,8 +18,7 @@ from cmbs.model.policy import (
     check_answers,
     check_may_send,
     check_pinned,
-    recording_key,
-    request_hashes,
+    key_for,
 )
 from cmbs.model.providers import Provider
 from cmbs.model.recordings import Recording, Recordings, check_recording, make_recording
@@ -61,11 +60,7 @@ class ModelClient:
         prompt_version = settings.values.prompt_version
         check_pinned(model)
         request = ModelRequest(model=model, state=ask.state, questions=ask.questions)
-        key = recording_key(
-            model=model,
-            prompt_version=prompt_version,
-            **request_hashes(request, ask.input_text),
-        )
+        key = key_for(request, prompt_version=prompt_version, input_text=ask.input_text)
         recorded = self.recordings.get(key)
         if recorded is not None:
             check_recording(recorded)

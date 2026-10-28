@@ -22,7 +22,7 @@ class ModelCall(Base):
         {"schema": APP_SCHEMA},
     )
 
-    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    call_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     model: Mapped[str] = mapped_column(String(64))
     answered_by: Mapped[str] = mapped_column(String(64))
     prompt_version: Mapped[int] = mapped_column(Integer)

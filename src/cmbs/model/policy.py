@@ -110,3 +110,10 @@ def request_hashes(request: ModelRequest, input_text: str) -> dict[str, str]:
         "state_sha256": sha256(canonical(dumped["state"])),
         "input_sha256": sha256(input_text),
     }
+
+
+def key_for(request: ModelRequest, *, prompt_version: int, input_text: str) -> str:
+    """The recording key of a request about `input_text`."""
+    return recording_key(
+        model=request.model, prompt_version=prompt_version, **request_hashes(request, input_text)
+    )

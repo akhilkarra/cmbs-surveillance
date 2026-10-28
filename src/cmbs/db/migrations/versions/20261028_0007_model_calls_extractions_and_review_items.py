@@ -28,7 +28,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "model_call",
-        sa.Column("key", sa.String(length=64), nullable=False),
+        sa.Column("call_id", sa.String(length=64), nullable=False),
         sa.Column("model", sa.String(length=64), nullable=False),
         sa.Column("answered_by", sa.String(length=64), nullable=False),
         sa.Column("prompt_version", sa.Integer(), nullable=False),
@@ -48,7 +48,7 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "answered_by = model", name=op.f("ck_model_call_answered_by_model_asked")
         ),
-        sa.PrimaryKeyConstraint("key", name=op.f("pk_model_call")),
+        sa.PrimaryKeyConstraint("call_id", name=op.f("pk_model_call")),
         schema="app",
     )
     op.create_index(
@@ -85,7 +85,9 @@ def upgrade() -> None:
             ["extracted_by"], ["app.user.name"], name=op.f("fk_extraction_extracted_by_user")
         ),
         sa.ForeignKeyConstraint(
-            ["model_call"], ["app.model_call.key"], name=op.f("fk_extraction_model_call_model_call")
+            ["model_call"],
+            ["app.model_call.call_id"],
+            name=op.f("fk_extraction_model_call_model_call"),
         ),
         sa.ForeignKeyConstraint(["run_id"], ["app.run.id"], name=op.f("fk_extraction_run_id_run")),
         sa.ForeignKeyConstraint(

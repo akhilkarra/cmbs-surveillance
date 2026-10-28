@@ -63,7 +63,7 @@ class Extraction(Base):
     settings_version: Mapped[int] = mapped_column(
         ForeignKey(f"{APP_SCHEMA}.settings_version.version")
     )
-    model_call: Mapped[str] = mapped_column(ForeignKey(f"{APP_SCHEMA}.model_call.key"))
+    model_call: Mapped[str] = mapped_column(ForeignKey(f"{APP_SCHEMA}.model_call.call_id"))
     run_id: Mapped[int | None] = mapped_column(ForeignKey(f"{APP_SCHEMA}.run.id"))
     extracted_by: Mapped[str] = mapped_column(ForeignKey(f"{APP_SCHEMA}.user.name"))
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

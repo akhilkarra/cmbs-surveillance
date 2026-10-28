@@ -52,7 +52,8 @@ from cmbs.extraction.tables import (
 )
 from cmbs.filings.tables import Filing
 from cmbs.model.client import Answered, Ask, ModelClient
-from cmbs.model.policy import Classification, check_pinned
+from cmbs.model.policy import Classification, check_pinned, key_for
+from cmbs.model.types import ModelRequest
 from cmbs.settings.service import InForce, in_force
 
 EXTRACT = "extract comment"
@@ -130,6 +131,17 @@ class ExtractionSummary:
     deal: str
     period: Period
     comments: list[Extracted]
+
+
+# Comments from 10-D filings on EDGAR are public; any other source says what it is.
+TEN_D_CLASSIFICATION = Classification.PUBLIC
+
+
+def call_key(text: str, *, model: str, prompt_version: int) -> str:
+    """The recording key the extraction of `text` asks under, for checking a recording exists."""
+    asked = plan(text, split(text))
+    request = ModelRequest(model=model, state=asked.state, questions=asked.questions)
+    return key_for(request, prompt_version=prompt_version, input_text=text)
 
 
 def check_settings(settings: InForce) -> None:
@@ -261,7 +273,7 @@ def _store(
             model=settings.values.model,
             prompt_version=settings.values.prompt_version,
             settings_version=settings.version,
-            model_call=reading.answered.recording.key,
+            model_call=reading.answered.recording.call_id,
             run_id=run_id,
             extracted_by=actor.user,
             extracted_at=now,
@@ -319,7 +331,7 @@ def _store(
             "model": settings.values.model,
             "prompt_version": settings.values.prompt_version,
             "settings_version": settings.version,
-            "model_call": reading.answered.recording.key,
+            "model_call": reading.answered.recording.call_id,
             "replayed": reading.answered.replayed,
             "outcomes": outcomes,
         },
@@ -328,7 +340,7 @@ def _store(
         loan=comment.loan_id,
         accession=comment.accession,
         extraction_id=extraction_id,
-        model_call=reading.answered.recording.key,
+        model_call=reading.answered.recording.call_id,
         replayed=reading.answered.replayed,
         outcomes=outcomes,
     )
@@ -402,7 +414,7 @@ def extract_comments(
                 continue
             source = SourceText(
                 text=comment.comment,
-                classification=Classification.PUBLIC,  # 10-Ds are public on EDGAR
+                classification=TEN_D_CLASSIFICATION,
                 subject=f"loan {comment.loan_id} of {deal_row.name}, "
                 f"{Period.of(comment.period)} comment ({comment.accession})",
             )
