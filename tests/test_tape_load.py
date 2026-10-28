@@ -39,6 +39,7 @@ from cmbs.tape.service import (
 )
 from cmbs.tape.tables import LoanPeriod, LoanTape, QuarantinedLoan, TapeAsset
 from tests.conftest import needs_db
+from tests.fixtures.tape.database import module_database_fixture, tx_fixture  # noqa: F401
 from tests.fixtures.tape.tapes import asset, fixture_bytes, tape
 
 DEAL = "Fixture Trust 2026-F1"
@@ -258,9 +259,9 @@ def count(db: Session, table) -> int:
 
 
 @needs_db
-def test_loads_raw_bronze_and_silver(db):
-    result = load(db)
-    db.commit()
+def test_loads_raw_bronze_and_silver(tx):
+    result = load(tx)
+    tx.commit()
     assert result == LoadSummary(
         deal=DEAL,
         accession=ACCESSION,
@@ -273,7 +274,7 @@ def test_loads_raw_bronze_and_silver(db):
         already_loaded=False,
         notes=[],
     )
-    filing = db.get(Filing, ACCESSION)
+    filing = tx.get(Filing, ACCESSION)
     assert filing is not None
     assert (filing.cik, filing.form, filing.period, filing.amends) == (
         CIK,
@@ -281,7 +282,7 @@ def test_loads_raw_bronze_and_silver(db):
         dt.date(2026, 9, 1),
         None,
     )
-    loaded = db.get(LoanTape, ACCESSION)
+    loaded = tx.get(LoanTape, ACCESSION)
     assert loaded is not None
     assert (loaded.file_name, loaded.period, loaded.filing_date, loaded.amendment_depth) == (
         "ex102.xml",
@@ -289,11 +290,11 @@ def test_loads_raw_bronze_and_silver(db):
         FILED,
         0,
     )
-    assert [(a.asset_number, a.position) for a in stored_assets(db, ACCESSION)] == [
+    assert [(a.asset_number, a.position) for a in stored_assets(tx, ACCESSION)] == [
         ("1", 1),
         ("1A", 2),
     ]
-    [one] = db.scalars(select(LoanPeriod)).all()
+    [one] = tx.scalars(select(LoanPeriod)).all()
     assert (one.loan, one.period, one.filing_date, one.accession, one.file_name) == (
         "1",
         dt.date(2026, 9, 1),
@@ -311,33 +312,33 @@ def test_loads_raw_bronze_and_silver(db):
 
 
 @needs_db
-def test_loading_again_changes_nothing_and_reports_the_same_counts(db):
-    first = load(db)
-    db.commit()
-    again = load(db)
+def test_loading_again_changes_nothing_and_reports_the_same_counts(tx):
+    first = load(tx)
+    tx.commit()
+    again = load(tx)
     assert again == replace(first, already_loaded=True)
-    assert count(db, TapeAsset) == 2
-    assert count(db, LoanPeriod) == 1
+    assert count(tx, TapeAsset) == 2
+    assert count(tx, LoanPeriod) == 1
 
 
 @needs_db
-def test_a_loan_failing_the_contract_is_quarantined_not_loaded(db):
-    result = load(db, NEGATIVE)
+def test_a_loan_failing_the_contract_is_quarantined_not_loaded(tx):
+    result = load(tx, NEGATIVE)
     assert result.loans_loaded == 1
     assert result.quarantined == [Quarantined("5", 1, "ending balance is negative")]
-    [stored] = quarantined_loans(db, ACCESSION)
+    [stored] = quarantined_loans(tx, ACCESSION)
     assert (stored.loan, stored.period, stored.filing_date, stored.reason) == (
         "5",
         dt.date(2026, 9, 1),
         FILED,
         "ending balance is negative",
     )
-    assert set(db.scalars(select(LoanPeriod.loan))) == {"6"}
-    assert count(db, TapeAsset) == 2  # bronze keeps the loan as reported
+    assert set(tx.scalars(select(LoanPeriod.loan))) == {"6"}
+    assert count(tx, TapeAsset) == 2  # bronze keeps the loan as reported
 
 
 @needs_db
-def test_a_portfolio_note_reaches_the_summary(db):
+def test_a_portfolio_note_reaches_the_summary(tx):
     content = tape(
         asset("1").replace(
             "</assets>",
@@ -345,21 +346,21 @@ def test_a_portfolio_note_reaches_the_summary(db):
             "</property><property></property></assets>",
         )
     )
-    result = load(db, content)
+    result = load(tx, content)
     note = (
         "1 of 2 properties report no most recent financials, "
         "so the loan's NOI, NCF and DSCR are not reported"
     )
     assert result.notes == [f"loan 1: {note}"]
-    assert db.scalars(select(LoanPeriod.property_note)).one() == note
+    assert tx.scalars(select(LoanPeriod.property_note)).one() == note
 
 
 @needs_db
-def test_the_database_refuses_a_negative_balance_the_contract_missed(db):
-    load(db)
-    db.flush()
+def test_the_database_refuses_a_negative_balance_the_contract_missed(tx):
+    load(tx)
+    tx.flush()
     with pytest.raises(IntegrityError, match="ck_loan_period_ending_balance_not_negative"):
-        db.execute(text("UPDATE silver.loan_period SET ending_balance = -1 WHERE loan = '1'"))
+        tx.execute(text("UPDATE silver.loan_period SET ending_balance = -1 WHERE loan = '1'"))
 
 
 @needs_db
@@ -381,17 +382,17 @@ def test_the_database_refuses_a_negative_balance_the_contract_missed(db):
         ("bronze.loan_tape", "period", "'2026-09-02'", "loan_tape_period_is_first"),
     ],
 )
-def test_the_database_repeats_the_contract(db, table, column, value, constraint):
-    load(db)
-    db.execute(
+def test_the_database_repeats_the_contract(tx, table, column, value, constraint):
+    load(tx)
+    tx.execute(
         text(
             "UPDATE silver.loan_period SET financials_start = '2026-01-01', "
             "financials_end = '2026-06-30', financials_end_newest = '2026-06-30'"
         )
     )
-    db.flush()
+    tx.flush()
     with pytest.raises(IntegrityError, match=constraint):
-        db.execute(text(f"UPDATE {table} SET {column} = {value}"))
+        tx.execute(text(f"UPDATE {table} SET {column} = {value}"))
 
 
 # ---------------------------------------------------------------------------- refusals
@@ -402,79 +403,79 @@ def deals(db: Session) -> list[str]:
 
 
 @needs_db
-def test_a_deal_without_a_cik_is_refused_before_anything_is_written(db):
+def test_a_deal_without_a_cik_is_refused_before_anything_is_written(tx):
     with pytest.raises(TapeRefused) as refusal:
-        load(db, cik=None)
+        load(tx, cik=None)
     assert (
         str(refusal.value)
         == "Fixture Trust 2026-F1 has no CIK, so its filings cannot be registered"
     )
-    assert deals(db) == []  # not even in the session: nothing was written before the check
-    assert count(db, Filing) == 0
+    assert deals(tx) == []  # not even in the session: nothing was written before the check
+    assert count(tx, Filing) == 0
 
 
 @needs_db
-def test_a_refused_amendment_for_a_new_deal_leaves_no_deal(db):
+def test_a_refused_amendment_for_a_new_deal_leaves_no_deal(tx):
     with pytest.raises(TapeRefused) as refusal:
-        amend(db, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
+        amend(tx, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
     assert str(refusal.value) == (
         "0009900001-26-000101 is not a registered September 2026 loan tape of this deal"
     )
-    assert deals(db) == []
+    assert deals(tx) == []
 
 
 @needs_db
-def test_the_deals_known_cik_is_used(db):
-    get_or_create(db, DEAL, cik=CIK)
-    assert load(db, cik=None).loans_loaded == 1
-    assert db.get(Filing, ACCESSION).cik == CIK  # pyright: ignore[reportOptionalMemberAccess]
+def test_the_deals_known_cik_is_used(tx):
+    get_or_create(tx, DEAL, cik=CIK)
+    assert load(tx, cik=None).loans_loaded == 1
+    assert tx.get(Filing, ACCESSION).cik == CIK  # pyright: ignore[reportOptionalMemberAccess]
 
 
 @needs_db
-def test_a_different_cik_for_a_known_deal_is_refused(db):
-    get_or_create(db, DEAL, cik=CIK)
+def test_a_different_cik_for_a_known_deal_is_refused(tx):
+    get_or_create(tx, DEAL, cik=CIK)
     with pytest.raises(
         ConflictingDeal, match="^Fixture Trust 2026-F1 already has CIK 9900001, not 1$"
     ):
-        load(db, cik=1)
-    assert count(db, Filing) == 0
+        load(tx, cik=1)
+    assert count(tx, Filing) == 0
 
 
 @needs_db
-def test_an_empty_tape_is_refused(db):
+def test_an_empty_tape_is_refused(tx):
     with pytest.raises(TapeRefused, match="^the tape lists no assets$"):
-        load(db, tape())
+        load(tx, tape())
 
 
 @needs_db
-def test_a_second_file_for_a_loaded_accession_is_refused(db):
-    load(db)
+def test_a_second_file_for_a_loaded_accession_is_refused(tx):
+    load(tx)
     with pytest.raises(TapeRefused) as refusal:
-        load(db, file_name="other.xml")
+        load(tx, file_name="other.xml")
     assert str(refusal.value) == "0009900001-26-000101 is already loaded from ex102.xml"
-    assert db.get(FilingFile, (ACCESSION, "other.xml")) is None  # refused before storing
+    assert tx.get(FilingFile, (ACCESSION, "other.xml")) is None  # refused before storing
 
 
 @needs_db
-def test_different_bytes_under_the_same_file_are_refused(db):
-    load(db)
+def test_different_bytes_under_the_same_file_are_refused(tx):
+    load(tx)
     with pytest.raises(ConflictingFiling) as refusal:
-        load(db, SMALL + b"\n")
+        load(tx, SMALL + b"\n")
     assert (
         str(refusal.value) == "0009900001-26-000101/ex102.xml is already stored with other content"
     )
 
 
 @needs_db
-def test_a_file_stored_with_other_bytes_before_any_load_is_refused(db):
-    deal = get_or_create(db, DEAL, cik=CIK)
+def test_a_file_stored_with_other_bytes_before_any_load_is_refused(tx):
+    deal = get_or_create(tx, DEAL, cik=CIK)
     register_filing(
-        db, accession=ACCESSION, cik=CIK, form="ABS-EE", filing_date=FILED, deal_id=deal.id
+        tx, accession=ACCESSION, cik=CIK, form="ABS-EE", filing_date=FILED, deal_id=deal.id
     )
-    store_file(db, accession=ACCESSION, name="ex102.xml", content=b"<other/>")
+    store_file(tx, accession=ACCESSION, name="ex102.xml", content=b"<other/>")
     with pytest.raises(ConflictingFiling, match="already stored with other content"):
-        load(db)
-    assert count(db, LoanTape) == 0
+        load(tx)
+    assert count(tx, LoanTape) == 0
 
 
 @needs_db
@@ -493,35 +494,35 @@ def test_a_file_stored_with_other_bytes_before_any_load_is_refused(db):
         ),
     ],
 )
-def test_a_filing_registered_with_other_facts_is_refused_before_writing(db, registered, message):
-    deal = get_or_create(db, DEAL, cik=CIK)
+def test_a_filing_registered_with_other_facts_is_refused_before_writing(tx, registered, message):
+    deal = get_or_create(tx, DEAL, cik=CIK)
     facts = {"form": "ABS-EE", "filing_date": FILED, "deal_id": deal.id} | registered
-    register_filing(db, accession=ACCESSION, cik=CIK, **facts)
+    register_filing(tx, accession=ACCESSION, cik=CIK, **facts)
     with pytest.raises(ConflictingFiling) as refusal:
-        load(db)
+        load(tx)
     assert str(refusal.value) == message
-    assert count(db, LoanTape) == 0
+    assert count(tx, LoanTape) == 0
 
 
 @needs_db
-def test_a_filing_registered_to_another_deal_is_refused_before_creating_this_one(db):
-    other = get_or_create(db, "Fixture Trust 2026-F2", cik=CIK)
+def test_a_filing_registered_to_another_deal_is_refused_before_creating_this_one(tx):
+    other = get_or_create(tx, "Fixture Trust 2026-F2", cik=CIK)
     register_filing(
-        db, accession=ACCESSION, cik=CIK, form="ABS-EE", filing_date=FILED, deal_id=other.id
+        tx, accession=ACCESSION, cik=CIK, form="ABS-EE", filing_date=FILED, deal_id=other.id
     )
     with pytest.raises(
         ConflictingFiling, match="^0009900001-26-000101 is already registered to another deal$"
     ):
-        load(db)
-    assert deals(db) == ["Fixture Trust 2026-F2"]
+        load(tx)
+    assert deals(tx) == ["Fixture Trust 2026-F2"]
 
 
 @needs_db
-def test_a_filing_registered_with_another_amendment_link_is_refused(db):
-    load(db)
-    deal = get_or_create(db, DEAL)
+def test_a_filing_registered_with_another_amendment_link_is_refused(tx):
+    load(tx)
+    deal = get_or_create(tx, DEAL)
     register_filing(
-        db,
+        tx,
         accession="0009900001-26-000109",
         cik=CIK,
         form="ABS-EE",
@@ -530,7 +531,7 @@ def test_a_filing_registered_with_another_amendment_link_is_refused(db):
         period=dt.date(2026, 9, 1),
     )
     register_filing(
-        db,
+        tx,
         accession=AMENDMENT,
         cik=CIK,
         form="ABS-EE/A",
@@ -542,17 +543,17 @@ def test_a_filing_registered_with_another_amendment_link_is_refused(db):
         ConflictingFiling,
         match="already has amends '0009900001-26-000109', not '0009900001-26-000101'",
     ):
-        amend(db, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
+        amend(tx, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
 
 
 @needs_db
-def test_a_tape_loads_on_top_of_the_filing_as_discovery_registers_it(db):
+def test_a_tape_loads_on_top_of_the_filing_as_discovery_registers_it(tx):
     """Discovery registers the ABS-EE first, with EDGAR's primary document and the
     distribution date; the tape then loads without contradicting either."""
-    deal = get_or_create(db, "BANK 2018-BNK13", cik=1744707)
+    deal = get_or_create(tx, "BANK 2018-BNK13", cik=1744707)
     accession = "0001888524-26-017705"
     register_filing(
-        db,
+        tx,
         accession=accession,
         cik=1744707,
         form="ABS-EE",
@@ -563,7 +564,7 @@ def test_a_tape_loads_on_top_of_the_filing_as_discovery_registers_it(db):
         primary_document="wcm18b13_absee-202609.htm",
     )
     summary = load_tape(
-        db,
+        tx,
         deal="BANK 2018-BNK13",
         content=SMALL,
         file_name="exh_102.xml",
@@ -571,20 +572,20 @@ def test_a_tape_loads_on_top_of_the_filing_as_discovery_registers_it(db):
         filing_date=FILED,
     )
     assert summary.period == SEPTEMBER
-    filing = db.get(Filing, accession)
+    filing = tx.get(Filing, accession)
     assert filing is not None
     assert (filing.period, filing.report_date, filing.primary_document) == (
         dt.date(2026, 9, 1),
         dt.date(2026, 9, 17),
         "wcm18b13_absee-202609.htm",
     )
-    assert db.get(FilingFile, (accession, "exh_102.xml")) is not None
+    assert tx.get(FilingFile, (accession, "exh_102.xml")) is not None
 
 
 @needs_db
-def test_a_loaded_tape_leaves_primary_document_and_report_date_to_discovery(db):
-    load(db)
-    filing = db.get(Filing, ACCESSION)
+def test_a_loaded_tape_leaves_primary_document_and_report_date_to_discovery(tx):
+    load(tx)
+    filing = tx.get(Filing, ACCESSION)
     assert filing is not None
     assert (filing.period, filing.report_date, filing.primary_document) == (
         dt.date(2026, 9, 1),
@@ -597,13 +598,13 @@ def test_a_loaded_tape_leaves_primary_document_and_report_date_to_discovery(db):
 
 
 @needs_db
-def test_an_amendment_adds_a_version_and_keeps_the_original(db):
-    load(db)
+def test_an_amendment_adds_a_version_and_keeps_the_original(tx):
+    load(tx)
     result = amend(
-        db, AMENDMENT, dt.date(2026, 10, 5), ACCESSION, SMALL.replace(b">1.45<", b">1.25<")
+        tx, AMENDMENT, dt.date(2026, 10, 5), ACCESSION, SMALL.replace(b">1.45<", b">1.25<")
     )
     assert result.loans_loaded == 1
-    versions = db.execute(
+    versions = tx.execute(
         select(LoanPeriod.accession, LoanPeriod.filing_date, LoanPeriod.dscr).order_by(
             LoanPeriod.filing_date
         )
@@ -612,9 +613,9 @@ def test_an_amendment_adds_a_version_and_keeps_the_original(db):
         (ACCESSION, FILED, Decimal("1.45")),
         (AMENDMENT, dt.date(2026, 10, 5), Decimal("1.25")),
     ]
-    filing = db.get(Filing, AMENDMENT)
+    filing = tx.get(Filing, AMENDMENT)
     assert filing is not None and (filing.form, filing.amends) == ("ABS-EE/A", ACCESSION)
-    assert db.get(LoanTape, AMENDMENT).amendment_depth == 1  # pyright: ignore[reportOptionalMemberAccess]
+    assert tx.get(LoanTape, AMENDMENT).amendment_depth == 1  # pyright: ignore[reportOptionalMemberAccess]
 
 
 @needs_db
@@ -634,25 +635,25 @@ def test_an_amendment_adds_a_version_and_keeps_the_original(db):
         ),
     ],
 )
-def test_an_amendment_must_follow_a_loaded_tape(db, amends, filed, message):
-    load(db)
+def test_an_amendment_must_follow_a_loaded_tape(tx, amends, filed, message):
+    load(tx)
     with pytest.raises(TapeRefused) as refusal:
-        amend(db, AMENDMENT, filed, amends)
+        amend(tx, AMENDMENT, filed, amends)
     assert str(refusal.value) == message
 
 
 @needs_db
-def test_an_amendment_must_be_of_the_same_deal_period_and_kind(db):
-    load(db)
-    other = get_or_create(db, "Fixture Trust 2026-F2", cik=CIK + 1)
-    deal = get_or_create(db, DEAL)
+def test_an_amendment_must_be_of_the_same_deal_period_and_kind(tx):
+    load(tx)
+    other = get_or_create(tx, "Fixture Trust 2026-F2", cik=CIK + 1)
+    deal = get_or_create(tx, DEAL)
     for accession, cik, form, deal_id, period in [
         ("0009900001-26-000103", CIK + 1, "ABS-EE", other.id, dt.date(2026, 9, 1)),
         ("0009900001-26-000104", CIK, "10-D", deal.id, dt.date(2026, 9, 1)),
         ("0009900001-26-000105", CIK, "ABS-EE", deal.id, dt.date(2026, 8, 1)),
     ]:
         register_filing(
-            db,
+            tx,
             accession=accession,
             cik=cik,
             form=form,
@@ -661,52 +662,52 @@ def test_an_amendment_must_be_of_the_same_deal_period_and_kind(db):
             period=period,
         )
         with pytest.raises(TapeRefused, match="is not a registered September 2026 loan tape"):
-            amend(db, AMENDMENT, dt.date(2026, 10, 5), accession)
+            amend(tx, AMENDMENT, dt.date(2026, 10, 5), accession)
 
 
 @needs_db
-def test_an_amendment_of_an_amendment_ranks_deeper(db):
-    load(db)
-    amend(db, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
-    third = amend(db, "0009900001-26-000106", dt.date(2026, 10, 6), AMENDMENT)
+def test_an_amendment_of_an_amendment_ranks_deeper(tx):
+    load(tx)
+    amend(tx, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
+    third = amend(tx, "0009900001-26-000106", dt.date(2026, 10, 6), AMENDMENT)
     assert third.loans_loaded == 1
-    assert db.get(LoanTape, "0009900001-26-000106").amendment_depth == 2  # pyright: ignore[reportOptionalMemberAccess]
+    assert tx.get(LoanTape, "0009900001-26-000106").amendment_depth == 2  # pyright: ignore[reportOptionalMemberAccess]
 
 
 @needs_db
-def test_amendment_chain_follows_registered_filings_only(db):
-    load(db)
-    amend(db, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
-    assert [f.accession for f in amendment_chain(db, AMENDMENT)] == [AMENDMENT, ACCESSION]
-    assert amendment_chain(db, None) == []
-    assert amendment_chain(db, "0000000000-00-000000") == []
+def test_amendment_chain_follows_registered_filings_only(tx):
+    load(tx)
+    amend(tx, AMENDMENT, dt.date(2026, 10, 5), ACCESSION)
+    assert [f.accession for f in amendment_chain(tx, AMENDMENT)] == [AMENDMENT, ACCESSION]
+    assert amendment_chain(tx, None) == []
+    assert amendment_chain(tx, "0000000000-00-000000") == []
 
 
 @needs_db
-def test_two_unlinked_tapes_of_one_period_filed_the_same_day_are_refused(db):
-    load(db)
+def test_two_unlinked_tapes_of_one_period_filed_the_same_day_are_refused(tx):
+    load(tx)
     with pytest.raises(TapeRefused) as refusal:
-        load(db, accession="0000950123-26-000001")
+        load(tx, accession="0000950123-26-000001")
     assert str(refusal.value) == (
         "0000950123-26-000001 and 0009900001-26-000101 are both September 2026 tapes of "
         "Fixture Trust 2026-F1 filed on 2026-09-29, and neither amends the other"
     )
-    assert count(db, LoanTape) == 1
+    assert count(tx, LoanTape) == 1
 
 
 @needs_db
-def test_an_amendment_filed_the_same_day_is_accepted(db):
-    load(db)
-    result = amend(db, "0000950123-26-000001", FILED, ACCESSION)
+def test_an_amendment_filed_the_same_day_is_accepted(tx):
+    load(tx)
+    result = amend(tx, "0000950123-26-000001", FILED, ACCESSION)
     assert result.loans_loaded == 1
 
 
 @needs_db
-def test_a_same_day_original_registered_after_its_amendment_is_accepted(db):
+def test_a_same_day_original_registered_after_its_amendment_is_accepted(tx):
     """Discovery may register the amendment before the original is loaded."""
-    deal = get_or_create(db, DEAL, cik=CIK)
+    deal = get_or_create(tx, DEAL, cik=CIK)
     register_filing(
-        db,
+        tx,
         accession=ACCESSION,
         cik=CIK,
         form="ABS-EE",
@@ -715,7 +716,7 @@ def test_a_same_day_original_registered_after_its_amendment_is_accepted(db):
         period=dt.date(2026, 9, 1),
     )
     register_filing(
-        db,
+        tx,
         accession="0000950123-26-000001",
         cik=CIK,
         form="ABS-EE/A",
@@ -724,15 +725,15 @@ def test_a_same_day_original_registered_after_its_amendment_is_accepted(db):
         period=dt.date(2026, 9, 1),
         amends=ACCESSION,
     )
-    assert load(db).loans_loaded == 1
+    assert load(tx).loans_loaded == 1
 
 
 @needs_db
-def test_tapes_of_other_periods_or_days_do_not_clash(db):
-    load(db)
+def test_tapes_of_other_periods_or_days_do_not_clash(tx):
+    load(tx)
     august = tape(asset("1", reportingPeriodEndDate="08-11-2026"))
-    assert load(db, august, accession="0000950123-26-000002").period == Period(2026, 8)
-    later = load(db, accession="0000950123-26-000003", filing_date=dt.date(2026, 9, 30))
+    assert load(tx, august, accession="0000950123-26-000002").period == Period(2026, 8)
+    later = load(tx, accession="0000950123-26-000003", filing_date=dt.date(2026, 9, 30))
     assert later.loans_loaded == 1
 
 
@@ -740,8 +741,8 @@ def test_tapes_of_other_periods_or_days_do_not_clash(db):
 
 
 @needs_db
-def test_every_loan_row_written_is_audited_with_the_actor_and_run(seeded):
-    db = seeded
+def test_every_loan_row_written_is_audited_with_the_actor_and_run(tx):
+    db = tx
     load(db, NEGATIVE, actor=Actor("olly", Role.OPERATOR), run_id=42)
     entries = db.scalars(select(AuditEntry).order_by(AuditEntry.id)).all()
     assert [(e.action, e.subject_key, e.reason) for e in entries] == [
@@ -762,57 +763,51 @@ def test_every_loan_row_written_is_audited_with_the_actor_and_run(seeded):
 
 
 @needs_db
-def test_without_an_actor_nothing_is_audited(db):
-    load(db)
+def test_without_an_actor_nothing_is_audited(tx):
+    load(tx)
     with pytest.raises(TapeRefused):
-        load(db, cik=None, deal="Fixture Trust 2026-F9")
-    assert count(db, AuditEntry) == 0
+        load(tx, cik=None, deal="Fixture Trust 2026-F9")
+    assert count(tx, AuditEntry) == 0
+
+
+REFUSALS = [
+    (
+        {"cik": None},
+        TapeRefused,
+        "Fixture Trust 2026-F1 has no CIK, so its filings cannot be registered",
+    ),
+    ({"content": b"not xml"}, MalformedTape, "the file is not XML: syntax error: line 1, column 0"),
+    ({"form": "10-D"}, TapeRefused, "a loan tape is filed as ABS-EE or ABS-EE/A, not 10-D"),
+    (
+        {"content": SMALL + b" "},
+        ConflictingFiling,
+        "0009900001-26-000101/ex102.xml is already stored with other content",
+    ),
+]
 
 
 @needs_db
-@pytest.mark.parametrize(
-    ("changes", "error", "message"),
-    [
-        (
-            {"cik": None},
-            TapeRefused,
-            "Fixture Trust 2026-F1 has no CIK, so its filings cannot be registered",
-        ),
-        (
-            {"content": b"not xml"},
-            MalformedTape,
-            "the file is not XML: syntax error: line 1, column 0",
-        ),
-        ({"form": "10-D"}, TapeRefused, "a loan tape is filed as ABS-EE or ABS-EE/A, not 10-D"),
-    ],
-)
-def test_a_refusal_with_an_actor_is_recorded_even_after_rollback(seeded, changes, error, message):
+def test_a_refusal_with_an_actor_is_recorded_even_after_rollback(seeded):
+    """Refusals are committed on their own connection, so these share one database."""
     db = seeded
-    with pytest.raises(error) as refusal:
-        load(db, actor=Actor("quinn", Role.QUANT), **changes)
-    assert str(refusal.value) == message
-    db.rollback()
-    [entry] = db.scalars(select(AuditEntry)).all()
-    assert (entry.user_name, entry.role, entry.action, entry.outcome, entry.reason) == (
-        "quinn",
-        "quant",
-        TAPE_ACTION,
-        "refused",
-        message,
-    )
-    assert (entry.subject, entry.subject_key) == ("filing", ACCESSION)
-
-
-@needs_db
-def test_a_conflicting_filing_refusal_is_recorded(seeded):
-    db = seeded
-    load(db)
-    db.commit()
-    with pytest.raises(ConflictingFiling):
-        load(db, SMALL + b" ", actor=Actor("quinn", Role.QUANT))
-    db.rollback()
-    entry = db.scalars(select(AuditEntry)).one()
-    assert entry.reason == "0009900001-26-000101/ex102.xml is already stored with other content"
+    for number, (changes, error, message) in enumerate(REFUSALS):
+        if number == len(REFUSALS) - 1:  # the last refusal needs the tape already stored
+            load(db)
+            db.commit()
+        with pytest.raises(error) as refusal:
+            load(db, actor=Actor("quinn", Role.QUANT), **changes)
+        assert str(refusal.value) == message
+        db.rollback()
+    entries = db.scalars(select(AuditEntry).order_by(AuditEntry.id)).all()
+    assert [entry.reason for entry in entries] == [message for _, _, message in REFUSALS]
+    for entry in entries:
+        assert (entry.user_name, entry.role, entry.action, entry.outcome) == (
+            "quinn",
+            "quant",
+            TAPE_ACTION,
+            "refused",
+        )
+        assert (entry.subject, entry.subject_key) == ("filing", ACCESSION)
 
 
 def test_a_run_needs_an_actor():
@@ -829,22 +824,22 @@ def test_a_run_needs_an_actor():
 
 
 @needs_db
-def test_a_tape_whose_every_loan_fails_stores_assets_and_quarantines_them(db):
+def test_a_tape_whose_every_loan_fails_stores_assets_and_quarantines_them(tx):
     content = tape(
         asset("1", reportPeriodEndActualBalanceAmount="-1.00"),
         asset("1A", prop={"propertyName": "NA"}),
     )
-    result = load(db, content)
+    result = load(tx, content)
     assert (result.assets, result.loans_loaded) == (2, 0)
     assert result.quarantined == [Quarantined("1", 1, "ending balance is negative")]
-    assert count(db, LoanPeriod) == 0
+    assert count(tx, LoanPeriod) == 0
 
 
 @needs_db
-def test_a_tape_of_companion_notes_only_loads_no_loans(db):
-    result = load(db, tape(asset("1A", prop={"propertyName": "NA"})))
+def test_a_tape_of_companion_notes_only_loads_no_loans(tx):
+    result = load(tx, tape(asset("1A", prop={"propertyName": "NA"})))
     assert (result.assets, result.loans_loaded, result.quarantined) == (1, 0, [])
-    assert count(db, QuarantinedLoan) == 0
+    assert count(tx, QuarantinedLoan) == 0
 
 
 # ---------------------------------------------------------------------------- concurrency

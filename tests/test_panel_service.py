@@ -25,6 +25,7 @@ from cmbs.panel.contract import ModelInput, Rejection, model_input, rejections
 from cmbs.panel.service import NothingPublished, Superseded, UnknownDeal, loan_order
 from cmbs.tape.service import LoadSummary, load_tape, plan
 from tests.conftest import needs_db
+from tests.fixtures.tape.database import module_database_fixture, tx_fixture  # noqa: F401
 from tests.fixtures.tape.tapes import REAL_FILES, asset, fixture_bytes, real_bytes, tape
 
 FIXTURE = "Fixture Trust 2026-F1"
@@ -281,13 +282,13 @@ def dscr_as_of(db: Session, day: dt.date) -> tuple[Decimal | None, str]:
 
 
 @needs_db
-def test_before_an_amendment_the_original_is_shown(db):
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
-    amendment(db, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL)
-    assert dscr_as_of(db, dt.date(2026, 10, 4)) == (Decimal("1.45"), ORIGINAL)
-    assert dscr_as_of(db, dt.date(2026, 10, 5)) == (Decimal("1.25"), "0009900001-26-000102")
-    deal = panel.deal_named(db, FIXTURE)
-    stored = panel.versions(db, deal_id=deal.id, loan="1", period=SEPTEMBER)
+def test_before_an_amendment_the_original_is_shown(tx):
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
+    amendment(tx, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL)
+    assert dscr_as_of(tx, dt.date(2026, 10, 4)) == (Decimal("1.45"), ORIGINAL)
+    assert dscr_as_of(tx, dt.date(2026, 10, 5)) == (Decimal("1.25"), "0009900001-26-000102")
+    deal = panel.deal_named(tx, FIXTURE)
+    stored = panel.versions(tx, deal_id=deal.id, loan="1", period=SEPTEMBER)
     assert [(v.dscr, v.filing_date) for v in stored] == [
         (Decimal("1.45"), dt.date(2026, 9, 29)),
         (Decimal("1.25"), dt.date(2026, 10, 5)),
@@ -295,48 +296,48 @@ def test_before_an_amendment_the_original_is_shown(db):
 
 
 @needs_db
-def test_an_amendment_filed_the_same_day_wins_whatever_its_accession(db):
+def test_an_amendment_filed_the_same_day_wins_whatever_its_accession(tx):
     """The reviewer's case: a different filer agent's lower accession, the same day."""
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
-    amendment(db, "0000950123-26-000001", dt.date(2026, 9, 29), ORIGINAL)
-    assert dscr_as_of(db, dt.date(2026, 9, 29)) == (Decimal("1.25"), "0000950123-26-000001")
-    deal = panel.deal_named(db, FIXTURE)
-    stored = panel.versions(db, deal_id=deal.id, loan="1", period=SEPTEMBER)
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
+    amendment(tx, "0000950123-26-000001", dt.date(2026, 9, 29), ORIGINAL)
+    assert dscr_as_of(tx, dt.date(2026, 9, 29)) == (Decimal("1.25"), "0000950123-26-000001")
+    deal = panel.deal_named(tx, FIXTURE)
+    stored = panel.versions(tx, deal_id=deal.id, loan="1", period=SEPTEMBER)
     assert [v.accession for v in stored] == [ORIGINAL, "0000950123-26-000001"]
 
 
 @needs_db
-def test_a_later_filing_with_a_lower_accession_wins_over_a_deeper_earlier_one(db):
+def test_a_later_filing_with_a_lower_accession_wins_over_a_deeper_earlier_one(tx):
     """Filing date ranks first: a plain re-filing on 10-05 (lower accession, depth 0) is
     current over an amendment of 10-01 (higher accession, depth 1)."""
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
-    amendment(db, "0009900001-26-000102", dt.date(2026, 10, 1), ORIGINAL)
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
+    amendment(tx, "0009900001-26-000102", dt.date(2026, 10, 1), ORIGINAL)
     refiled = ONE_LOAN.replace(b">1.45<", b">1.05<")
-    load(db, "0000950123-26-000001", dt.date(2026, 10, 5), refiled)
-    assert dscr_as_of(db, dt.date(2026, 10, 2)) == (Decimal("1.25"), "0009900001-26-000102")
-    assert dscr_as_of(db, dt.date(2026, 10, 5)) == (Decimal("1.05"), "0000950123-26-000001")
+    load(tx, "0000950123-26-000001", dt.date(2026, 10, 5), refiled)
+    assert dscr_as_of(tx, dt.date(2026, 10, 2)) == (Decimal("1.25"), "0009900001-26-000102")
+    assert dscr_as_of(tx, dt.date(2026, 10, 5)) == (Decimal("1.05"), "0000950123-26-000001")
 
 
 @needs_db
-def test_an_amendment_of_an_amendment_on_one_day_ranks_deepest(db):
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
-    amendment(db, "0009900001-26-000102", dt.date(2026, 9, 29), ORIGINAL)
+def test_an_amendment_of_an_amendment_on_one_day_ranks_deepest(tx):
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
+    amendment(tx, "0009900001-26-000102", dt.date(2026, 9, 29), ORIGINAL)
     third = ONE_LOAN.replace(b">1.45<", b">1.15<")
-    amendment(db, "0000950123-26-000001", dt.date(2026, 9, 29), "0009900001-26-000102", third)
-    assert dscr_as_of(db, dt.date(2026, 9, 29)) == (Decimal("1.15"), "0000950123-26-000001")
+    amendment(tx, "0000950123-26-000001", dt.date(2026, 9, 29), "0009900001-26-000102", third)
+    assert dscr_as_of(tx, dt.date(2026, 9, 29)) == (Decimal("1.15"), "0000950123-26-000001")
 
 
 # ---------------------------------------------------------------------------- superseded values
 
 
 @needs_db
-def test_a_loan_the_amendment_omits_is_left_out_with_a_note(db):
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
+def test_a_loan_the_amendment_omits_is_left_out_with_a_note(tx):
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
     only_one = tape(asset("1", reportPeriodEndActualBalanceAmount="50000000.00"))
-    amendment(db, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL, only_one)
-    deal = panel.deal_named(db, FIXTURE)
-    assert [r.loan for r in panel.as_of(db, dt.date(2026, 10, 5), deal_id=deal.id)] == ["1"]
-    assert panel.superseded(db, dt.date(2026, 10, 5), deal_id=deal.id) == [
+    amendment(tx, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL, only_one)
+    deal = panel.deal_named(tx, FIXTURE)
+    assert [r.loan for r in panel.as_of(tx, dt.date(2026, 10, 5), deal_id=deal.id)] == ["1"]
+    assert panel.superseded(tx, dt.date(2026, 10, 5), deal_id=deal.id) == [
         Superseded(
             deal_id=deal.id,
             loan="7",
@@ -347,39 +348,39 @@ def test_a_loan_the_amendment_omits_is_left_out_with_a_note(db):
             reason="not reported in 0009900001-26-000102",
         )
     ]
-    assert panel.superseded(db, dt.date(2026, 10, 4), deal_id=deal.id) == []
-    assert [r.loan for r in panel.tape_as_of(db, FIXTURE, dt.date(2026, 10, 5)).superseded] == ["7"]
+    assert panel.superseded(tx, dt.date(2026, 10, 4), deal_id=deal.id) == []
+    assert [r.loan for r in panel.tape_as_of(tx, FIXTURE, dt.date(2026, 10, 5)).superseded] == ["7"]
 
 
 @needs_db
-def test_a_loan_the_amendment_quarantines_is_left_out_with_the_reason(db):
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
+def test_a_loan_the_amendment_quarantines_is_left_out_with_the_reason(tx):
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
     bad = ONE_LOAN.replace(b">9000000.00<", b">-9000000.00<")
-    amendment(db, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL, bad)
-    [left_out] = panel.superseded(db, dt.date(2026, 10, 6))
+    amendment(tx, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL, bad)
+    [left_out] = panel.superseded(tx, dt.date(2026, 10, 6))
     assert (left_out.loan, left_out.reason) == (
         "7",
         "quarantined in 0009900001-26-000102: ending balance is negative",
     )
-    assert [r.loan for r in panel.as_of(db, dt.date(2026, 10, 6))] == ["1"]
+    assert [r.loan for r in panel.as_of(tx, dt.date(2026, 10, 6))] == ["1"]
 
 
 @needs_db
-def test_the_latest_earlier_version_is_the_one_noted(db):
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
-    amendment(db, "0009900001-26-000102", dt.date(2026, 10, 1), ORIGINAL)
+def test_the_latest_earlier_version_is_the_one_noted(tx):
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
+    amendment(tx, "0009900001-26-000102", dt.date(2026, 10, 1), ORIGINAL)
     only_one = tape(asset("1", reportPeriodEndActualBalanceAmount="50000000.00"))
-    amendment(db, "0009900001-26-000103", dt.date(2026, 10, 5), "0009900001-26-000102", only_one)
-    [left_out] = panel.superseded(db, dt.date(2026, 10, 5))
+    amendment(tx, "0009900001-26-000103", dt.date(2026, 10, 5), "0009900001-26-000102", only_one)
+    [left_out] = panel.superseded(tx, dt.date(2026, 10, 5))
     assert (left_out.loan, left_out.accession) == ("7", "0009900001-26-000102")
 
 
 @needs_db
-def test_a_period_whose_latest_tape_is_all_quarantined_shows_no_rows(db):
-    load(db, ORIGINAL, dt.date(2026, 9, 29))
+def test_a_period_whose_latest_tape_is_all_quarantined_shows_no_rows(tx):
+    load(tx, ORIGINAL, dt.date(2026, 9, 29))
     bad = tape(asset("1", reportPeriodEndActualBalanceAmount="-1.00"))
-    amendment(db, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL, bad)
-    current = panel.tape_as_of(db, FIXTURE, dt.date(2026, 10, 5))
+    amendment(tx, "0009900001-26-000102", dt.date(2026, 10, 5), ORIGINAL, bad)
+    current = panel.tape_as_of(tx, FIXTURE, dt.date(2026, 10, 5))
     assert (current.accession, current.rows) == ("0009900001-26-000102", [])
     assert [s.loan for s in current.superseded] == ["1", "7"]
 
