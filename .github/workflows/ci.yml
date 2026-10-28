@@ -22,7 +22,9 @@ jobs:
       - run: uv sync --locked
       - run: uvx pre-commit run --all-files --show-diff-on-failure
 
-  py:
+  # Tests and feature scenarios. Mutation testing runs alongside, split across the `mutation`
+  # shards; `py`, the required check, passes only when both have passed.
+  tests:
     runs-on: ubuntu-latest
     services:
       # Same image as compose.yaml, so migrations are tested against the real extensions.
@@ -30,8 +32,9 @@ jobs:
         image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
         env:
           POSTGRES_USER: cmbs
-          POSTGRES_PASSWORD: cmbs
           POSTGRES_DB: cmbs
+          # A throwaway database reachable only inside this job, so no password at all.
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -50,29 +53,89 @@ jobs:
       - name: Tests with coverage
         run: uv run pytest --cov
         env:
-          DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
+          DATABASE_URL: postgresql+psycopg://cmbs@localhost:5432/cmbs
       - name: Chromium for @surface:ui scenarios
         run: uv run playwright install --with-deps chromium
       # behavex ignores default_tags in behave.ini, so drafts are excluded here explicitly.
       - name: Feature scenarios
         run: uv run behavex -t 'not @draft' --parallel-processes 2 -o output/behavex
         env:
-          DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
-      # Raise the floor as tests improve. With a database, so code reached only by database tests
-      # is mutation-tested too; every test uses its own scratch database, named per process, and
-      # four workers match the runner's cores.
-      - name: Mutation score
-        env:
-          DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
-        run: |
-          uv run mutmut run --max-children 4 > /dev/null
-          uv run mutmut export-cicd-stats
-          uv run python tools/check_mutation_score.py --min 71
+          DATABASE_URL: postgresql+psycopg://cmbs@localhost:5432/cmbs
       - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD: ${{ github.sha }}
         run: uv run python tools/check_approved_features.py --range "$BASE..$HEAD"
+
+  # Mutation testing in four parallel shards that together run every mutant exactly once
+  # (tools/mutation_shards.py). With a database, so code reached only by database tests is
+  # mutation-tested too; every test uses its own scratch database, named per process.
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    services:
+      # Same image as compose.yaml, so migrations are tested against the real extensions.
+      db:
+        image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+        env:
+          POSTGRES_USER: cmbs
+          POSTGRES_DB: cmbs
+          # A throwaway database reachable only inside this job, so no password at all.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cmbs -d cmbs"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - run: uv sync --locked
+      - name: Mutation testing, one shard of four
+        env:
+          DATABASE_URL: postgresql+psycopg://cmbs@localhost:5432/cmbs
+          SHARD: ${{ matrix.shard }}
+        run: uv run python tools/mutation_shards.py run --shard "$SHARD" --of 4 --max-children 4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-shard-${{ matrix.shard }}
+          path: mutants/shard-stats.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # The required check. It always runs, so a failed or cancelled dependency cannot leave it
+  # skipped (a skipped required check counts as passing). It needs the tests and every shard to
+  # have succeeded, then applies the floor to the shards' combined score. Raise the floor as
+  # tests improve; never lower it to make CI pass.
+  py:
+    needs: [tests, mutation]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tests and every mutation shard passed
+        env:
+          TESTS: ${{ needs.tests.result }}
+          MUTATION: ${{ needs.mutation.result }}
+        run: |
+          echo "tests: $TESTS, mutation shards: $MUTATION"
+          test "$TESTS" = success && test "$MUTATION" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: mutation-shard-*
+          path: shard-stats
+      - name: Mutation score across all shards
+        run: python3 tools/check_mutation_score.py --min 71 shard-stats/*/shard-stats.json
 
   web:
     runs-on: ubuntu-latest
