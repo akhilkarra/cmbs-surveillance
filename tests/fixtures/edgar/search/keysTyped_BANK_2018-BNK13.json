@@ -1,0 +1,16 @@
+{
+ "hits": {
+  "hits": [
+   {
+    "_id": "1744707",
+    "_source": {
+     "entity": "BANK 2018-BNK13"
+    }
+   }
+  ],
+  "total": {
+   "relation": "eq",
+   "value": 1
+  }
+ }
+}
