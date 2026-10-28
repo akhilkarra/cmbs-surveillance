@@ -69,7 +69,7 @@ APPRAISAL_COLUMNS = (
 DELINQUENCY_COLUMNS = (
     PROSPECTUS_ID,
     Column("status", _pattern(r"\bstatus\b"), required=True, exclude=_pattern(r"resolution")),
-    Column("paid_through", _pattern(r"paid (through|thru)|\bptd\b")),
+    Column("paid_through", _pattern(r"paid (through|thru)")),
     # "Current P&I Advances", or "P & I Advances" over "Current": the words in either order.
     Column("current_advances", _pattern(r"^(?=.*\bcurrent\b)(?=.*p&i adv)")),
     Column("outstanding_advances", _pattern(r"^(?=.*\boutstanding\b)(?=.*p&i adv)")),

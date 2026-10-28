@@ -261,7 +261,7 @@ def _visible[T: _Item](
         query = query.where(table.loan_id == canonical_loan(loan))
     if period is not None:
         query = query.where(table.period == period.first_day)
-    return [(item, filed) for item, filed in db.execute(query).tuples()]
+    return [(item, filed) for item, filed in db.execute(query)]
 
 
 def _seen(item: _Item, filed: dt.date) -> dict[str, Any]:

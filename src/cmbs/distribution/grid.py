@@ -158,7 +158,7 @@ def document_text(root: HtmlElement) -> str:
 
 
 def _cells_of(row: HtmlElement) -> list[HtmlElement]:
-    return [cell for cell in row if isinstance(cell.tag, str) and cell.tag.lower() in ("td", "th")]
+    return list(row.iterchildren("td", "th"))  # the HTML parser lower-cases tag names
 
 
 def _text_of(element: HtmlElement) -> str:
@@ -174,10 +174,8 @@ def flatten(root: HtmlElement, titles: Collection[str]) -> list[Title | Row]:
     events: list[Title | Row] = []
     grids: dict[HtmlElement | None, _TableGrid] = {}
     idents = itertools.count()
-    for element in root.iter():
-        if not isinstance(element.tag, str):
-            continue
-        tag = element.tag.lower()
+    for element in root.iter(lxml.etree.Element):  # elements only: comments are already gone
+        tag = element.tag
         if tag == "tr":
             cells = _cells_of(element)
             if any(cell.find(".//table") is not None for cell in cells):
