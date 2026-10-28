@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from cmbs import clock
@@ -14,27 +13,11 @@ class RunAlreadyFinished(Refused):
     """A run's outcome is final once recorded."""
 
 
-def start_run(db: Session, *, kind: str, started_by: str, run_id: int | None = None) -> Run:
-    """Start a run with the next number, or with `run_id` when a scenario pins it ("run 42").
-
-    A pinned number moves the sequence past it, so later runs never collide with it.
-    """
+def start_run(db: Session, *, kind: str, started_by: str) -> Run:
+    """Start a run with the next number from the database sequence."""
     run = Run(kind=kind, started_by=started_by, started_at=clock.now(), status="running")
-    if run_id is not None:
-        run.id = run_id
     db.add(run)
     db.flush()
-    if run_id is not None:
-        # Only ever move the sequence forward. Rows other sessions have not committed are
-        # invisible here, but numbers they drew are already counted in the sequence, so taking
-        # the larger of the sequence's position and the pinned number never hands one out twice.
-        db.execute(
-            text(
-                "SELECT setval(seq, GREATEST(nextval(seq), :pinned)) "
-                "FROM pg_get_serial_sequence('app.run', 'id') AS seq"
-            ),
-            {"pinned": run_id},
-        )
     return run
 
 

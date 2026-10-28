@@ -33,6 +33,7 @@ from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
 from cmbs.runs.tables import Run
 from cmbs.settings.service import NoSettings, OutOfOrderVersion, in_force, store_version
 from cmbs.settings.values import Settings
+from cmbs.testing.world import set_next_run_number
 from tests.conftest import needs_db
 
 pytestmark = needs_db
@@ -170,7 +171,8 @@ def test_settings_round_trip_every_field(seeded):
 
 def test_runs_take_a_number_and_finish_once(db):
     clock.set_now(dt.datetime(2026, 10, 27, 9, tzinfo=dt.UTC))
-    run = start_run(db, kind="refresh", started_by="olly", run_id=42)
+    set_next_run_number(db, 42)
+    run = start_run(db, kind="refresh", started_by="olly")
     assert (run.id, run.status) == (42, "running")
     clock.set_now(dt.datetime(2026, 10, 27, 9, 4, tzinfo=dt.UTC))
     finish_run(db, run, status="succeeded", summary={"deals": 2})
@@ -193,14 +195,10 @@ def test_unknown_statuses_cannot_finish_a_run(db):
         finish_run(db, run, status="done", summary={})
 
 
-def test_pinned_run_numbers_never_collide_with_later_runs(db):
-    assert start_run(db, kind="refresh", started_by="olly", run_id=42).id == 42
+def test_scenarios_can_choose_the_next_run_number_and_later_runs_follow_it(db):
+    set_next_run_number(db, 42)
+    assert start_run(db, kind="refresh", started_by="olly").id == 42
     assert start_run(db, kind="refresh", started_by="olly").id == 43
-
-
-def test_pinning_a_low_number_on_a_fresh_database_still_advances(db):
-    assert start_run(db, kind="refresh", started_by="olly", run_id=1).id == 1
-    assert start_run(db, kind="backfill", started_by="quinn").id == 2
 
 
 def test_deals_are_registered_once_and_learn_their_cik(db):
@@ -412,19 +410,3 @@ def test_a_deal_cik_can_be_learned_but_not_changed(db):
     get_or_create(db, "BANK 2018-BNK13", cik=1744707)
     with pytest.raises(ConflictingDeal, match="already has CIK 1744707, not 1"):
         get_or_create(db, "BANK 2018-BNK13", cik=1)
-
-
-def test_pinning_a_number_never_moves_the_sequence_back_below_a_number_already_drawn(db):
-    """Another session's uncommitted run is invisible, but its number must not be reissued."""
-    for _ in range(3):
-        start_run(db, kind="refresh", started_by="olly")  # runs 1, 2, 3
-    db.delete(db.get(Run, 2))  # leave a free number below the next one drawn
-    db.commit()
-    with Session(engine.engine()) as drawer, Session(engine.engine()) as pinner:
-        drawn = start_run(drawer, kind="refresh", started_by="olly")  # run 4, not committed
-        assert drawn.id == 4
-        start_run(pinner, kind="backfill", started_by="quinn", run_id=2)
-        pinner.commit()
-        drawer.commit()
-    with Session(engine.engine()) as later:
-        assert start_run(later, kind="refresh", started_by="olly").id > 4

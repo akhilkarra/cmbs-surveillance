@@ -7,6 +7,7 @@ Six users with their roles, and settings version 7 approved by "rae" on 2026-09-
 import datetime as dt
 from decimal import Decimal
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from cmbs.access.roles import Role
@@ -47,4 +48,16 @@ def seed(db: Session) -> None:
         proposed_by="quinn",
         approved_by="rae",
         approved_at=BASELINE_APPROVED_AT,
+    )
+
+
+def set_next_run_number(db: Session, number: int) -> None:
+    """Make the next run take `number`, for scenarios that talk about "run 42".
+
+    Fixture setup only, before anything else runs: production code never chooses run numbers,
+    because moving a shared sequence safely under concurrency is not worth the risk.
+    """
+    db.execute(
+        text("SELECT setval(pg_get_serial_sequence('app.run', 'id'), :number, false)"),
+        {"number": number},
     )
