@@ -1,0 +1,16 @@
+{
+ "hits": {
+  "hits": [
+   {
+    "_id": "1623838",
+    "_source": {
+     "entity": "WFRBS Commercial Mortgage Trust 2014-C25"
+    }
+   }
+  ],
+  "total": {
+   "relation": "eq",
+   "value": 1
+  }
+ }
+}

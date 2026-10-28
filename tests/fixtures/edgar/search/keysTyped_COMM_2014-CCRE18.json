@@ -1,0 +1,16 @@
+{
+ "hits": {
+  "hits": [
+   {
+    "_id": "1610486",
+    "_source": {
+     "entity": "COMM 2014-CCRE18 Mortgage Trust"
+    }
+   }
+  ],
+  "total": {
+   "relation": "eq",
+   "value": 1
+  }
+ }
+}
