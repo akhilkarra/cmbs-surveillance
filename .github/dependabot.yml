@@ -1,0 +1,71 @@
+# Scheduled version updates. Dependabot alerts and security updates are enabled in the repo's
+# settings and run on their own; this file adds weekly version bumps on top.
+# Each ecosystem's updates arrive as one grouped pull request, after a week's cooldown so a
+# compromised or broken release has time to be pulled before it lands here.
+version: 2
+
+updates:
+  # Actions pinned by commit SHA in .github/workflows/; the version comment is updated too.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Python dependencies in pyproject.toml and uv.lock.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      python:
+        update-types: [minor, patch]
+    ignore:
+      # mutmut 3.8.0 reads item._nodeid, which pytest 9.2.0 removed (pyproject.toml).
+      - dependency-name: pytest
+        versions: [">=9.2"]
+
+  # Web dependencies in web/package.json and web/package-lock.json.
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      web:
+        update-types: [minor, patch]
+    ignore:
+      # TypeScript 7 drops the JavaScript compiler API that Stryker calls (grill log Q52).
+      - dependency-name: typescript
+        versions: [">=7"]
+
+  # Image digests in compose.yaml. CI's service image (ci.yml) is pinned to the same digest;
+  # update it by hand when this bumps the db image.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      images:
+        patterns: ["*"]
+
+  # Hook revisions in .pre-commit-config.yaml. The local Biome hook's version is not seen here;
+  # keep it equal to @biomejs/biome in web/package.json.
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      hooks:
+        patterns: ["*"]

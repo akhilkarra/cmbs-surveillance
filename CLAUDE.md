@@ -50,7 +50,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above except the dev server.
 - **pytest below 9.2**: mutmut 3.8.0 reads `item._nodeid`, which pytest 9.2.0 removed.
 - **TypeScript 6, not 7**: TypeScript 7 drops the JavaScript compiler API that Stryker calls.
 - **behavex ignores `default_tags` in `behave.ini`**, so every behavex run passes `-t 'not @draft'`.
-- **Pinned refs**: Docker images are pinned by digest, GitHub Actions by commit SHA with the release in a comment (zizmor enforces it), pre-commit hooks by tag (`uvx pre-commit autoupdate` bumps them). Resolve a tag with `git ls-remote --tags` or `docker pull` before writing it.
+- **Pinned refs**: Docker images are pinned by digest, GitHub Actions by commit SHA with the release in a comment (zizmor enforces it), pre-commit hooks by tag. Dependabot (`.github/dependabot.yml`) bumps all of these weekly, plus `uv.lock` and `web/package-lock.json`; it skips the pins below via `ignore` rules, the CI service image and the local Biome hook, which are bumped by hand. Resolve a tag with `git ls-remote --tags` or `docker pull` before writing it.
 - **typos reports, never rewrites**: its hook's default auto-fix turned `MOR` into `MORE` and a variable `pn` into `on`. A real domain word or identifier goes in `_typos.toml`.
 - **Biome runs from inside `web/`** so `web/biome.json` is its root config; the hook's Biome version matches `web/package.json`.
 - **Jev has no embeddings endpoint.** `vector` stays unused until an embedding model is chosen; any embeddings get the same record-and-replay treatment as model calls [Q53].
