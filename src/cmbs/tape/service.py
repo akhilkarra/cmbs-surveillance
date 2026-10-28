@@ -205,11 +205,11 @@ def load_tape(
         period=period.first_day,
         amends=amends,
     )
-    stored = store_file(db, accession=accession, name=file_name, content=content)
-    loaded_from = _loaded_files(db, accession)
+    loaded_from = _loaded_files(db, accession)  # read under the filing lock
     if loaded_from - {file_name}:
         raise TapeRefused(f"{accession} is already loaded from {', '.join(sorted(loaded_from))}")
     already_loaded = file_name in loaded_from
+    stored = store_file(db, accession=accession, name=file_name, content=content)
 
     if not already_loaded:
         work = plan(assets)

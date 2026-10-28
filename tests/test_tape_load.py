@@ -19,7 +19,7 @@ from cmbs.db import engine
 from cmbs.deals.service import get_or_create
 from cmbs.domain import Period
 from cmbs.filings.service import ConflictingFiling, register_filing, sha256_of
-from cmbs.filings.tables import Filing
+from cmbs.filings.tables import Filing, FilingFile
 from cmbs.tape.service import (
     LOAD_ACTION,
     QUARANTINE_ACTION,
@@ -324,6 +324,7 @@ def test_a_second_file_for_a_loaded_accession_is_refused(db):
     with pytest.raises(TapeRefused) as refusal:
         load(db, file_name="other.xml")
     assert str(refusal.value) == "0009900001-26-000101 is already loaded from ex102.xml"
+    assert db.get(FilingFile, (ACCESSION, "other.xml")) is None  # refused before storing
 
 
 @needs_db
