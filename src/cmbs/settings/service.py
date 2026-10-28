@@ -52,8 +52,8 @@ APPROVE = "approve setting"
 REJECT = "reject setting"
 
 
-class NoSettings(RuntimeError):
-    pass
+class NoSettings(Refused):
+    """No version was approved by the moment asked about."""
 
 
 @dataclass(frozen=True)

@@ -89,6 +89,38 @@ def test_settings_are_proposed_approved_and_read(seeded, client):
     assert earlier.json()["version"] == 7
 
 
+def test_settings_before_the_first_version_are_refused_readably(seeded, client):
+    response = client.get(
+        "/settings", headers=as_user("pat"), params={"at": "2026-09-14T23:59:59Z"}
+    )
+    assert (response.status_code, response.json()) == (
+        422,
+        {"detail": "no settings approved by 2026-09-14T23:59:59+00:00"},
+    )
+
+
+def test_a_time_without_a_zone_is_read_as_utc(monkeypatch, client):
+    from cmbs.api import deps
+    from cmbs.settings import routes
+    from cmbs.settings.service import SettingsView
+
+    asked: list[dt.datetime | None] = []
+
+    def fake_read(db, user, at=None):
+        asked.append(at)
+        return SettingsView(version=7, lines=[])
+
+    monkeypatch.setattr(routes, "read_settings", fake_read)
+    app = create_app()
+    app.dependency_overrides[deps.db_session] = lambda: None
+    response = TestClient(app).get(
+        "/settings", headers=as_user("pat"), params={"at": "2026-09-15T00:00:00"}
+    )
+    assert response.json() == {"version": 7, "settings": []}
+    assert asked == [dt.datetime(2026, 9, 15, tzinfo=dt.UTC)]
+    assert asked[0] is not None and asked[0].tzinfo is dt.UTC
+
+
 def test_settings_proposals_are_rejected_with_a_reason(seeded, client):
     made = client.post(
         "/settings/proposals",

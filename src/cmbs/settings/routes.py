@@ -46,7 +46,12 @@ def proposal_view(proposal: SettingsProposal) -> dict[str, Any]:
 
 @router.get("")
 def settings(user: User, db: DB, at: dt.datetime | None = None) -> dict[str, Any]:
-    """The settings in force at `at` (default now), each with the versions that changed it."""
+    """The settings in force at `at` (default now), each with the versions that changed it.
+
+    A time without a zone is read as UTC, the zone of every stored time.
+    """
+    if at is not None and at.tzinfo is None:
+        at = at.replace(tzinfo=dt.UTC)
     view = read_settings(db, user, at)
     return {
         "version": view.version,
