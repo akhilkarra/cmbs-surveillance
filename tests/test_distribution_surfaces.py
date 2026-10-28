@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import click
 import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
@@ -35,16 +36,31 @@ def test_the_command_group_and_router_are_discovered():
     assert "cmbs.distribution.routes" in {module.__name__ for module in all_route_modules()}
 
 
+def usage_text(output: str) -> str:
+    """A usage error as plain words: without colours, the panel's border, or line wraps.
+
+    Typer draws usage errors with Rich, which styles them when the environment asks for colour
+    (as CI does) and wraps them to the terminal width.
+    """
+    return " ".join(click.unstyle(output).replace("│", " ").split())
+
+
 def test_a_bad_period_is_a_usage_error():
     result = CliRunner().invoke(cli, [*ARGS, "--user", "quinn", "--period", "Smarch 2026"])
     assert result.exit_code == 2
-    assert "not a period like 'September 2026'" in result.output
+    assert "not a period like 'September 2026'" in usage_text(result.output)
 
 
 def test_the_user_is_required():
     result = CliRunner().invoke(cli, ARGS, env={"CMBS_USER": ""})
     assert result.exit_code == 2
-    assert "--user" in result.output
+    assert "Missing option '--user'" in usage_text(result.output)
+
+
+def test_usage_text_strips_styles_borders_and_wraps():
+    assert usage_text("\x1b[31m│\x1b[0m Missing option \x1b[1m'--user'\x1b[0m.\n│ next  │") == (
+        "Missing option '--user'. next"
+    )
 
 
 @needs_db
