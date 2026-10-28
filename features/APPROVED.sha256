@@ -1,2 +1,6 @@
 # SHA-256 of every feature file tagged @approved. Updated only by tools/approve_feature.py.
 # CI fails if an approved file does not match this list.
+19b22b0b946af7e353866d4b1d00315dcd27e4a37acf801c91187f94dafef48d  features/data/filing_discovery.feature
+555505fab63e003db9df8ae9959e83646fb1f54e9b3432c5b604f32dfb563a26  features/governance/coverage_report.feature
+75b8538129c1550d9b1930d35096d2700bd3f3e9ed1c9512674c3a55535ac9ef  features/governance/settings_ledger.feature
+01070db94c65ee781600de18acbacdd27fa88f5ade41e2aa1954a477fc783db3  features/governance/users_and_roles.feature
