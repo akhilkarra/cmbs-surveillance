@@ -1,9 +1,13 @@
 """Load a distribution report into the panel, and read back what reports said about a loan.
 
-Loading is idempotent and safe under concurrency. The report is parsed and its period checked
+Loading replaces a filing's items, so the panel holds exactly what the latest parse found and
+never a value the report no longer contains. The report is parsed and its period checked
 before anything is written; then the deal, the filing and the file are registered through the
-shared services, the report row is inserted with `ON CONFLICT DO NOTHING`, locked and re-read,
-and every item is inserted the same way. Loading the same file twice changes nothing.
+shared services, and the report row is inserted with `ON CONFLICT DO NOTHING`, locked and
+re-read. Under that lock the filing's comments, appraisal reductions and delinquency rows are
+deleted and the new ones inserted, in the caller's one transaction. A concurrent load of the
+same filing waits for the lock, so the result is always one parse's items, never a mix.
+Loading the same file twice stores the same rows with the same values.
 
 Reads are point in time: an item is visible only from its filing's date.
 """
@@ -14,7 +18,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -152,6 +156,8 @@ def load_report(
         )
         .on_conflict_do_nothing(index_elements=[DistributionReport.accession])
     )
+    # The lock on the report row makes the replacement below one step for any other load of
+    # this filing: a second load waits here, then replaces whatever the first one stored.
     stored = db.get(DistributionReport, accession, with_for_update=True, populate_existing=True)
     if stored is None:  # pragma: no cover - the insert above guarantees the row
         raise RuntimeError(f"report {accession} vanished after insert")
@@ -159,10 +165,15 @@ def load_report(
         raise ConflictingReport(
             f"{accession} was already parsed from {stored.file_name}, not {file_name}"
         )
+    stored.administrator = parsed.administrator.value
+    stored.distribution_date = parsed.distribution_date
+    stored.summary = parsed.summary
     rows = item_rows(parsed, accession=accession, deal_id=deal_row.id, period=covered.first_day)
     for table, batch in rows.items():
+        db.execute(delete(table).where(table.accession == accession))
         if batch:
-            db.execute(insert(table).values(batch).on_conflict_do_nothing())
+            db.execute(insert(table).values(batch))
+    db.flush()
     counts = {
         "comments": len(parsed.comments),
         "appraisal_reductions": len(parsed.appraisal_reductions),
