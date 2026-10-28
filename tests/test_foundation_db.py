@@ -25,6 +25,7 @@ from cmbs.checks.service import flags_for, raise_flag
 from cmbs.db import engine
 from cmbs.deals.service import by_name, get_or_create
 from cmbs.filings.service import ConflictingFiling, register_filing, store_file
+from cmbs.filings.tables import Filing
 from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
 from cmbs.settings.service import NoSettings, OutOfOrderVersion, in_force, store_version
 from cmbs.settings.values import Settings
@@ -313,3 +314,17 @@ def test_a_fresh_process_can_use_one_service_without_importing_the_others(db_url
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=60, check=False
     )
     assert result.stdout.strip() == "ok", result.stderr[-400:]
+
+
+def test_a_fact_filled_in_by_another_session_is_not_overwritten(db):
+    register_sept(db)
+    db.commit()
+    with Session(engine.engine()) as stale, Session(engine.engine()) as other:
+        # Loaded while the period is still unknown. Keep a reference: the session holds loaded
+        # objects weakly, and the race needs the stale copy to still be there.
+        held = stale.get(Filing, ACCESSION)
+        assert held is not None and held.period is None
+        register_sept(other, period=dt.date(2026, 9, 1))
+        other.commit()
+        with pytest.raises(ConflictingFiling, match="already has period"):
+            register_sept(stale, period=dt.date(2026, 8, 1))

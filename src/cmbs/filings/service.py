@@ -38,7 +38,9 @@ def register_filing(
         "amends": amends,
         "primary_document": primary_document,
     }
-    existing = db.get(Filing, accession)
+    # Lock and re-read the row: another session may have filled in a fact since this session
+    # last loaded it, and that fact must be compared against, not overwritten.
+    existing = db.get(Filing, accession, with_for_update=True, populate_existing=True)
     if existing is None:
         filing = Filing(
             accession=accession, cik=cik, form=form, filing_date=filing_date, **optional
