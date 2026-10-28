@@ -34,7 +34,10 @@ def before_all(context):
     # behave drops attributes a scenario hook sets on `context` when the scenario ends, so the
     # browser and the database template live on objects created here, shared by every scenario.
     context.ui = SimpleNamespace(playwright=None, browser=None)
-    server = os.environ.get("DATABASE_URL")
+    # behavex can run before_all again in a worker process that already ran scenarios, when
+    # DATABASE_URL still names the previous scenario's (dropped) clone; the server address saved
+    # the first time is the one to use.
+    server = os.environ.get("CMBS_TEST_SERVER_URL") or os.environ.get("DATABASE_URL")
     if not server:
         raise SystemExit("Feature scenarios need Postgres: set DATABASE_URL (see CLAUDE.md).")
     os.environ["CMBS_TEST_SERVER_URL"] = server
