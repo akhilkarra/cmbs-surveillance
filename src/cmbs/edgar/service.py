@@ -26,11 +26,11 @@ from cmbs.access.roles import Action
 from cmbs.access.service import authorize
 from cmbs.audit.service import record
 from cmbs.db import engine
-from cmbs.deals.service import ConflictingDeal, by_name, get_or_create
-from cmbs.deals.tables import Deal
+from cmbs.deals.service import ConflictingDeal, by_name, get_or_create, normalized
+from cmbs.deals.tables import Deal, DealAlias
 from cmbs.edgar.discovery import Discovery, discover
 from cmbs.edgar.replay import Source
-from cmbs.edgar.tables import DealAlias, DealFiling, FilingDiscovery
+from cmbs.edgar.tables import DealFiling, FilingDiscovery
 from cmbs.errors import Refused
 from cmbs.filings.service import register_filing
 from cmbs.filings.tables import Filing
@@ -48,16 +48,8 @@ class SeparateDeals(Refused):
     """A name registered as its own deal turns out to be a trust already registered."""
 
 
-def _normalized(name: str) -> str:
-    return " ".join(name.split())
-
-
 def deal_named(db: Session, name: str) -> Deal | None:
     """The deal a name refers to, by its own name or an alias; None if unknown."""
-    name = _normalized(name)
-    alias = db.get(DealAlias, name)
-    if alias is not None:
-        return db.get_one(Deal, alias.deal_id)
     return by_name(db, name)
 
 
@@ -88,7 +80,7 @@ def deal_for(db: Session, name: str, *, cik: int | None = None) -> Deal:
     name gains this name as an alias. A name that is already a separate deal of its own is
     refused rather than merged, since other records may point at either.
     """
-    name = _normalized(name)
+    name = normalized(name)
     alias = db.get(DealAlias, name)
     if alias is not None:
         deal = _lock(db, alias.deal_id)

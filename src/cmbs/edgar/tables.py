@@ -27,20 +27,6 @@ class FilingDiscovery(Base):
     filings: Mapped[int] = mapped_column(Integer)
 
 
-class DealAlias(Base):
-    """Another name for a registered deal: "COMM 2014-CCRE18" for "COMM 2014-CR18".
-
-    A lookup that resolves to an issuing entity already registered under another name records
-    the name it was given here, so every name of one trust reaches the one deal.
-    """
-
-    __tablename__ = "deal_alias"
-    __table_args__ = {"schema": "silver"}
-
-    name: Mapped[str] = mapped_column(String(128), primary_key=True)
-    deal_id: Mapped[int] = mapped_column(ForeignKey("silver.deal.id"), index=True)
-
-
 class DealFiling(Base):
     """A filing that names a deal without being filed by it: a depositor's ABS-15G.
 
