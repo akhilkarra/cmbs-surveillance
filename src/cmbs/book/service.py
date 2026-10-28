@@ -67,6 +67,15 @@ def _header(name: str) -> str:
     return " ".join(name.replace("_", " ").split()).lower()
 
 
+def position_line(deal: str, tranche: str, face: str, *, where: str = "") -> PositionLine:
+    """One position from text: whitespace in the deal name normalized, face read as money."""
+    try:
+        amount = money(face)
+    except ValueError:
+        raise InvalidPositions(f"{where}{face.strip()!r} is not a face amount") from None
+    return PositionLine(deal=" ".join(deal.split()), tranche=tranche.strip(), face=amount)
+
+
 def parse_positions(text: str) -> list[PositionLine]:
     """CSV with the columns deal, class and face amount (any case; '_' reads as a space).
 
@@ -87,18 +96,12 @@ def parse_positions(text: str) -> list[PositionLine]:
             continue
         if len(row) < len(names):
             raise InvalidPositions(f"line {number} has {len(row)} fields, not {len(names)}")
-        face_text = row[index["face amount"]]
-        try:
-            face = money(face_text)
-        except ValueError:
-            raise InvalidPositions(
-                f"line {number}: {face_text.strip()!r} is not a face amount"
-            ) from None
         lines.append(
-            PositionLine(
-                deal=" ".join(row[index["deal"]].split()),
-                tranche=row[index["class"]].strip(),
-                face=face,
+            position_line(
+                row[index["deal"]],
+                row[index["class"]],
+                row[index["face amount"]],
+                where=f"line {number}: ",
             )
         )
     return lines
@@ -210,3 +213,9 @@ def exposure_by_deal(db: Session, on: dt.date) -> dict[str, Decimal]:
     """Total face held per deal in the book as of `on`; empty when there is no book yet."""
     book = book_as_of(db, on)
     return book.exposure() if book is not None else {}
+
+
+def exposure_for(db: Session, *, user: str, on: dt.date) -> dict[str, Decimal]:
+    """Exposure per deal for a user who may read the panel."""
+    authorize(db, user, Action.READ_PANEL)
+    return exposure_by_deal(db, on)

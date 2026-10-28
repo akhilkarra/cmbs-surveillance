@@ -27,6 +27,10 @@ from cmbs.errors import Refused
 # Forms that report on one distribution month; their report date is the distribution date.
 PERIODIC_FORMS = frozenset({"10-D", "10-D/A", "ABS-EE", "ABS-EE/A"})
 DEPOSITOR_FORMS = ("ABS-15G",)
+# Form 10-D is due within 15 days after the distribution date (General Instruction A.2).
+FILING_DEADLINE = dt.timedelta(days=15)
+# A report date further before the filing date than this is a typo, not a late filing.
+REPORT_DATE_WINDOW = dt.timedelta(days=45)
 # Series codes that a deal's market name abbreviates differently from its EDGAR name, by shelf.
 SERIES_ALIASES: Mapping[str, Mapping[str, str]] = {"COMM": {"CR": "CCRE"}}
 
@@ -67,10 +71,22 @@ class FoundFiling:
 
     @property
     def period(self) -> Period | None:
-        """The distribution month a 10-D or ABS-EE reports on; None for other forms."""
-        if self.form not in PERIODIC_FORMS or self.report_date is None:
+        """The distribution month a 10-D or ABS-EE reports on; None for other forms.
+
+        EDGAR's report date is the distribution date when the filer agent sets it properly.
+        Older filings carry the filing date instead (a 10-D filed 2015-03-02 for the February
+        distribution reads 2015-03-02), and a few carry a year typo (filed 2024-06-28, report
+        date 2023-06-17). A report date is trusted only if it falls before the filing date and
+        within REPORT_DATE_WINDOW of it. Otherwise the month is inferred from the filing date:
+        a 10-D is due within 15 days after the distribution date, so the distribution fell in
+        the month of the date 15 days before filing.
+        """
+        if self.form not in PERIODIC_FORMS:
             return None
-        return Period.of(self.report_date)
+        report = self.report_date
+        if report is not None and dt.timedelta(0) < self.filing_date - report <= REPORT_DATE_WINDOW:
+            return Period.of(report)
+        return Period.of(self.filing_date - FILING_DEADLINE)
 
 
 @dataclass(frozen=True)

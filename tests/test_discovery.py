@@ -172,7 +172,30 @@ def test_a_periodic_filing_reports_on_its_distribution_month():
         Period(2026, 9)
     )
     assert FoundFiling("c", 1, "8-K", dt.date(2026, 9, 29), dt.date(2026, 9, 17)).period is None
-    assert FoundFiling("d", 1, "10-D", dt.date(2026, 9, 29)).period is None
+
+
+def period_of(filed: str, reported: str | None) -> Period | None:
+    report = dt.date.fromisoformat(reported) if reported else None
+    return FoundFiling("x", 1, "10-D", dt.date.fromisoformat(filed), report).period
+
+
+def test_a_report_date_set_to_the_filing_date_is_read_from_the_filing_deadline():
+    # WFRBS 2014-C25: the February 2015 10-D was filed, and dated, 2015-03-02.
+    assert period_of("2015-03-02", "2015-03-02") == Period(2015, 2)
+    assert period_of("2015-03-31", "2015-03-31") == Period(2015, 3)
+    assert period_of("2026-09-29", None) == Period(2026, 9)
+
+
+def test_a_report_date_a_year_off_is_a_typo():
+    # WFRBS 2014-C25: filed 2024-06-28 with report date 2023-06-17.
+    assert period_of("2024-06-28", "2023-06-17") == Period(2024, 6)
+
+
+def test_a_report_date_is_trusted_up_to_45_days_before_filing():
+    assert period_of("2026-03-02", "2026-02-17") == Period(2026, 2)
+    assert period_of("2026-03-19", "2026-02-02") == Period(2026, 2)  # 45 days
+    assert period_of("2026-03-20", "2026-02-02") == Period(2026, 3)  # 46 days: from the filing
+    assert period_of("2026-03-02", "2026-03-03") == Period(2026, 2)  # after filing: from the filing
 
 
 def test_blank_report_dates_and_documents_are_not_reported():
@@ -313,7 +336,13 @@ def test_recorded_pre_2016_deal_has_no_loan_tape():
     found = recorded("WFRBS 2014-C25")
     assert found.match.cik == 1623838
     assert found.of_form("ABS-EE") == []
-    assert len(found.of_form("10-D")) == 141
+    periods = [f.period for f in found.of_form("10-D")]
+    # One 10-D for each month from January 2015 to September 2026, once report dates that
+    # repeat the filing date or carry a year typo are read from the filing deadline.
+    assert len(periods) == 141
+    assert sorted(p for p in periods if p is not None) == [
+        Period(2015, 1).shift(n) for n in range(141)
+    ]
 
 
 def test_recorded_suspended_deal_resolves_under_its_edgar_name():
