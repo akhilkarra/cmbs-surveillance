@@ -8,7 +8,20 @@ on:
 permissions:
   contents: read
 
+# Actions are pinned to a commit SHA, with the release it was taken from in the comment.
 jobs:
+  # Every commit-stage hook in .pre-commit-config.yaml: linters, formatters, type check,
+  # spelling, workflow and secret checks.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - run: uv sync --locked
+      - run: uvx pre-commit run --all-files --show-diff-on-failure
+
   py:
     runs-on: ubuntu-latest
     services:
@@ -27,14 +40,15 @@ jobs:
           --health-timeout 3s
           --health-retries 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v7
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - run: uv sync --locked
-      - run: uv run ruff check
-      - run: uv run ruff format --check
-      - run: uv run pytest
+      # Fails below fail_under in pyproject.toml.
+      - name: Tests with coverage
+        run: uv run pytest --cov
         env:
           DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
       - name: Chromium for @surface:ui scenarios
@@ -44,14 +58,18 @@ jobs:
         run: uv run behavex -t 'not @draft' --parallel-processes 2 -o output/behavex
         env:
           DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
-      # The floor is the score on 2026-10-27; raise it as tests improve.
+      # Raise the floor as tests improve. No DATABASE_URL here: parallel mutant runs would race on
+      # the migration tests' scratch database, so those tests skip.
       - name: Mutation score
         run: |
           uv run mutmut run > /dev/null
           uv run mutmut export-cicd-stats
           uv run python tools/check_mutation_score.py --min 68
       - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
-        run: uv run python tools/check_approved_features.py --range "${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+        run: uv run python tools/check_approved_features.py --range "$BASE..$HEAD"
 
   web:
     runs-on: ubuntu-latest
@@ -59,15 +77,19 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      # Fails below the thresholds in web/vite.config.ts.
+      - name: Tests with coverage
+        run: npm run test:coverage
       # Fails below the break threshold in web/stryker.config.json.
       - name: Mutation score
         run: npm run mutate

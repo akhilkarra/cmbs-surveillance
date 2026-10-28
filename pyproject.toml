@@ -17,10 +17,12 @@ cmbs = "cmbs.cli:app"
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.40.2",
     "behavex>=4.6.8",
     "mutmut>=3.8.0",
     "playwright>=1.64.1",
     "pytest>=8,<9.2",  # mutmut 3.8.0 reads item._nodeid, which pytest 9.2.0 removed
+    "pytest-cov>=7.1.0",
     "ruff>=0.17",
 ]
 
@@ -69,3 +71,21 @@ options = "format REVISION_SCRIPT_FILENAME"
 source_paths = ["src/cmbs"]
 do_not_mutate = ["src/cmbs/db/migrations/*"]
 pytest_add_cli_args_test_selection = ["tests"]
+
+[tool.basedpyright]
+# basedpyright is pyright with its own Node binary, so nothing is installed on the host.
+# "standard" is pyright's default strictness; tighten per module as code settles.
+include = ["src", "tests", "tools", "features"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+
+[tool.coverage.run]
+source = ["cmbs"]
+branch = true
+omit = ["*/cmbs/db/migrations/*"]
+
+[tool.coverage.report]
+# The floor is the score on 2026-10-28 (55.8%); raise it as tests improve.
+fail_under = 55
+show_missing = true
+skip_covered = true

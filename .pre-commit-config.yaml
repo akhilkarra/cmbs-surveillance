@@ -1,5 +1,9 @@
-# Hooks run locally via `pre-commit install` and on every push via pre-commit.ci.
-# Tests run in GitHub Actions (.github/workflows/ci.yml). Planned hooks once the code exists: biome, OpenAPI drift, Lean `sorry` check.
+# Fast checks run on commit; tests with coverage run on push. `uvx pre-commit install` sets up
+# both (default_install_hook_types). CI runs the commit-stage hooks on every push (the `lint`
+# job in .github/workflows/ci.yml), so a hook skipped locally still gets checked.
+# Planned once the code exists: OpenAPI client drift, Lean build and `sorry` check.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
 exclude: ^(\.claude/skills/|data/samples/)
 
 repos:
@@ -8,30 +12,112 @@ repos:
     hooks:
       - id: check-added-large-files
         args: [--maxkb=2048]
+      - id: check-case-conflict
       - id: check-merge-conflict
       - id: check-json
       - id: check-toml
       - id: check-yaml
+      - id: debug-statements
       - id: detect-private-key
       - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
 
+  # Python: lint, format, lockfile in sync with pyproject.toml.
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.3
     hooks:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.5
+    hooks:
+      - id: uv-lock
+
+  # Spelling in code and docs (allowed domain words in _typos.toml).
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.51.1
+    hooks:
+      - id: typos
+        # Report only: the hook's default --write-changes "corrects" domain terms and identifiers.
+        args: [--force-exclude]
+
+  # GitHub Actions: correctness (actionlint) and security (zizmor).
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.31.1
+    hooks:
+      - id: zizmor
+
+  - repo: https://github.com/pre-commit-ci/pre-commit-ci-config
+    rev: v1.6.1
+    hooks:
+      - id: check-pre-commit-ci-config
+
+  # Secrets in staged changes (detect-private-key above only catches key files).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
 
   - repo: local
     hooks:
+      # Web: lint and format under web/. Biome runs from inside web/ so web/biome.json is its root
+      # config, the same one `npm run lint` uses in the container. Keep the version equal to
+      # @biomejs/biome in web/package.json.
+      - id: biome-check
+        name: biome check (web/)
+        entry: bash -c 'cd web && biome check --write --files-ignore-unknown=true --no-errors-on-unmatched "${@#web/}"' --
+        language: node
+        additional_dependencies: ["@biomejs/biome@2.6.3"]
+        files: ^web/.*\.(tsx?|jsx?|jsonc?|css)$
+      - id: invisible-unicode
+        name: no invisible Unicode (zero-width spaces, non-breaking spaces, BOMs)
+        language: pygrep
+        types: [text]
+        entry: '\xc2\xa0|\xe2\x80[\x8b-\x8f\xa8-\xaf]|\xe2\x81[\x9f-\xa4\xa6-\xa9]|\xe3\x80\x80|\xef\xbb\xbf'
       - id: check-private-terms
         name: block private terms (list kept in private/, local only)
         entry: python tools/hooks/check_private_terms.py
         language: python
         types: [text]
+      - id: feature-status
+        name: feature files carry one status tag; approved ones match the manifest
+        entry: uv run --frozen python tools/check_approved_features.py
+        language: unsupported
+        files: ^features/(.*\.feature|APPROVED\.sha256)$
+        pass_filenames: false
+      - id: basedpyright
+        name: type check (basedpyright, pyright's standard mode)
+        entry: uv run --frozen basedpyright
+        language: unsupported
+        types: [python]
+        pass_filenames: false
 
+      # Push stage: the test suites with their coverage floors.
+      - id: pytest-cov
+        name: pytest with coverage floor (pyproject.toml)
+        entry: uv run --frozen pytest --cov
+        language: unsupported
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
+      - id: web-tests
+        name: web typecheck and tests with coverage floor (web/vite.config.ts)
+        entry: docker compose run --rm web sh -c "npm run typecheck && npm run test:coverage"
+        language: unsupported
+        files: ^web/
+        pass_filenames: false
+        stages: [pre-push]
+
+# pre-commit.ci, if enabled for the repo: it has no project environment, Docker or network, so
+# the hooks that need them are covered by the CI `lint` job instead.
 ci:
-  skip: [check-private-terms]
+  skip: [uv-lock, check-private-terms, feature-status, basedpyright, pytest-cov, web-tests]
   autoupdate_schedule: monthly

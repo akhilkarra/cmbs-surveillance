@@ -31,3 +31,7 @@ private/
 # mutation testing
 mutants/
 .stryker-tmp/
+
+# coverage
+.coverage
+coverage/

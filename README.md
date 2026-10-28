@@ -29,6 +29,9 @@ Requests to `www.sec.gov` need `SEC_USER_AGENT` set to a string with a contact a
 ## Checks
 
 ```bash
-uv run pytest
-uvx pre-commit run --all-files
+uvx pre-commit install           # once: linters on commit, tests with coverage on push
+uvx pre-commit run --all-files   # every commit-stage check
+uv run pytest --cov              # tests with the coverage floor
 ```
+
+`CLAUDE.md` lists every check, how to run each part of the stack, and the version pins.

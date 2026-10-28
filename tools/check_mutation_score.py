@@ -19,7 +19,7 @@ def score(stats: dict) -> float:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--min", type=float, required=True, help="Lowest passing score, in %%.")
     args = parser.parse_args()
     stats = json.loads(STATS.read_text())

@@ -1,0 +1,8 @@
+# Words typos must accept: CMBS, SEC filing and finance terms, and identifiers it misreads.
+[default.extend-words]
+MOR = "MOR"      # Morningstar's servicer rating prefix, as in "MOR CS1"
+plas = "plas"    # plasTeX, the LaTeX-to-HTML tool behind leanblueprint
+pn = "pn"        # property name in tools/browser/absee_loan_rows.js
+
+[files]
+extend-exclude = ["data/samples/", ".claude/skills/", "uv.lock", "web/package-lock.json"]
