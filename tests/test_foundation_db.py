@@ -3,6 +3,8 @@
 import datetime as dt
 import subprocess
 import sys
+import threading
+import time
 from decimal import Decimal
 
 import pytest
@@ -23,7 +25,8 @@ from cmbs.audit.service import entries_for_subject, record
 from cmbs.audit.tables import AuditEntry
 from cmbs.checks.service import flags_for, raise_flag
 from cmbs.db import engine
-from cmbs.deals.service import by_name, get_or_create
+from cmbs.deals.service import ConflictingDeal, by_name, get_or_create
+from cmbs.deals.tables import Deal
 from cmbs.filings.service import ConflictingFiling, register_filing, store_file
 from cmbs.filings.tables import Filing
 from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
@@ -357,3 +360,55 @@ def test_a_refusal_is_recorded_even_when_the_callers_pool_is_exhausted(seeded, d
         tiny.dispose()
     entry = seeded.scalars(select(AuditEntry).where(AuditEntry.outcome == "refused")).one()
     assert (entry.user_name, entry.reason) == ("pat", "pm may not decide review items")
+
+
+def test_a_refused_registration_changes_nothing(db):
+    register_sept(db, period=dt.date(2026, 9, 1))
+    with pytest.raises(ConflictingFiling, match="already has period"):
+        register_sept(db, report_date=dt.date(2026, 9, 17), period=dt.date(2026, 8, 1))
+    stored = db.get(Filing, ACCESSION, populate_existing=True)
+    assert stored is not None and stored.report_date is None
+
+
+def run_while_first_session_holds_its_insert(first, second):
+    """Run `first` in one session without committing, start `second` in another session on a
+    thread (it waits on the first's uncommitted row), then commit the first and return what the
+    second returned or raised."""
+    outcome: dict[str, object] = {}
+
+    def in_thread() -> None:
+        with Session(engine.engine(), expire_on_commit=False) as other:
+            try:
+                outcome["value"] = second(other)
+                other.commit()
+            except Exception as error:  # the assertion below reports it
+                outcome["error"] = error
+
+    with Session(engine.engine()) as holder:
+        first(holder)
+        thread = threading.Thread(target=in_thread)
+        thread.start()
+        time.sleep(0.3)  # let the second session reach the row the first one holds
+        holder.commit()
+        thread.join(timeout=10)
+    assert "error" not in outcome, f"second session failed: {outcome.get('error')!r}"
+    return outcome["value"]
+
+
+def test_two_sessions_registering_the_same_new_filing_both_succeed(db_url):
+    filing = run_while_first_session_holds_its_insert(register_sept, register_sept)
+    assert isinstance(filing, Filing) and filing.accession == ACCESSION
+
+
+def test_two_sessions_registering_the_same_new_deal_both_succeed(db_url):
+    deal = run_while_first_session_holds_its_insert(
+        lambda s: get_or_create(s, "BANK 2018-BNK13"),
+        lambda s: get_or_create(s, "BANK 2018-BNK13", cik=1744707),
+    )
+    assert isinstance(deal, Deal) and deal.cik == 1744707
+
+
+def test_a_deal_cik_can_be_learned_but_not_changed(db):
+    get_or_create(db, "BANK 2018-BNK13", cik=1744707)
+    with pytest.raises(ConflictingDeal, match="already has CIK 1744707, not 1"):
+        get_or_create(db, "BANK 2018-BNK13", cik=1)

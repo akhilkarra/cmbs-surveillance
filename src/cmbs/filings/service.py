@@ -1,8 +1,15 @@
-"""Register filings and store their files."""
+"""Register filings and store their files.
+
+Both operations are idempotent and safe under concurrency: the row is inserted with
+`ON CONFLICT DO NOTHING`, then locked and re-read, so two sessions registering the same filing
+at once both end up with the one stored row instead of a duplicate-key error. Every check runs
+before anything is changed, so a refused registration leaves the stored row untouched.
+"""
 
 import datetime as dt
 import hashlib
 
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from cmbs import clock
@@ -38,28 +45,28 @@ def register_filing(
         "amends": amends,
         "primary_document": primary_document,
     }
-    # Lock and re-read the row: another session may have filled in a fact since this session
-    # last loaded it, and that fact must be compared against, not overwritten.
-    existing = db.get(Filing, accession, with_for_update=True, populate_existing=True)
-    if existing is None:
-        filing = Filing(
-            accession=accession, cik=cik, form=form, filing_date=filing_date, **optional
-        )
-        db.add(filing)
-        db.flush()
-        return filing
-    if (existing.cik, existing.form, existing.filing_date) != (cik, form, filing_date):
+    db.execute(
+        insert(Filing)
+        .values(accession=accession, cik=cik, form=form, filing_date=filing_date, **optional)
+        .on_conflict_do_nothing(index_elements=[Filing.accession])
+    )
+    stored = db.get(Filing, accession, with_for_update=True, populate_existing=True)
+    if stored is None:  # pragma: no cover - the insert above guarantees the row
+        raise RuntimeError(f"filing {accession} vanished after insert")
+    if (stored.cik, stored.form, stored.filing_date) != (cik, form, filing_date):
         raise ConflictingFiling(f"{accession} is already registered with different facts")
+    missing = {}
     for field, value in optional.items():
-        if value is None:
+        current = getattr(stored, field)
+        if value is None or current == value:
             continue
-        current = getattr(existing, field)
-        if current is None:
-            setattr(existing, field, value)
-        elif current != value:
+        if current is not None:
             raise ConflictingFiling(f"{accession} already has {field} {current!r}, not {value!r}")
+        missing[field] = value
+    for field, value in missing.items():
+        setattr(stored, field, value)
     db.flush()
-    return existing
+    return stored
 
 
 def sha256_of(content: bytes) -> str:
@@ -69,19 +76,21 @@ def sha256_of(content: bytes) -> str:
 def store_file(db: Session, *, accession: str, name: str, content: bytes) -> FilingFile:
     """Idempotent for identical bytes; a different file under the same name is an error."""
     digest = sha256_of(content)
-    existing = db.get(FilingFile, (accession, name))
-    if existing is not None:
-        if existing.sha256 != digest:
-            raise ConflictingFiling(f"{accession}/{name} is already stored with other content")
-        return existing
-    stored = FilingFile(
-        accession=accession,
-        name=name,
-        sha256=digest,
-        size=len(content),
-        content=content,
-        fetched_at=clock.now(),
+    db.execute(
+        insert(FilingFile)
+        .values(
+            accession=accession,
+            name=name,
+            sha256=digest,
+            size=len(content),
+            content=content,
+            fetched_at=clock.now(),
+        )
+        .on_conflict_do_nothing(index_elements=[FilingFile.accession, FilingFile.name])
     )
-    db.add(stored)
-    db.flush()
+    stored = db.get(FilingFile, (accession, name), populate_existing=True)
+    if stored is None:  # pragma: no cover - the insert above guarantees the row
+        raise RuntimeError(f"file {accession}/{name} vanished after insert")
+    if stored.sha256 != digest:
+        raise ConflictingFiling(f"{accession}/{name} is already stored with other content")
     return stored
