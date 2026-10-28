@@ -158,7 +158,15 @@ def _change_role(db: Session, *, by: str, user: str, role: Role, grant: bool) ->
 def all_users(db: Session, by: str) -> dict[str, frozenset[Role]]:
     """Every user and their roles, by name. Needs `Action.MANAGE_USERS`."""
     authorize(db, by, Action.MANAGE_USERS)
-    found: dict[str, set[Role]] = {name: set() for name in db.scalars(select(User.name))}
-    for name, role in db.execute(select(UserRole.user_name, UserRole.role)):
-        found[name].add(Role(role))
-    return {name: frozenset(found[name]) for name in sorted(found)}
+    # One statement, so a user added between two reads cannot appear with roles but no entry.
+    rows = db.execute(
+        select(User.name, UserRole.role)
+        .outerjoin(UserRole, UserRole.user_name == User.name)
+        .order_by(User.name)
+    )
+    found: dict[str, set[Role]] = {}
+    for name, role in rows:
+        held = found.setdefault(name, set())
+        if role is not None:
+            held.add(Role(role))
+    return {name: frozenset(roles) for name, roles in found.items()}
