@@ -40,7 +40,11 @@ def authorize(db: Session, user: str, action: Action) -> Actor:
     """The actor to record for `action`, or PermissionRefused after auditing the refusal."""
     from cmbs.audit.service import record_refusal
 
-    roles = roles_of(db, user)
+    try:
+        roles = roles_of(db, user)
+    except UnknownUser as unknown:
+        record_refusal(db, user=user, action=action, message=str(unknown))
+        raise
     role = acting_role(roles, action)
     if role is None:
         message = refusal_message(roles, action)

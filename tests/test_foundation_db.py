@@ -52,9 +52,16 @@ def test_a_refusal_is_raised_and_audited_with_user_and_time(seeded):
     assert entry.at == dt.datetime(2026, 10, 6, 14, 30, tzinfo=dt.UTC)
 
 
-def test_unknown_users_are_refused(seeded):
-    with pytest.raises(UnknownUser):
+def test_unknown_users_are_refused_and_the_attempt_is_audited(seeded):
+    with pytest.raises(UnknownUser, match="^no user named 'nobody'$"):
         authorize(seeded, "nobody", Action.READ_PANEL)
+    seeded.rollback()
+    entry = seeded.scalars(select(AuditEntry)).one()
+    assert (entry.user_name, entry.outcome, entry.reason) == (
+        "nobody",
+        "refused",
+        "no user named 'nobody'",
+    )
 
 
 def test_ensure_user_sets_exactly_the_given_roles(seeded):
