@@ -36,6 +36,8 @@ def start_run(db: Session, *, kind: str, started_by: str, run_id: int | None = N
 def finish_run(db: Session, run: Run, *, status: str, summary: dict[str, Any]) -> Run:
     if status not in RUN_STATUSES or status == "running":
         raise ValueError(f"a run cannot finish as {status!r}")
+    # Lock and re-read the row: another session may have finished this run since it was loaded.
+    db.refresh(run, with_for_update=True)
     if run.status != "running":
         raise RunAlreadyFinished(f"run {run.id} already finished as {run.status!r}")
     run.status = status

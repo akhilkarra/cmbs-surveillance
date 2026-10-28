@@ -27,6 +27,7 @@ from cmbs.deals.service import by_name, get_or_create
 from cmbs.filings.service import ConflictingFiling, register_filing, store_file
 from cmbs.filings.tables import Filing
 from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
+from cmbs.runs.tables import Run
 from cmbs.settings.service import NoSettings, OutOfOrderVersion, in_force, store_version
 from cmbs.settings.values import Settings
 from tests.conftest import needs_db
@@ -328,3 +329,17 @@ def test_a_fact_filled_in_by_another_session_is_not_overwritten(db):
         other.commit()
         with pytest.raises(ConflictingFiling, match="already has period"):
             register_sept(stale, period=dt.date(2026, 8, 1))
+
+
+def test_a_run_finished_by_another_session_cannot_be_finished_again(db):
+    started = start_run(db, kind="refresh", started_by="olly")
+    db.commit()
+    with Session(engine.engine()) as stale, Session(engine.engine()) as other:
+        held = stale.get(Run, started.id)  # kept: the race needs the stale copy
+        assert held is not None and held.status == "running"
+        fresh = other.get(Run, started.id)
+        assert fresh is not None
+        finish_run(other, fresh, status="succeeded", summary={"deals": 2})
+        other.commit()
+        with pytest.raises(RunAlreadyFinished, match="already finished as 'succeeded'"):
+            finish_run(stale, held, status="failed", summary={"error": "late"})
