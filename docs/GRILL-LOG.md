@@ -150,17 +150,17 @@ Context: the 14 drafts were read as a PM, an analyst, a desk quant, a risk offic
 | Q42 | **Data-sending policy.** Every text source is classified public or restricted. Restricted text is never sent to the model provider unless zero data retention is configured and approved as a setting. | Decided by you |
 | Q43 | **New files, not edits.** Gaps became new feature files. Drafts were revised only where the new decisions changed them: the dashboard (sort by exposure, book view, closed alerts), alerts and abstention (settings version), refresh and ask (named users), model replay (data classification). | Decided by you |
 
-**Downstream choices the agent made while writing, pending your review.** Each is a draft scenario, so rejecting one is an edit, not a reversal.
+**Downstream choices the agent made while writing.** Accepted by you on 2026-10-27.
 
 | # | Choice | Status |
 |---|---|---|
-| Q44 | **Alert states:** new, acknowledged, assigned, closed with a note. Shared across users, audited, PM and analyst may act. A closed alert never reopens; the next month's change is a new alert. | Proposed |
-| Q45 | **Overrides:** an analyst may replace any extracted value with a reason and an existing sentence as evidence. The model's answer is kept. PMs cannot override. Overrides become golden-set label candidates after a second analyst confirms. | Proposed |
-| Q46 | **Settings ledger:** thresholds, the abstention band, the date tolerance, model and prompt versions are versioned settings. A quant proposes with a reason, a risk officer approves, the proposer can never be the approver, and a model or prompt change must attach a quality report. Every alert and recording stores the settings version. | Proposed |
-| Q47 | **Review queue:** ordered by exposure then age; items waiting more than five business days are overdue; an analyst may decline an item, which marks the field "not determinable". | Proposed |
-| Q48 | **Same whole loan in several deals:** links are maintained explicitly by a quant, never inferred. A linked loan raises one alert listing every deal with combined exposure. | Proposed |
-| Q49 | **Reproducibility and export:** rebuilding from stored raw filings must give an identical panel; an as-of export carries the as-of date, settings version, model and prompt version, and marks values awaiting review or overridden. Exports are audited. | Proposed |
-| Q50 | **Inventory now 26 features, 127 scenarios** in six groups (data, extraction, surveillance, governance, operations, surfaces). Q30's count of 14 is superseded. | Proposed |
+| Q44 | **Alert states:** new, acknowledged, assigned, closed with a note. Shared across users, audited, PM and analyst may act. A closed alert never reopens; the next month's change is a new alert. | Decided by you |
+| Q45 | **Overrides:** an analyst may replace any extracted value with a reason and an existing sentence as evidence. The model's answer is kept. PMs cannot override. Overrides become golden-set label candidates after a second analyst confirms. | Decided by you |
+| Q46 | **Settings ledger:** thresholds, the abstention band, the date tolerance, model and prompt versions are versioned settings. A quant proposes with a reason, a risk officer approves, the proposer can never be the approver, and a model or prompt change must attach a quality report. Every alert and recording stores the settings version. | Decided by you |
+| Q47 | **Review queue:** ordered by exposure then age; items waiting more than five business days are overdue; an analyst may decline an item, which marks the field "not determinable". | Decided by you |
+| Q48 | **Same whole loan in several deals:** links are maintained explicitly by a quant, never inferred. A linked loan raises one alert listing every deal with combined exposure. | Decided by you |
+| Q49 | **Reproducibility and export:** rebuilding from stored raw filings must give an identical panel; an as-of export carries the as-of date, settings version, model and prompt version, and marks values awaiting review or overridden. Exports are audited. | Decided by you |
+| Q50 | **Inventory now 26 features, 127 scenarios** in six groups (data, extraction, surveillance, governance, operations, surfaces). Q30's count of 14 is superseded. | Decided by you |
 
 ## Round 8 (2026-10-27): mutation testing and the web scaffold
 Context: you asked for mutation testing with mutmut for Python and Stryker for React. `research/22-trust-agent-dev.md` had listed Stryker as skipped; this reverses that.
