@@ -290,7 +290,76 @@ def test_a_dedicated_appraisal_table_and_the_loan_detail_are_both_kept():
         ("DISTRIBUTION DATE 9/17/2026", dt.date(2026, 9, 17)),
         ("Record Date: 08/31/26", None),
         ("Distribution Date: 13/45/26", None),
+        ("STATEMENT TO NOTEHOLDERS September 14, 2026 TRANSACTION PARTIES", dt.date(2026, 9, 14)),
+        ("Statement to Certificateholders March 2, 2026", dt.date(2026, 3, 2)),
+        ("STATEMENT TO NOTEHOLDERS Smarch 14, 2026", None),
+        ("Distribution Date: 13/45/26 STATEMENT TO NOTEHOLDERS September 14, 2026", None),
     ],
 )
 def test_distribution_date(text, day):
     assert distribution_date(text) == day
+
+
+def test_citi_delinquency_columns_under_spanning_header_cells():
+    # Delinquency Loan Detail, CGCMT 2016-C1, September 2026 (loan 11's row). "Payment Status"
+    # and "Workout Strategy" share one header cell and are told apart by "(2)" and "(3)";
+    # "(Net of ASER) Outstanding" spans the current and total P&I advance columns.
+    parsed = parse_report(
+        page(
+            "<table><tr><td>DELINQUENCY LOAN DETAIL</td></tr></table>"
+            "<table><tr><td></td></tr>"
+            "<tr><td></td><td></td><td>Actual</td><td>Paid</td><td>Current P&amp;I</td>"
+            "<td>Total P&amp;I</td><td>Cumulative</td>"
+            "<td colspan='4'>Other Expense Payment Workout Most Recent</td></tr>"
+            "<tr><td></td><td></td><td>Principal</td><td>Through</td><td>Advances</td>"
+            "<td>Advances</td><td>Accrued Unpaid</td><td>Advances</td>"
+            "<td colspan='3'>Status Strategy Special Serv</td></tr>"
+            "<tr><td>Loan ID</td><td>OMCR</td><td>Balance</td><td>Date</td>"
+            "<td colspan='2'>(Net of ASER) Outstanding</td><td>Interest Advances</td>"
+            "<td>Outstanding</td><td>(2)</td><td>(3)</td><td>Transfer Date</td></tr>"
+            "<tr><td></td></tr>"
+            "<tr><td>304101577</td><td>11</td><td>17,150,000.00</td><td>07/06/2026</td>"
+            "<td>70,148.26</td><td>140,148.84</td><td>4,348.21</td><td>7,295.00</td>"
+            "<td>5</td><td>13</td><td>05/11/2026</td></tr></table>",
+            marker="sf.citidirect.com",
+        )
+    )
+    assert parsed.delinquencies == (
+        Delinquency(
+            "11",
+            DLD,
+            status="5",
+            paid_through=dt.date(2026, 7, 6),
+            current_advances=Decimal("70148.26"),
+            outstanding_advances=Decimal("140148.84"),
+            actual_balance=Decimal("17150000.00"),
+        ),
+    )
+    assert parsed.notes == ("no appraisal reduction table",)
+
+
+def test_computershare_delinquency_status_with_a_superscript_footnote():
+    # Delinquency Loan Detail, BANK 2018-BNK13, September 2026 (loan 22's row).
+    parsed = parse_report(
+        page(
+            "<table><tr><td>Delinquency Loan Detail</td></tr>"
+            "<tr><td></td><td></td><td>Paid</td><td colspan='2'>Mortgage</td></tr>"
+            "<tr><td></td><td></td><td>Through</td><td>Months</td><td>Loan</td>"
+            "<td>Current P&amp;I</td><td>Outstanding P&amp;I</td><td>Actual Principal</td></tr>"
+            "<tr><td>Pros ID</td><td>Loan ID</td><td>Date</td><td>Delinquent</td>"
+            "<td>Status&sup1;</td><td>Advances</td><td>Advances</td><td>Balance</td></tr>"
+            "<tr><td>22</td><td>300801793</td><td>08/01/26</td><td>0</td><td>B</td>"
+            "<td>70,490.67</td><td>70,490.67</td><td>11,032,552.34</td></tr></table>"
+        )
+    )
+    assert parsed.delinquencies == (
+        Delinquency(
+            "22",
+            DLD,
+            status="B",
+            paid_through=dt.date(2026, 8, 1),
+            current_advances=Decimal("70490.67"),
+            outstanding_advances=Decimal("70490.67"),
+            actual_balance=Decimal("11032552.34"),
+        ),
+    )

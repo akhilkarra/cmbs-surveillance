@@ -31,7 +31,12 @@ from cmbs.distribution.layouts import (
 from cmbs.errors import Refused
 
 NO_COMMENT_COLUMN = "this administrator's format has no comment column"
-_DISTRIBUTION_DATE = re.compile(r"distribution date\s*:?\s*(\d{1,2}/\d{1,2}/\d{2,4})", re.I)
+# Where each format states the distribution date on its first page: Computershare as
+# "Distribution Date: 09/17/26", Citi as "STATEMENT TO NOTEHOLDERS September 14, 2026".
+_DISTRIBUTION_DATES = (
+    re.compile(r"distribution date\s*:?\s*(\d{1,2}/\d{1,2}/\d{2,4})", re.I),
+    re.compile(r"statement to (?:note|certificate)holders\s+([a-z]+ \d{1,2}, \d{4})", re.I),
+)
 
 
 class UnrecognisedFormat(Refused):
@@ -98,14 +103,16 @@ class ParsedReport:
 
 
 def distribution_date(text: str) -> dt.date | None:
-    """The first 'Distribution Date: 09/17/26' in the report text, if it reads as a date."""
-    match = _DISTRIBUTION_DATE.search(text)
-    if match is None:
-        return None
-    try:
-        return values.date(match.group(1))
-    except ValueError:
-        return None
+    """The report's distribution date, from the first place a known format states it."""
+    for pattern in _DISTRIBUTION_DATES:
+        match = pattern.search(text)
+        if match is None:
+            continue
+        try:
+            return values.date(match.group(1))
+        except ValueError:
+            return None
+    return None
 
 
 def _read[T](

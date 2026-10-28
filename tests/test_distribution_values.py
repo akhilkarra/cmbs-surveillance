@@ -76,6 +76,7 @@ def test_an_unreadable_amount_says_so(text):
         ("6/4/2026", dt.date(2026, 6, 4)),
         ("6/4/26", dt.date(2026, 6, 4)),
         ("2026-06-04", dt.date(2026, 6, 4)),
+        ("June 4, 2026", dt.date(2026, 6, 4)),
         ("", None),
         ("-", None),
         ("N/A", None),

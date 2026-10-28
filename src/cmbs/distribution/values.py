@@ -15,7 +15,7 @@ NOT_REPORTED = frozenset({"", "-", "--", "---", "n/a", "na", "nap", "none", "not
 # "11", "011", "11.00", "11A", "11-A", "11 a", "#11", "Loan 11". Up to four digits: a longer
 # number is a servicer loan number, not a prospectus id. "1.01" (a property of loan 1) is not.
 _LOAN_ID = re.compile(r"^(?:loan\s*|#\s*)?0*(\d{1,4})(?:\.0+)?(?:\s*-?\s*([a-z]{1,2}))?\*?$")
-_DATE_FORMATS = ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d")
+_DATE_FORMATS = ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d", "%B %d, %Y")
 
 
 def loan_id(text: str) -> str | None:
@@ -44,7 +44,7 @@ def amount(text: str) -> Decimal | None:
 
 
 def date(text: str) -> dt.date | None:
-    """'06/04/2026', '6/4/26' or '2026-06-04' -> date."""
+    """'06/04/2026', '6/4/26', '2026-06-04' or 'September 14, 2026' -> date."""
     value = clean(text)
     if not is_reported(value):
         return None
