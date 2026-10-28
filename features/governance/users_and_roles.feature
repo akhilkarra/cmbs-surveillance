@@ -1,4 +1,4 @@
-@draft @layer:logic @surface:api @surface:ui
+@approved @layer:logic @surface:api @surface:ui
 Feature: Users and roles
   The panel is shared. Every action is taken by a named user holding one or more roles,
   and each role is a short list of what it may do. A user may hold several roles, but

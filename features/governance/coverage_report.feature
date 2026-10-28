@@ -1,4 +1,4 @@
-@draft @layer:data @surface:cli @surface:api @surface:ui
+@approved @layer:data @surface:cli @surface:api @surface:ui
 Feature: Coverage report
   For every deal in the book, the report says what the panel can and cannot see, and how much
   of the book's exposure sits in each class. Blind spots are shown, never silently skipped.
