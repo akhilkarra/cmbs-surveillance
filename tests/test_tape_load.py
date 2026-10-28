@@ -36,7 +36,7 @@ from cmbs.tape.service import (
 )
 from cmbs.tape.tables import LoanPeriod, QuarantinedLoan, TapeAsset
 from tests.conftest import needs_db
-from tests.fixtures.tape.tapes import asset, fixture_bytes, tape
+from tests.fixtures.tape.tapes import asset, fixture_bytes, real_bytes, tape
 
 DEAL = "Fixture Trust 2026-F1"
 CIK = 9_900_001
@@ -348,6 +348,55 @@ def test_a_filing_registered_for_another_period_is_refused(db):
     )
     with pytest.raises(ConflictingFiling):
         load(db)
+
+
+@needs_db
+def test_a_tape_loads_on_top_of_the_filing_as_discovery_registers_it(db):
+    """Discovery registers the ABS-EE first, with EDGAR's primary document and the
+    distribution date; the tape then loads without contradicting either."""
+    deal = get_or_create(db, "BANK 2018-BNK13", cik=1744707)
+    accession = "0001888524-26-017705"
+    register_filing(
+        db,
+        accession=accession,
+        cik=1744707,
+        form="ABS-EE",
+        filing_date=FILED,
+        deal_id=deal.id,
+        report_date=dt.date(2026, 9, 17),
+        period=dt.date(2026, 9, 1),
+        primary_document="wcm18b13_absee-202609.htm",
+    )
+    name = "bank-2018-bnk13_2026-09_ex102.xml.gz"
+    summary = load_tape(
+        db,
+        deal="BANK 2018-BNK13",
+        content=real_bytes(name),
+        file_name="exh_102.xml",
+        accession=accession,
+        filing_date=FILED,
+    )
+    assert summary.loans_loaded == 42
+    filing = db.get(Filing, accession)
+    assert filing is not None
+    assert (filing.period, filing.report_date, filing.primary_document) == (
+        dt.date(2026, 9, 1),
+        dt.date(2026, 9, 17),
+        "wcm18b13_absee-202609.htm",
+    )
+    assert db.get(FilingFile, (accession, "exh_102.xml")) is not None
+
+
+@needs_db
+def test_a_loaded_tape_leaves_primary_document_and_report_date_to_discovery(db):
+    load(db)
+    filing = db.get(Filing, ACCESSION)
+    assert filing is not None
+    assert (filing.period, filing.report_date, filing.primary_document) == (
+        dt.date(2026, 9, 1),
+        None,
+        None,
+    )
 
 
 @needs_db

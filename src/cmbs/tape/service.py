@@ -101,7 +101,12 @@ def reporting_period_ends(assets: Sequence[Asset]) -> list[dt.date]:
 
 
 def tape_period(assets: Sequence[Asset], filing_date: dt.date) -> Period:
-    """The one distribution month the tape reports on. It must be over before the filing."""
+    """The one distribution month the tape reports on. It must be over before the filing.
+
+    A tape shows only the determination date (`reportingPeriodEndDate`, 09-11-2026), not the
+    distribution date (2026-09-17). For CMBS both fall in the same month, so the determination
+    date's month is the distribution month that filing discovery registers as the period.
+    """
     ends = reporting_period_ends(assets)
     if not ends:
         raise TapeRefused("the tape reports no reporting period end")
