@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, make_url, text
 from cmbs.db.models import LAYERS
 
 PYPROJECT = Path(__file__).parents[1] / "pyproject.toml"
-SCRATCH_DB = "cmbs_test_migrations"
+SCRATCH_DB = f"cmbs_test_migrations_{os.getpid()}"
 
 pytestmark = pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="DATABASE_URL not set")
 
