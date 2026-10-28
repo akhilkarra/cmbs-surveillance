@@ -1,5 +1,5 @@
 {
- "_provenance": "Computed 2026-10-24 in-browser (scripts/stage0/browser_extract.js) from the Sept-2026 ABS-EE EX-102 of each deal. staleness = reportingPeriodEndDate(09-11-2026) - mostRecentFinancialsEndDate, active non-co-op loans with financials. medianVsFiling uses ABS-EE filing date.",
+ "_provenance": "Computed 2026-10-24 in-browser (tools/browser/absee_loan_rows.js) from the Sept-2026 ABS-EE EX-102 of each deal. staleness = reportingPeriodEndDate(09-11-2026) - mostRecentFinancialsEndDate, active non-co-op loans with financials. medianVsFiling uses ABS-EE filing date.",
  "pooled_seasoned_7_deals": {"n_loans": 246, "p25_days": 73, "median_days": 73, "p75_days": 164, "p90_days": 254, "share_gt_6m": 0.142, "share_gt_12m": 0.024, "median_vs_filing_days": 91},
  "deals": [
   {"deal":"BANK 2017-BNK6","cik":1710261,"acc":"0001888524-26-017781","bytes":755636,"active":37,"withFin":37,"median":73,"p75":164,"p90":254,"max":2811,"mean":204,"gt6m":0.162,"gt12m":0.081,"periodLenMonths":{"3":8,"6":21,"12":8}},

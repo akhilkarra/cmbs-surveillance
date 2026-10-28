@@ -2,7 +2,7 @@
 
 Written 2026-10-24. Tags: **[V]** = verified this session against the linked source (most claims were checked on EDGAR); **[I]** = inferred or from background knowledge, not re-checked today.
 
-Scripts: `scripts/stage0/` (`efts_find_deals.py`, `submissions_summary.py`, `fetch_absee.py`, `absee_staleness.py`, `browser_extract.js`). Samples: `data/samples/` (see §9).
+Code: the `cmbs` package (`cmbs edgar search`, `cmbs edgar submissions`, `cmbs edgar download`, `cmbs analyze staleness`) and the browser helper `tools/browser/absee_loan_rows.js`. Samples: `data/samples/` (see §9).
 
 ---
 
@@ -154,7 +154,7 @@ Actual tag names seen in BANK 2017-BNK6 and BANK5 2026-5YR23 (Sept 2026):
 - Sept-2026 EX-102 for 9 public conduits (determination date 09-11-2026).
 - Kept top-level loans with ending balance above 0, excluding defeased loans and residential co-ops. Co-ops (`CH`) report no operating statements.
 - Staleness = `reportingPeriodEndDate − mostRecentFinancialsEndDate`.
-- Code: `scripts/stage0/browser_extract.js`, mirrored in `absee_staleness.py`. Raw numbers: `data/samples/_cross_section/staleness_2026-09.json`.
+- Code: `tools/browser/absee_loan_rows.js`, mirrored in `src/cmbs/analysis/staleness.py`. Raw numbers: `data/samples/_cross_section/staleness_2026-09.json`.
 
 **Cross-section.** Requested sample deals plus seasoned comparators, all from the September 2026 ABS-EE.
 
@@ -304,8 +304,8 @@ Example: BANK5 2026-5YR23. [V]
 | `www.sec.gov` (`/Archives/…`, `cgi-bin/browse-edgar`) | **403** "Your Request Originates from an Undeclared Automated Tool" |
 
 - SEC's fair-access policy asks for a UA of the form "Company Name contact@domain". The bare UA is rejected on www.sec.gov.
-- This session therefore pulled the Archives files through a normal browser tab, about 40 low-rate fetches (`scripts/stage0/browser_extract.js`), and stored extracted tables rather than raw XML.
-- **Fix for Stage 0:** create a *project* mailbox or alias (not a personal email) and set `SEC_USER_AGENT="cmbs-llm-research (academic project) <project-alias@domain>"` for `fetch_absee.py`.
+- This session therefore pulled the Archives files through a normal browser tab, about 40 low-rate fetches (`tools/browser/absee_loan_rows.js`), and stored extracted tables rather than raw XML.
+- **Fix:** create a *project* mailbox or alias (not a personal email) and set `SEC_USER_AGENT="cmbs-surveillance-research (academic project) <project-alias@domain>"` for `cmbs edgar download`.
 - **Rate limit:** at most 10 requests/s, i.e. sleep ≥0.1 s; the scripts use 0.15–0.25 s. Send `Accept-Encoding: gzip`.
 
 **Bulk options:**
@@ -358,9 +358,9 @@ Example: BANK5 2026-5YR23. [V]
 |---|---|---|---|---|
 | 0 | Set up a project-alias SEC UA so `www.sec.gov` returns 200 | — | — | **Blocker for raw downloads** |
 | 1 | Deal universe: public fund N-PORT-P holdings → CUSIP and deal list; classify each deal as public post-2016 / public pre-2016 / SASB 144A / suspended / pari-passu-in-conduit | `data.sec.gov` submissions + efts | <20 MB | Started (`data/samples/_submissions/`) |
-| 2 | Monthly ABS-EE EX-102 full history for the **held public conduits**: BANK5 2026-5YR23, Benchmark 2026-B43, Benchmark 2026-V22, Benchmark 2025-V13, Benchmark 2020-IG3, CD 2019-CD8 | `fetch_absee.py` → `absee_staleness.py` | ~5–60 MB per deal; keep extracted TSV | BNK13 TSV saved; raw pending (UA) |
+| 2 | Monthly ABS-EE EX-102 full history for the **sample public conduits**: BANK5 2026-5YR23, Benchmark 2026-B43, Benchmark 2026-V22, Benchmark 2025-V13, Benchmark 2020-IG3, CD 2019-CD8 | `cmbs edgar download` → `cmbs analyze staleness` | ~5–60 MB per deal; keep extracted TSV | BNK13 TSV saved; raw pending (UA) |
 | 3 | A comparison panel of about 20 seasoned 2017–2019 public conduits (BANK 2017-BNK6/9, BANK 2018-BNK13, Benchmark 2018-B8, BANK 2019-BNK19 …) for event studies with many SS transfers | Same as #2 | Extract-and-discard | Sept-2026 cross-section done |
-| 4 | 10-D EX-99.1 for every month of #2–#3 plus legacy holdings (WFRBS 2013-C15, WFRBS 2014-C25, CGCMT 2016-C1, COMM 2014-CR18 up to 2024). Parse SS comments, ARA, modification and delinquency tables. | `fetch_absee.py --all` | ~1–1.6 MB per month | BNK13 Sept-2026 section list and excerpts saved |
+| 4 | 10-D EX-99.1 for every month of #2–#3 plus legacy sample deals (WFRBS 2013-C15, WFRBS 2014-C25, CGCMT 2016-C1, COMM 2014-CR18 up to 2024). Parse SS comments, ARA, modification and delinquency tables. | `cmbs edgar download --with-distribution-report` | ~1–1.6 MB per month | BNK13 Sept-2026 section list and excerpts saved |
 | 5 | SASB pari passu discovery: efts on each SASB ticker in 8-K exhibits (`*tsa*`) → conduit ABS-EE rows for that loan | efts | Tiny | ILPT 2025-LPF2 confirmed |
 | 6 | At-issue baseline: pre-offering ABS-EE + Annex A-1 + Annex A-3 narratives for held public deals | EDGAR | ~30 MB per deal (HTML) | Structure checked |
 | 7 | Rating-agency surveillance press releases for every held deal, SASBs first (Morningstar DBRS, KBRA, Fitch, S&P), with publication timestamps | Agency sites | Small | MSC 2017-ASHF series located |
@@ -374,4 +374,4 @@ Example: BANK5 2026-5YR23. [V]
 - `bank-2018-bnk13/absee_2026-09_loans.tsv`.
 - `bank-2018-bnk13/timeseries_2025-08_to_2026-09.json`.
 - `bank-2018-bnk13/10d_2026-09_ex991_sections.txt`.
-- Raw EX-102 XML was **not** saved locally because of the www.sec.gov UA 403. Run `fetch_absee.py` once a compliant UA is set.
+- Raw EX-102 XML was **not** saved locally because of the www.sec.gov UA 403. Run `cmbs edgar download` once a compliant UA is set.

@@ -1,4 +1,4 @@
-# source: https://www.sec.gov/Archives/edgar/data/1744707/000188852426017705/exh_102.xml (ABS-EE filed 2026-09-29, reportingPeriodEndDate 09-11-2026, 334,517 bytes); extracted 2026-10-24 with scripts/stage0/browser_extract.js loanRows(); top-level loans only
+# source: https://www.sec.gov/Archives/edgar/data/1744707/000188852426017705/exh_102.xml (ABS-EE filed 2026-09-29, reportingPeriodEndDate 09-11-2026, 334,517 bytes); extracted 2026-10-24 with tools/browser/absee_loan_rows.js loanRows(); top-level loans only
 id	endBal	paidThrough	status	ssTransfer	msReturn	workout	modCode	liqCode	type	finStart	finEnd	noi	dscrNOI	occ	finSecDate	name
 1	50000000.00	09-11-2026	0						OF	01-01-2026	03-31-2026	7574471.24	2.5206	0.88		1745 BROADWAY
 2								8							12-31-2017	Griffin Portfolio II

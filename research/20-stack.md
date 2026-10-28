@@ -143,7 +143,7 @@ cmbs.core  (fetch → bronze → silver → gold, contracts, classify, lineage) 
 ## 4. Repo layout, runner, hooks, CI
 
 ```
-cmbs-llm/
+cmbs-surveillance/
 ├── pyproject.toml  uv.lock  justfile  .pre-commit-config.yaml
 ├── src/cmbs/{core/{edgar,bronze,silver,gold,contracts,classify,lineage}.py, cli.py, api/}
 ├── tests/{unit,property,oracle}/            # oracle = Hypothesis vs Lean exe
@@ -163,7 +163,7 @@ cmbs-llm/
 
 | Job | Steps |
 |---|---|
-| `py` | checkout@v7 → setup-uv@v10 → `uv sync --locked` → `ruff check` + `ruff format --check` → `pyright` → `pytest tests/unit tests/property` → `behavex -D surface=cli --parallel-processes 4 -o out/cli` → same with `surface=api` → upload `out/` (upload-artifact@v7) |
+| `py` | checkout@v7 → setup-uv@v7 → `uv sync --locked` → `ruff check` + `ruff format --check` → `pyright` → `pytest tests/unit tests/property` → `behavex -D surface=cli --parallel-processes 4 -o out/cli` → same with `surface=api` → upload `out/` (upload-artifact@v7) |
 | `lean` | leanprover/lean-action@v1 (runs `lake build`, caches) → `lake build 2>&1 \| tee b.log; ! grep -q "declaration uses \`sorry\`" b.log` → `lake env lean CmbsSpec/Axioms.lean` (`#print axioms` on each main theorem; fail if output contains `sorryAx`) → `lake build oracle` → `uv run pytest tests/oracle` |
 | `web` | setup-node@v7 (Node 24) → `npm ci` → `just openapi && git diff --exit-code` → `tsc --noEmit` → `biome ci` → `vitest run` → `npx playwright install --with-deps chromium` → start uvicorn on the fixture DB → `playwright test` |
 

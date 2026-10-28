@@ -84,6 +84,8 @@ What this means for us [I]:
 ```python
 class Decider(Protocol):
     def decide(self, state: str, qs: dict[str, Question]) -> DecisionResult: ...
+
+
 # DecisionResult per field:
 #   answer, probs: dict[label, float] | None, evidence_spans: list[str],
 #   model_id, request_hash

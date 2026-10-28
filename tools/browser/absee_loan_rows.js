@@ -37,4 +37,4 @@ window.loanRows = async function (cik, acc) {
 // staleness = reportingPeriodEndDate - finEnd. Time-series "first-appearance lag" =
 // first reportingPeriodEndDate at which a (loan, finEnd) pair appears - finEnd, excluding the
 // first month of the window (left-censored). Full code of both loops is in
-// scripts/stage0/absee_staleness.py (same definitions) and in research/11-data-sources.md §1.6.
+// src/cmbs/analysis/staleness.py (same definitions) and in research/11-data-sources.md §1.6.

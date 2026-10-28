@@ -1,0 +1,7 @@
+# GitGuardian (ggshield and the GitHub integration) secret-scanning settings.
+version: 2
+secret:
+  ignored_paths:
+    # Vendored Anthropic skills. Their docs contain placeholder example passwords
+    # such as `qpdf --password=...`, which trip the generic CLI secret detector.
+    - ".claude/skills/**"

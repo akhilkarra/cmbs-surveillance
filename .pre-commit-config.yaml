@@ -1,0 +1,37 @@
+# Hooks run locally via `pre-commit install` and on every push via pre-commit.ci.
+# Tests run in GitHub Actions (.github/workflows/ci.yml). Planned hooks once the code exists: biome, OpenAPI drift, Lean `sorry` check.
+exclude: ^(\.claude/skills/|data/samples/)
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: check-private-terms
+        name: block private terms (list kept in private/, local only)
+        entry: python tools/hooks/check_private_terms.py
+        language: python
+        types: [text]
+
+ci:
+  skip: [check-private-terms]
+  autoupdate_schedule: monthly
