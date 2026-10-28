@@ -49,6 +49,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above except the dev server.
 - **Python 3.13** (`.python-version`): `minify-html`, pulled in by behavex, has no 3.15 wheel.
 - **pytest below 9.2**: mutmut 3.8.0 reads `item._nodeid`, which pytest 9.2.0 removed.
 - **TypeScript 6, not 7**: TypeScript 7 drops the JavaScript compiler API that Stryker calls.
+- **Node 24 LTS** in the `web` container and CI; Dependabot skips Node majors, so moving to the next LTS is a deliberate edit to `compose.yaml` and `ci.yml` together.
 - **behavex ignores `default_tags` in `behave.ini`**, so every behavex run passes `-t 'not @draft'`.
 - **Pinned refs**: Docker images are pinned by digest, GitHub Actions by commit SHA with the release in a comment (zizmor enforces it), pre-commit hooks by tag. Dependabot (`.github/dependabot.yml`) bumps all of these weekly, plus `uv.lock` and `web/package-lock.json`; it skips the pins below via `ignore` rules, the CI service image and the local Biome hook, which are bumped by hand. Resolve a tag with `git ls-remote --tags` or `docker pull` before writing it.
 - **typos reports, never rewrites**: its hook's default auto-fix turned `MOR` into `MORE` and a variable `pn` into `on`. A real domain word or identifier goes in `_typos.toml`.

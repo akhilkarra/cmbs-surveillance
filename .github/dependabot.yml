@@ -57,6 +57,11 @@ updates:
     groups:
       images:
         patterns: ["*"]
+    ignore:
+      # Node stays on its LTS line (24, matching setup-node in ci.yml). Odd majors never become
+      # LTS, so moving to the next LTS is a deliberate edit, not a weekly bump.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
 
   # Hook revisions in .pre-commit-config.yaml. The local Biome hook's version is not seen here;
   # keep it equal to @biomejs/biome in web/package.json.
