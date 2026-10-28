@@ -90,3 +90,17 @@ def refusal_message(roles: set[Role] | frozenset[Role], action: Action) -> str:
         " or ".join(role.value for role in ROLE_ORDER if role in roles) or "a user without roles"
     )
     return f"{names} may not {action.value}"
+
+
+def format_roles(roles: set[Role] | frozenset[Role]) -> str:
+    """Roles in ROLE_ORDER, comma-separated: 'quant, risk'. No roles reads 'none'."""
+    return ", ".join(role.value for role in ROLE_ORDER if role in roles) or "none"
+
+
+def parse_roles(text: str) -> frozenset[Role]:
+    """'analyst, quant' -> {ANALYST, QUANT}. An unknown name raises ValueError."""
+    names = [name.strip() for name in text.split(",") if name.strip()]
+    unknown = [name for name in names if name not in Role._value2member_map_]
+    if unknown:
+        raise ValueError(f"no role named {unknown[0]!r}")
+    return frozenset(Role(name) for name in names)
