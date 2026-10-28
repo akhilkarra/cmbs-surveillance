@@ -6,13 +6,18 @@ import os
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-from cmbs.db.models import LAYERS, Base
+from cmbs.db.models import SCHEMAS as OUR_SCHEMAS
+from cmbs.db.models import Base
+from cmbs.db.registry import load_all_tables
 
 logging.basicConfig(format="%(levelname)-5.5s [%(name)s] %(message)s")
 logging.getLogger("alembic").setLevel(logging.INFO)
 logging.getLogger("alembic.runtime.plugins").setLevel(logging.WARNING)
 
-SCHEMAS = {"public", *LAYERS}
+SCHEMAS = {"public", *OUR_SCHEMAS}
+
+# Every feature declares its tables in cmbs.<feature>.tables; import them all.
+load_all_tables()
 
 
 def database_url() -> str:

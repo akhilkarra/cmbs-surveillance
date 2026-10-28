@@ -10,6 +10,7 @@ from typing import Annotated
 import typer
 
 from cmbs.analysis import staleness
+from cmbs.db.registry import all_command_modules
 from cmbs.edgar import archives, search, submissions
 from cmbs.universe import SAMPLE_DEALS
 
@@ -18,6 +19,9 @@ edgar_app = typer.Typer(help="Search and download from SEC EDGAR.", no_args_is_h
 analyze_app = typer.Typer(help="Measurements over parsed loan tapes.", no_args_is_help=True)
 app.add_typer(edgar_app, name="edgar")
 app.add_typer(analyze_app, name="analyze")
+# Feature command groups, found by convention: cmbs.<feature>.commands with `app` and `NAME`.
+for _module in all_command_modules():
+    app.add_typer(_module.app, name=_module.NAME)
 
 
 @edgar_app.command("search")
