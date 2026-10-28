@@ -2,11 +2,13 @@
 
 Fixture-deal steps start from tests/fixtures/schedule_al_minimal.xml and may change it before it
 is loaded ("loan 5 reports an ending balance of ..."); the tape is loaded at the first step that
-needs it. Real-data steps load the rebuilt EX-102 fixtures in tests/fixtures/tape/ and take
-filing dates and accession numbers from the recorded submissions JSON there.
+needs it. Real-data steps load the real EX-102 files in tests/fixtures/tape/ (gzip-compressed,
+byte for byte as filed) and take filing dates and accession numbers from the recorded
+submissions JSON there.
 """
 
 import datetime as dt
+import gzip
 import hashlib
 import json
 import xml.etree.ElementTree as ET
@@ -51,14 +53,14 @@ class RealTape:
 REAL_TAPES = {
     "BANK 2018-BNK13": [
         RealTape(
-            "bank-2018-bnk13_2026-08_ex102.xml",
+            "bank-2018-bnk13_2026-08_ex102.xml.gz",
             1744707,
             "0001888524-26-015516",
             Period(2026, 8),
             Period(2018, 9),
         ),
         RealTape(
-            "bank-2018-bnk13_2026-09_ex102.xml",
+            "bank-2018-bnk13_2026-09_ex102.xml.gz",
             1744707,
             "0001888524-26-017705",
             Period(2026, 9),
@@ -67,7 +69,7 @@ REAL_TAPES = {
     ],
     "BANK5 2026-5YR23": [
         RealTape(
-            "bank5-2026-5yr23_2026-09_ex102.xml",
+            "bank5-2026-5yr23_2026-09_ex102.xml.gz",
             2140978,
             "0001888524-26-018152",
             Period(2026, 9),
@@ -192,7 +194,7 @@ def real_tapes(deal: str) -> list[Tape]:
         Tape(
             deal=deal,
             cik=real.cik,
-            content=(FIXTURES / "tape" / real.file).read_bytes(),
+            content=gzip.decompress((FIXTURES / "tape" / real.file).read_bytes()),
             file_name=real.file,
             accession=real.accession,
             filing_date=filing_dates(real.cik)[real.accession],

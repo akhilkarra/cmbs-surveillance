@@ -50,8 +50,8 @@ def load_fixture(db: Session, accession: str, filed: dt.date, content: bytes | N
 
 def load_bnk13(db: Session) -> None:
     for name, accession, filed in [
-        ("bank-2018-bnk13_2026-08_ex102.xml", "0001888524-26-015516", dt.date(2026, 8, 27)),
-        ("bank-2018-bnk13_2026-09_ex102.xml", "0001888524-26-017705", dt.date(2026, 9, 29)),
+        ("bank-2018-bnk13_2026-08_ex102.xml.gz", "0001888524-26-015516", dt.date(2026, 8, 27)),
+        ("bank-2018-bnk13_2026-09_ex102.xml.gz", "0001888524-26-017705", dt.date(2026, 9, 29)),
     ]:
         load_tape(
             db,
@@ -82,7 +82,8 @@ def test_a_tape_is_invisible_before_its_filing_date(db):
     deal = panel.deal_named(db, BNK13)
     rows = panel.as_of(db, dt.date(2026, 9, 28), deal_id=deal.id)
     assert panel.periods(rows) == [AUGUST]
-    assert [row.loan for row in rows] == ["11"]
+    assert len(rows) == 62
+    assert {row.accession for row in rows} == {"0001888524-26-015516"}
     assert panel.as_of(db, dt.date(2026, 8, 26), deal_id=deal.id) == []
 
 
@@ -103,7 +104,7 @@ def test_as_of_filters_by_period_and_loan(db):
     deal = panel.deal_named(db, BNK13)
     day = dt.date(2026, 10, 1)
     rows = panel.as_of(db, day, deal_id=deal.id, period=AUGUST)
-    assert [(row.loan, row.period) for row in rows] == [("11", AUGUST.first_day)]
+    assert {row.period for row in rows} == {AUGUST.first_day} and len(rows) == 62
     rows = panel.as_of(db, day, deal_id=deal.id, loan="11")
     assert [row.period for row in rows] == [AUGUST.first_day, SEPTEMBER.first_day]
     assert rows[1].workout_strategy == "2" and rows[0].workout_strategy == "13"
@@ -164,7 +165,7 @@ def test_tape_as_of_gives_the_latest_period_visible(db):
     load_bnk13(db)
     tape = panel.tape_as_of(db, BNK13, dt.date(2026, 9, 20))
     assert (tape.deal, tape.as_of, tape.period) == (BNK13, dt.date(2026, 9, 20), AUGUST)
-    assert [row.loan for row in tape.rows] == ["11"]
+    assert len(tape.rows) == 62 and tape.rows[0].loan == "1" and tape.rows[-1].loan == "62"
     tape = panel.tape_as_of(db, BNK13, dt.date(2026, 10, 1), AUGUST)
     assert tape.period == AUGUST
 
@@ -207,7 +208,7 @@ def test_staleness_of_a_new_issue(db):
     load_tape(
         db,
         deal="BANK5 2026-5YR23",
-        content=real_bytes("bank5-2026-5yr23_2026-09_ex102.xml"),
+        content=real_bytes("bank5-2026-5yr23_2026-09_ex102.xml.gz"),
         file_name="ex102.xml",
         accession="0001888524-26-018152",
         filing_date=dt.date(2026, 10, 1),

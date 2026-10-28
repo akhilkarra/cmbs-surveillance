@@ -14,8 +14,10 @@ from decimal import Decimal
 
 from cmbs.absee.schedule_al import Asset
 
-# Plain decimals as Schedule AL writes them: "50000000.00", "-12000000", "0.88".
-_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
+# XML Schema decimals, the type Schedule AL declares: "50000000.00", "-12000000", "0.88", and
+# also "+1", "5." and ".00000000" (BANK5 2026-5YR23 writes zero amounts that way). No exponent,
+# no thousands separators.
+_NUMBER = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
 CENT = Decimal("0.01")
 
 

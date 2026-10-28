@@ -145,14 +145,24 @@ def test_sources_cover_every_row_field_but_the_loan_number():
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [("", None), ("0", Decimal("0")), ("-3", Decimal("-3")), ("1.4500", Decimal("1.4500"))],
+    [
+        ("", None),
+        ("0", Decimal("0")),
+        ("-3", Decimal("-3")),
+        ("1.4500", Decimal("1.4500")),
+        ("+1", Decimal("1")),
+        ("5.", Decimal("5")),
+        (".5", Decimal("0.5")),
+        ("-.25", Decimal("-0.25")),
+        (".00000000", Decimal("0")),
+    ],
 )
-def test_read_decimal(text, expected):
+def test_read_decimal_reads_xml_schema_decimals(text, expected):
     assert read_decimal(text, "x") == expected
 
 
-@pytest.mark.parametrize("text", ["abc", "1.", ".5", "+1", "1e3", "1 000", "--1"])
-def test_read_decimal_refuses_anything_but_a_plain_number(text):
+@pytest.mark.parametrize("text", ["abc", ".", "-", "1e3", "1 000", "--1", "+-1", "1.2.3", "NaN"])
+def test_read_decimal_refuses_anything_but_a_decimal(text):
     with pytest.raises(Unreadable) as error:
         read_decimal(text, "most recent DSCR")
     assert str(error.value) == f"most recent DSCR is not a number: {text!r}"
@@ -167,6 +177,8 @@ def test_read_decimal_refuses_anything_but_a_plain_number(text):
         ("5.10", "5.10"),
         ("5.100", "5.10"),
         ("-0.01", "-0.01"),
+        (".00000000", "0.00"),
+        ("93100000.00000000", "93100000.00"),
     ],
 )
 def test_read_money(text, expected):
