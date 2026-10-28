@@ -419,3 +419,24 @@ def test_an_overlong_unknown_name_is_refused_and_recorded_as_given(seeded):
     seeded.rollback()
     entry = seeded.scalars(select(AuditEntry).where(AuditEntry.outcome == "refused")).one()
     assert entry.user_name == name
+
+
+def test_an_alias_reaches_its_deal_when_registering_and_looking_up(db):
+    from cmbs.deals.tables import DealAlias
+
+    deal = get_or_create(db, "COMM 2014-CR18", cik=1610486)
+    db.add(DealAlias(name="COMM 2014-CCRE18", deal_id=deal.id))
+    db.flush()
+    assert get_or_create(db, "COMM 2014-CCRE18") is deal
+    assert get_or_create(db, "COMM 2014-CCRE18", cik=1610486) is deal
+    assert by_name(db, "COMM 2014-CCRE18") is deal
+    assert db.scalars(select(Deal)).all() == [deal]  # no second deal under the alias
+    with pytest.raises(ConflictingDeal, match="COMM 2014-CR18 already has CIK 1610486, not 1"):
+        get_or_create(db, "COMM 2014-CCRE18", cik=1)
+
+
+def test_names_are_compared_with_whitespace_collapsed(db):
+    deal = get_or_create(db, "BANK  2018-BNK13 ")
+    assert deal.name == "BANK 2018-BNK13"
+    assert get_or_create(db, " BANK 2018-BNK13") is deal
+    assert by_name(db, "BANK 2018-BNK13  ") is deal
