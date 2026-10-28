@@ -49,7 +49,7 @@ jobs:
         run: |
           uv run mutmut run > /dev/null
           uv run mutmut export-cicd-stats
-          uv run python tools/check_mutation_score.py --min 58
+          uv run python tools/check_mutation_score.py --min 68
       - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
         run: uv run python tools/check_approved_features.py --range "${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"
 
