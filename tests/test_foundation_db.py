@@ -20,6 +20,7 @@ from cmbs.audit.service import entries_for_subject, record
 from cmbs.audit.tables import AuditEntry
 from cmbs.checks.service import flags_for, raise_flag
 from cmbs.deals.service import by_name, get_or_create
+from cmbs.filings.service import ConflictingFiling, register_filing, store_file
 from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
 from cmbs.settings.service import NoSettings, OutOfOrderVersion, in_force, store_version
 from cmbs.settings.values import Settings
@@ -210,3 +211,53 @@ def test_flags_keep_both_sides_per_loan(db):
     assert flag.sides == {"report": "delinquent", "tape": "current"}
     assert flags_for(db, deal_id=deal.id, loan="5") == []
     assert [f.message for f in flags_for(db, deal_id=other.id, loan="4")] == ["other deal"]
+
+
+ACCESSION = "0001888524-26-017705"
+FILED = dt.date(2026, 9, 29)
+
+
+def register_sept(db, filing_date: dt.date = FILED, **optional):
+    """The September 2026 ABS-EE of BANK 2018-BNK13, plus any optional facts."""
+    return register_filing(
+        db, accession=ACCESSION, cik=1744707, form="ABS-EE", filing_date=filing_date, **optional
+    )
+
+
+def test_a_filing_is_registered_once(db):
+    assert register_sept(db) is register_sept(db)
+
+
+def test_later_registrations_fill_in_missing_facts(db):
+    deal = get_or_create(db, "BANK 2018-BNK13", cik=1744707)
+    register_sept(db)
+    filing = register_sept(
+        db,
+        deal_id=deal.id,
+        report_date=dt.date(2026, 9, 17),
+        period=dt.date(2026, 9, 1),
+        primary_document="wcm18b13_absee-202609.htm",
+    )
+    assert (filing.deal_id, filing.report_date, filing.period, filing.primary_document) == (
+        deal.id,
+        dt.date(2026, 9, 17),
+        dt.date(2026, 9, 1),
+        "wcm18b13_absee-202609.htm",
+    )
+
+
+def test_registered_facts_cannot_change(db):
+    register_sept(db, period=dt.date(2026, 9, 1))
+    with pytest.raises(ConflictingFiling, match="already has period"):
+        register_sept(db, period=dt.date(2026, 8, 1))
+    with pytest.raises(ConflictingFiling, match="different facts"):
+        register_sept(db, filing_date=dt.date(2026, 9, 30))
+
+
+def test_files_are_stored_once_with_their_hash(db):
+    register_sept(db)
+    stored = store_file(db, accession=ACCESSION, name="exh_102.xml", content=b"<assets/>")
+    assert (stored.size, len(stored.sha256)) == (9, 64)
+    assert store_file(db, accession=ACCESSION, name="exh_102.xml", content=b"<assets/>") is stored
+    with pytest.raises(ConflictingFiling, match="other content"):
+        store_file(db, accession=ACCESSION, name="exh_102.xml", content=b"<changed/>")

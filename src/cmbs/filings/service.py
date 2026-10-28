@@ -26,29 +26,38 @@ def register_filing(
     amends: str | None = None,
     primary_document: str | None = None,
 ) -> Filing:
-    """Idempotent: registering the same filing again returns the stored row."""
+    """Register a filing, or add facts to one already registered.
+
+    The identifying facts (CIK, form, filing date) must match. Each optional fact may be filled
+    in later, but never changed: a different non-empty value raises ConflictingFiling.
+    """
+    optional = {
+        "deal_id": deal_id,
+        "report_date": report_date,
+        "period": period,
+        "amends": amends,
+        "primary_document": primary_document,
+    }
     existing = db.get(Filing, accession)
-    if existing is not None:
-        if (existing.cik, existing.form, existing.filing_date) != (cik, form, filing_date):
-            raise ConflictingFiling(f"{accession} is already registered with different facts")
-        if deal_id is not None and existing.deal_id is None:
-            existing.deal_id = deal_id
-            db.flush()
-        return existing
-    filing = Filing(
-        accession=accession,
-        cik=cik,
-        form=form,
-        filing_date=filing_date,
-        deal_id=deal_id,
-        report_date=report_date,
-        period=period,
-        amends=amends,
-        primary_document=primary_document,
-    )
-    db.add(filing)
+    if existing is None:
+        filing = Filing(
+            accession=accession, cik=cik, form=form, filing_date=filing_date, **optional
+        )
+        db.add(filing)
+        db.flush()
+        return filing
+    if (existing.cik, existing.form, existing.filing_date) != (cik, form, filing_date):
+        raise ConflictingFiling(f"{accession} is already registered with different facts")
+    for field, value in optional.items():
+        if value is None:
+            continue
+        current = getattr(existing, field)
+        if current is None:
+            setattr(existing, field, value)
+        elif current != value:
+            raise ConflictingFiling(f"{accession} already has {field} {current!r}, not {value!r}")
     db.flush()
-    return filing
+    return existing
 
 
 def sha256_of(content: bytes) -> str:
