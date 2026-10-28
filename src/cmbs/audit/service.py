@@ -3,8 +3,9 @@
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from cmbs import clock
 from cmbs.audit.tables import AuditEntry
@@ -46,13 +47,30 @@ def record(
     return entry
 
 
+_refusal_engines: dict[str, Engine] = {}
+
+
+def _refusal_engine(db: Session) -> Engine:
+    """An unpooled engine on the caller's database, used only to record refusals.
+
+    The caller is already holding a connection from its pool. Borrowing a second one from the
+    same pool could wait, or time out, when the pool is busy, and the refusal would go
+    unrecorded. A fresh connection per refusal avoids the pool entirely; refusals are rare.
+    """
+    url = db.get_bind().engine.url
+    key = url.render_as_string(hide_password=False)
+    if key not in _refusal_engines:
+        _refusal_engines[key] = create_engine(url, poolclass=NullPool)
+    return _refusal_engines[key]
+
+
 def record_refusal(db: Session, *, user: str, action: object, message: str) -> None:
-    """Record a refusal in its own transaction.
+    """Record a refusal in its own transaction, on its own connection.
 
     The caller's transaction usually rolls back because of the refusal; the record of it must
     survive that, so it is committed separately on the same database.
     """
-    with Session(db.get_bind()) as separate:
+    with Session(_refusal_engine(db)) as separate:
         record(separate, user=user, action=str(action), outcome="refused", reason=message)
         separate.commit()
 

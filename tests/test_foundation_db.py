@@ -6,7 +6,7 @@ import sys
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session
 
@@ -343,3 +343,17 @@ def test_a_run_finished_by_another_session_cannot_be_finished_again(db):
         other.commit()
         with pytest.raises(RunAlreadyFinished, match="already finished as 'succeeded'"):
             finish_run(stale, held, status="failed", summary={"error": "late"})
+
+
+def test_a_refusal_is_recorded_even_when_the_callers_pool_is_exhausted(seeded, db_url):
+    """The refusal record never waits on the caller's connection pool."""
+    tiny = create_engine(db_url, pool_size=1, max_overflow=0, pool_timeout=1)
+    try:
+        with Session(tiny) as caller:
+            caller.execute(text("SELECT 1"))  # the pool's only connection is now in use
+            with pytest.raises(PermissionRefused, match="^pm may not decide review items$"):
+                authorize(caller, "pat", Action.DECIDE_REVIEW)
+    finally:
+        tiny.dispose()
+    entry = seeded.scalars(select(AuditEntry).where(AuditEntry.outcome == "refused")).one()
+    assert (entry.user_name, entry.reason) == ("pat", "pm may not decide review items")
