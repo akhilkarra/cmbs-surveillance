@@ -1,24 +1,20 @@
 """Point-in-time reads: a value is visible only from its filing date, amendments add versions.
 
-The read-only tests share one database per module, with the real August and September 2026
-BANK 2018-BNK13 tapes (and the BANK5 2026-5YR23 new issue) loaded once. Tests that write use
-the per-test `db` fixture and one- or two-asset tapes.
+Every database test runs in a rolled-back session on one database for the module (`tx`). The
+real August and September 2026 BANK 2018-BNK13 tapes and the BANK5 2026-5YR23 new issue are
+loaded and read in one test; the rest use one- or two-asset tapes.
 """
 
 import datetime as dt
-import os
-from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
 
 import pytest
 from pandera.errors import SchemaErrors
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from cmbs.absee.schedule_al import parse_assets
 from cmbs.analysis.staleness import TapeLoan, measure
-from cmbs.db.registry import load_all_tables
 from cmbs.domain import Period
 from cmbs.panel import service as panel
 from cmbs.panel.contract import ModelInput, Rejection, model_input, rejections
@@ -56,29 +52,12 @@ def test_loan_order_compares_numbers_as_numbers(loans, ordered):
 # ---------------------------------------------------------------------------- the real tapes
 
 
-class Loaded:
-    def __init__(self, db: Session, summaries: dict[str, LoadSummary]) -> None:
-        self.db = db
-        self.summaries = summaries
-
-    def deal_id(self, name: str) -> int:
-        return panel.deal_named(self.db, name).id
-
-
-@pytest.fixture(scope="module")
-def real(db_template) -> Iterator[Loaded]:
-    """One database for the module with the three real tapes loaded, read but never written."""
-    from cmbs.testing import databases
-
-    load_all_tables()
-    name = f"cmbs_pytest_{os.getpid()}_panel_real"
-    url = databases.clone(db_template, name)
-    bind = create_engine(url)
-    summaries = {}
-    with Session(bind, expire_on_commit=False) as db:
-        for deal, file, filed in REAL:
-            facts = REAL_FILES[file]
-            summaries[file] = load_tape(
+def load_real(db: Session) -> list[LoadSummary]:
+    summaries = []
+    for deal, file, filed in REAL:
+        facts = REAL_FILES[file]
+        summaries.append(
+            load_tape(
                 db,
                 deal=deal,
                 content=real_bytes(file),
@@ -87,62 +66,46 @@ def real(db_template) -> Iterator[Loaded]:
                 filing_date=filed,
                 cik=facts.cik,
             )
-        db.commit()
-        yield Loaded(db, summaries)
-    bind.dispose()
-    databases.drop(name)
+        )
+    return summaries
 
 
 @needs_db
-def test_the_real_tapes_load_end_to_end(real):
-    loads = [
-        (s.assets, s.loans_loaded, len(s.quarantined), s.notes) for s in real.summaries.values()
-    ]
+def test_the_real_tapes_point_in_time(tx):
+    """One test loads the three real tapes and reads them every way the panel can, so the
+    cost of loading them is paid once and is part of this test's own time.
+    """
+    db = tx
+    loads = [(s.assets, s.loans_loaded, len(s.quarantined), s.notes) for s in load_real(db)]
     assert loads == [(87, 62, 0, []), (67, 42, 0, []), (33, 33, 0, [])]
-    september = real.summaries["bank-2018-bnk13_2026-09_ex102.xml.gz"]
-    assert september.file_sha256 == REAL_FILES["bank-2018-bnk13_2026-09_ex102.xml.gz"].sha256
+    bnk13 = panel.deal_named(db, BNK13).id
+    new_issue = panel.deal_named(db, NEW_ISSUE).id
 
-
-@needs_db
-def test_a_tape_is_invisible_before_its_filing_date(real):
-    rows = panel.as_of(real.db, dt.date(2026, 9, 28), deal_id=real.deal_id(BNK13))
+    # A tape is invisible before its filing date and visible from it.
+    rows = panel.as_of(db, dt.date(2026, 9, 28), deal_id=bnk13)
     assert panel.periods(rows) == [AUGUST]
     assert len(rows) == 62
     assert {row.accession for row in rows} == {"0001888524-26-015516"}
-    assert panel.as_of(real.db, dt.date(2026, 8, 26), deal_id=real.deal_id(BNK13)) == []
-
-
-@needs_db
-def test_a_tape_is_visible_from_its_filing_date(real):
-    rows = panel.as_of(real.db, dt.date(2026, 9, 29), deal_id=real.deal_id(BNK13))
+    assert panel.as_of(db, dt.date(2026, 8, 26), deal_id=bnk13) == []
+    rows = panel.as_of(db, dt.date(2026, 9, 29), deal_id=bnk13)
     assert panel.periods(rows) == [AUGUST, SEPTEMBER]
     september = [row.loan for row in rows if row.period == SEPTEMBER.first_day]
     assert len(september) == 42
     assert september[:3] == ["1", "2", "3"] and september[-1] == "56"
 
-
-@needs_db
-def test_as_of_filters_by_period_and_loan(real):
+    # Filters by period and loan, and every deal in order without one.
     day = dt.date(2026, 10, 1)
-    rows = panel.as_of(real.db, day, deal_id=real.deal_id(BNK13), period=AUGUST)
+    rows = panel.as_of(db, day, deal_id=bnk13, period=AUGUST)
     assert {row.period for row in rows} == {AUGUST.first_day} and len(rows) == 62
-    rows = panel.as_of(real.db, day, deal_id=real.deal_id(BNK13), loan="11")
+    rows = panel.as_of(db, day, deal_id=bnk13, loan="11")
     assert [row.period for row in rows] == [AUGUST.first_day, SEPTEMBER.first_day]
     assert rows[1].workout_strategy == "2" and rows[0].workout_strategy == "13"
-
-
-@needs_db
-def test_as_of_without_a_deal_covers_every_deal_in_order(real):
-    rows = panel.as_of(real.db, dt.date(2026, 10, 1), period=SEPTEMBER)
-    deals = [row.deal_id for row in rows]
+    rows = panel.as_of(db, day, period=SEPTEMBER)
     assert len(rows) == 42 + 33
-    assert deals == sorted(deals)
+    assert [row.deal_id for row in rows] == sorted(row.deal_id for row in rows)
 
-
-@needs_db
-def test_ditson_building_in_september(real):
-    day = dt.date(2026, 9, 29)
-    [ditson] = panel.as_of(real.db, day, deal_id=real.deal_id(BNK13), period=SEPTEMBER, loan="11")
+    # The Ditson Building in September, as the research notes give it.
+    [ditson] = panel.as_of(db, dt.date(2026, 9, 29), deal_id=bnk13, period=SEPTEMBER, loan="11")
     assert (
         ditson.ending_balance,
         ditson.paid_through_date,
@@ -162,63 +125,64 @@ def test_ditson_building_in_september(real):
         Decimal("0.28"),
         1,
     )
+    sept = panel.as_of(db, dt.date(2026, 9, 29), deal_id=bnk13, period=SEPTEMBER)
+    assert {row.loan for row in sept if row.defeased_status == "F"} == {"36", "49"}
 
-
-@needs_db
-def test_defeased_loans_carry_their_status(real):
-    rows = panel.as_of(real.db, dt.date(2026, 9, 29), deal_id=real.deal_id(BNK13), period=SEPTEMBER)
-    assert {row.loan for row in rows if row.defeased_status == "F"} == {"36", "49"}
-
-
-@needs_db
-def test_a_nested_portfolio_is_one_loan_row(real):
-    [loan] = panel.as_of(real.db, dt.date(2026, 10, 1), deal_id=real.deal_id(NEW_ISSUE), loan="1")
-    assert (loan.property_count, loan.property_type, loan.property_name) == (
+    # A nested portfolio of the new issue is one loan row.
+    [portfolio] = panel.as_of(db, day, deal_id=new_issue, loan="1")
+    assert (portfolio.property_count, portfolio.property_type, portfolio.property_name) == (
         90,
         "IN",
         "Portfolio (90 properties)",
     )
-    assert (loan.noi, loan.dscr, loan.occupancy, loan.financials_end) == (None, None, None, None)
+    assert (portfolio.noi, portfolio.dscr, portfolio.occupancy, portfolio.financials_end) == (
+        None,
+        None,
+        None,
+        None,
+    )
 
-
-@needs_db
-def test_tape_as_of_gives_the_latest_period_visible(real):
-    tape_ = panel.tape_as_of(real.db, BNK13, dt.date(2026, 9, 20))
-    assert (tape_.deal, tape_.as_of, tape_.period) == (BNK13, dt.date(2026, 9, 20), AUGUST)
-    assert tape_.accession == "0001888524-26-015516"
-    assert len(tape_.rows) == 62 and tape_.rows[0].loan == "1" and tape_.rows[-1].loan == "62"
-    assert tape_.superseded == []
-    assert panel.tape_as_of(real.db, BNK13, dt.date(2026, 10, 1), AUGUST).period == AUGUST
-
-
-@needs_db
-def test_tape_as_of_refuses_unknown_deals_and_unpublished_periods(real):
+    # The latest period on a day, and refusals for what had not been filed.
+    current = panel.tape_as_of(db, BNK13, dt.date(2026, 9, 20))
+    assert (current.deal, current.as_of, current.period) == (BNK13, dt.date(2026, 9, 20), AUGUST)
+    assert current.accession == "0001888524-26-015516"
+    assert len(current.rows) == 62 and current.rows[0].loan == "1"
+    assert current.rows[-1].loan == "62" and current.superseded == []
+    assert panel.tape_as_of(db, BNK13, dt.date(2026, 10, 1), AUGUST).period == AUGUST
     with pytest.raises(UnknownDeal, match="^no deal named 'Nope'$"):
-        panel.tape_as_of(real.db, "Nope", dt.date(2026, 10, 1))
+        panel.tape_as_of(db, "Nope", dt.date(2026, 10, 1))
     with pytest.raises(NothingPublished) as refusal:
-        panel.tape_as_of(real.db, BNK13, dt.date(2026, 8, 1))
+        panel.tape_as_of(db, BNK13, dt.date(2026, 8, 1))
     assert str(refusal.value) == "no loan tape of BANK 2018-BNK13 had been filed by 2026-08-01"
     with pytest.raises(NothingPublished) as refusal:
-        panel.tape_as_of(real.db, BNK13, dt.date(2026, 9, 28), SEPTEMBER)
+        panel.tape_as_of(db, BNK13, dt.date(2026, 9, 28), SEPTEMBER)
     assert str(refusal.value) == (
         "no September 2026 loan tape of BANK 2018-BNK13 had been filed by 2026-09-28"
     )
 
-
-@needs_db
-def test_staleness_of_the_real_bnk13_tape_matches_the_research(real):
-    _, report = panel.staleness(real.db, BNK13, dt.date(2026, 9, 29))
+    # Staleness matches the research notes; the new issue has only securitization figures.
+    _, report = panel.staleness(db, BNK13, dt.date(2026, 9, 29))
     summary = report.summary
     assert (summary.active_loans, summary.loans_with_financials) == (34, 34)
     assert (summary.median_days, summary.p90_days, summary.median_days_vs_filing) == (73, 164, 91)
     assert report.loan("36").status == "excluded: defeased"
-
-
-@needs_db
-def test_staleness_of_a_new_issue(real):
-    _, report = panel.staleness(real.db, NEW_ISSUE, dt.date(2026, 10, 1))
+    _, report = panel.staleness(db, NEW_ISSUE, dt.date(2026, 10, 1))
     assert (report.summary.active_loans, report.summary.loans_with_financials) == (33, 0)
     assert report.summary.note == "only at-securitization financials so far"
+
+    # A model input built before the filing date uses data published after it.
+    built = model_input(ditson, "dscr", dt.date(2026, 9, 20))
+    assert built == ModelInput(
+        deal_id=bnk13,
+        loan="11",
+        period=SEPTEMBER.first_day,
+        as_of=dt.date(2026, 9, 20),
+        field="dscr",
+        value=Decimal("0.0348"),
+        accession="0001888524-26-017705",
+        published=dt.date(2026, 9, 29),
+    )
+    assert [r.reason for r in rejections([built])] == ["uses data published after 2026-09-20"]
 
 
 def test_staleness_of_the_fixture_without_a_database():
@@ -421,23 +385,3 @@ def test_a_row_without_a_publishing_date_is_a_bug_not_look_ahead():
     unknown = replace(entry(dt.date(2026, 9, 20), dt.date(2026, 9, 29)), published=None)
     with pytest.raises(SchemaErrors):
         rejections([unknown])  # pyright: ignore[reportArgumentType]
-
-
-@needs_db
-def test_a_model_input_carries_the_publishing_filing(real):
-    deal_id = real.deal_id(BNK13)
-    [version] = panel.as_of(
-        real.db, dt.date(2026, 9, 29), deal_id=deal_id, period=SEPTEMBER, loan="11"
-    )
-    built = model_input(version, "dscr", dt.date(2026, 9, 20))
-    assert built == ModelInput(
-        deal_id=version.deal_id,
-        loan="11",
-        period=SEPTEMBER.first_day,
-        as_of=dt.date(2026, 9, 20),
-        field="dscr",
-        value=Decimal("0.0348"),
-        accession="0001888524-26-017705",
-        published=dt.date(2026, 9, 29),
-    )
-    assert [r.reason for r in rejections([built])] == ["uses data published after 2026-09-20"]

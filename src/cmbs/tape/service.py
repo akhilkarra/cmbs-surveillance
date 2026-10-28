@@ -8,9 +8,10 @@ silver  one typed row per top-level loan, checked by the loan_period contract fi
 
 Every check runs before anything is written: the form, the file, the period, the deal's CIK,
 the amendment chain, a clash with another tape of the same day, and the facts already
-registered for the filing. The deal row is locked first and the filing row second, by every
+registered for the filing. Then the deal row is locked and the filing row second, by every
 load, so loads of a deal take turns; the checks that depend on other loads (already loaded,
-same-day clash) run again under those locks before writing. A repeated load changes nothing.
+same-day clash) run again under those locks before anything else is written. A repeated load
+changes nothing.
 
 With an actor, every loan row written is audited, and every refusal is recorded in the audit
 trail in its own transaction (`cmbs.audit.service.refuse`), so the caller's rollback keeps it.
@@ -27,7 +28,7 @@ from sqlalchemy.orm import Session
 from cmbs.absee.schedule_al import Asset, AssetKind, parse_assets
 from cmbs.access.service import Actor
 from cmbs.audit.service import LOAN, loan_key, record, refuse
-from cmbs.deals.service import ConflictingDeal, get_or_create
+from cmbs.deals.service import ConflictingDeal, by_name, get_or_create
 from cmbs.deals.tables import Deal
 from cmbs.domain import Period
 from cmbs.errors import Refused
@@ -166,11 +167,6 @@ def plan(assets: Sequence[Asset]) -> Plan:
 
 
 # ---------------------------------------------------------------------------- database checks
-
-
-def _locked_deal(db: Session, name: str) -> Deal | None:
-    query = select(Deal).where(Deal.name == name).with_for_update()
-    return db.scalars(query.execution_options(populate_existing=True)).first()
 
 
 def _cik(name: str, deal: Deal | None, cik: int | None) -> int:
@@ -363,7 +359,7 @@ def _load(
     period = tape_period(assets, filing_date)
     sha256 = sha256_of(content)
 
-    existing_deal = _locked_deal(db, deal)  # loads of a deal take turns
+    existing_deal = by_name(db, deal)  # read only: nothing is written before the checks
     deal_cik = _cik(deal, existing_deal, cik)
     deal_id = existing_deal.id if existing_deal is not None else None
     depth = _check_amended(db, amends, deal_id, period, filing_date)
@@ -381,7 +377,7 @@ def _load(
         return _summary(db, deal, accession, period, filing_date, already_loaded=True)
     _check_same_day(db, deal, deal_id, accession, amends, period, filing_date)
 
-    deal_row = get_or_create(db, deal, cik=deal_cik)
+    deal_row = get_or_create(db, deal, cik=deal_cik)  # locks the deal: loads of it take turns
     register_filing(  # locks the filing row
         db,
         accession=accession,
