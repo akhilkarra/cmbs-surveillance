@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -47,3 +48,32 @@ class Position(Base):
     # The certificate class held ("E"); `class` is a reserved word in SQL and Python.
     tranche: Mapped[str] = mapped_column(String(16))
     face_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+
+
+class WholeLoan(Base):
+    """One whole loan held through several deals as pari passu notes (grill log Q48).
+
+    Links are made explicitly by a quant, never inferred; a linked loan raises one alert.
+    """
+
+    __tablename__ = "whole_loan"
+    __table_args__ = {"schema": APP_SCHEMA}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    linked_by: Mapped[str] = mapped_column(ForeignKey(f"{APP_SCHEMA}.user.name"))
+    linked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WholeLoanNote(Base):
+    """A deal's loan that is a note of a whole loan. A deal's loan is in one whole loan at most,
+    and a whole loan has one note in each deal."""
+
+    __tablename__ = "whole_loan_note"
+    __table_args__ = (
+        UniqueConstraint("whole_loan_id", "deal_id"),
+        {"schema": APP_SCHEMA},
+    )
+
+    deal_id: Mapped[int] = mapped_column(ForeignKey("silver.deal.id"), primary_key=True)
+    loan: Mapped[str] = mapped_column(Text, primary_key=True)
+    whole_loan_id: Mapped[int] = mapped_column(ForeignKey(f"{APP_SCHEMA}.whole_loan.id"))
