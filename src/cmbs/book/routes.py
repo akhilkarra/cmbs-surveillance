@@ -10,7 +10,7 @@ from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
 from cmbs.api.deps import DB, User
-from cmbs.book.service import exposure_for, position_line, store_positions
+from cmbs.book.service import NoteRef, exposure_for, link_whole_loan, position_line, store_positions
 
 router = APIRouter(prefix="/book", tags=["book"])
 
@@ -51,3 +51,20 @@ def exposure(user: User, db: DB, on: Annotated[dt.date | None, Query()] = None) 
     day = on or clock.today()
     held = exposure_for(db, user=user, on=day)
     return {"on": day.isoformat(), "exposure": {deal: str(amount) for deal, amount in held.items()}}
+
+
+class NoteIn(BaseModel):
+    deal: str
+    loan: str
+
+
+class WholeLoanIn(BaseModel):
+    notes: list[NoteIn]
+
+
+@router.post("/whole-loans")
+def link(body: WholeLoanIn, user: User, db: DB) -> dict[str, Any]:
+    """Record that deals' loans are notes of one whole loan; needs a quant (Q48)."""
+    notes = [NoteRef(note.deal, note.loan) for note in body.notes]
+    whole_loan_id = link_whole_loan(db, user=user, notes=notes)
+    return {"id": whole_loan_id, "notes": [{"deal": n.deal, "loan": n.loan} for n in body.notes]}

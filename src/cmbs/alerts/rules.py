@@ -289,10 +289,8 @@ def normalize(text: str) -> str:
 
 
 def _ends_abbreviation(text: str) -> bool:
-    words = text.split()
-    if not words:
-        return False
-    word = words[-1].rstrip(".").lower()
+    """Whether the text's last word (it always has one: the punctuation) is an abbreviation."""
+    word = text.split()[-1].rstrip(".").lower()
     return word in ABBREVIATIONS or (len(word) == 1 and word.isalpha())
 
 
@@ -385,11 +383,11 @@ def compare(before: Month, after: Month, context: Context) -> list[Finding]:
     loans = sorted(before.loans.keys() | after.loans.keys(), key=loan_order)
     for loan in loans:
         old, new = before.loans.get(loan), after.loans.get(loan)
-        if old is None and new is not None:
-            findings.append(new_loan(new, before))
-        elif old is not None and new is None:
+        if old is None:
+            findings.append(new_loan(after.loans[loan], before))
+        elif new is None:
             findings.extend(_some([missing(old, before, after)]))
-        elif old is not None and new is not None:
+        else:
             findings.extend(_some(rule(old, new, context) for rule in LOAN_RULES))
         if before.comments is not None and after.comments is not None:
             findings.extend(_some([comment(loan, before.comments, after.comments)]))
