@@ -412,3 +412,19 @@ def test_a_deal_cik_can_be_learned_but_not_changed(db):
     get_or_create(db, "BANK 2018-BNK13", cik=1744707)
     with pytest.raises(ConflictingDeal, match="already has CIK 1744707, not 1"):
         get_or_create(db, "BANK 2018-BNK13", cik=1)
+
+
+def test_pinning_a_number_never_moves_the_sequence_back_below_a_number_already_drawn(db):
+    """Another session's uncommitted run is invisible, but its number must not be reissued."""
+    for _ in range(3):
+        start_run(db, kind="refresh", started_by="olly")  # runs 1, 2, 3
+    db.delete(db.get(Run, 2))  # leave a free number below the next one drawn
+    db.commit()
+    with Session(engine.engine()) as drawer, Session(engine.engine()) as pinner:
+        drawn = start_run(drawer, kind="refresh", started_by="olly")  # run 4, not committed
+        assert drawn.id == 4
+        start_run(pinner, kind="backfill", started_by="quinn", run_id=2)
+        pinner.commit()
+        drawer.commit()
+    with Session(engine.engine()) as later:
+        assert start_run(later, kind="refresh", started_by="olly").id > 4

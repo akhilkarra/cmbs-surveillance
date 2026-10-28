@@ -25,11 +25,15 @@ def start_run(db: Session, *, kind: str, started_by: str, run_id: int | None = N
     db.add(run)
     db.flush()
     if run_id is not None:
+        # Only ever move the sequence forward. Rows other sessions have not committed are
+        # invisible here, but numbers they drew are already counted in the sequence, so taking
+        # the larger of the sequence's position and the pinned number never hands one out twice.
         db.execute(
             text(
-                "SELECT setval(pg_get_serial_sequence('app.run', 'id'), "
-                "(SELECT max(id) FROM app.run))"
-            )
+                "SELECT setval(seq, GREATEST(nextval(seq), :pinned)) "
+                "FROM pg_get_serial_sequence('app.run', 'id') AS seq"
+            ),
+            {"pinned": run_id},
         )
     return run
 
