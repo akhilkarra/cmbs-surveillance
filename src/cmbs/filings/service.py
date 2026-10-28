@@ -13,10 +13,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from cmbs import clock
+from cmbs.errors import Refused
 from cmbs.filings.tables import Filing, FilingFile
 
 
-class ConflictingFiling(ValueError):
+class ConflictingFiling(Refused):
     """The same accession number was registered with different facts."""
 
 

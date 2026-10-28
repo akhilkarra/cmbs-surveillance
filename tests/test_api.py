@@ -30,3 +30,20 @@ def test_me_returns_the_users_roles(seeded, client):
 def test_unknown_user_is_unauthorized(seeded, client):
     response = client.get("/me", headers={"X-CMBS-User": "nobody"})
     assert response.status_code == 401
+
+
+def test_domain_refusals_become_readable_responses():
+    from fastapi import FastAPI
+
+    from cmbs.api.app import create_app
+    from cmbs.filings.service import ConflictingFiling
+
+    app: FastAPI = create_app()
+
+    @app.get("/refuse-for-test")
+    def refuse() -> None:
+        raise ConflictingFiling("0001888524-26-017705 already has period '2026-09-01'")
+
+    response = TestClient(app).get("/refuse-for-test")
+    assert response.status_code == 422
+    assert response.json() == {"detail": "0001888524-26-017705 already has period '2026-09-01'"}

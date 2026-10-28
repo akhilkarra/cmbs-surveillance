@@ -9,9 +9,10 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from cmbs.deals.tables import Deal
+from cmbs.errors import Refused
 
 
-class ConflictingDeal(ValueError):
+class ConflictingDeal(Refused):
     """A deal was registered again with a different CIK."""
 
 

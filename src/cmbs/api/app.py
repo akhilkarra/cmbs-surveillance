@@ -3,8 +3,9 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from cmbs.access.service import PermissionRefused, Refused, UnknownUser
+from cmbs.access.service import PermissionRefused, UnknownUser
 from cmbs.db.registry import all_route_modules
+from cmbs.errors import Refused
 
 
 def create_app() -> FastAPI:

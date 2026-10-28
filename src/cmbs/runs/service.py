@@ -6,10 +6,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from cmbs import clock
+from cmbs.errors import Refused
 from cmbs.runs.tables import RUN_STATUSES, Run
 
 
-class RunAlreadyFinished(ValueError):
+class RunAlreadyFinished(Refused):
     """A run's outcome is final once recorded."""
 
 

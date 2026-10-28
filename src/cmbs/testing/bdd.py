@@ -6,9 +6,9 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from cmbs.access.service import Refused
 from cmbs.db import engine
 from cmbs.db.models import LAYERS
+from cmbs.errors import Refused
 
 
 def attempt[T](context: Any, action: Callable[[], T]) -> T | None:

@@ -7,10 +7,7 @@ from sqlalchemy.orm import Session
 
 from cmbs.access.roles import Action, Role, acting_role, refusal_message
 from cmbs.access.tables import User, UserRole
-
-
-class Refused(Exception):
-    """An action the domain will not perform. The message is shown to the user as written."""
+from cmbs.errors import Refused
 
 
 class PermissionRefused(Refused):

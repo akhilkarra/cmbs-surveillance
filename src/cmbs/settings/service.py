@@ -7,6 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from cmbs import clock
+from cmbs.errors import Refused
 from cmbs.settings.tables import SettingsVersion
 from cmbs.settings.values import Settings
 
@@ -24,7 +25,7 @@ class InForce:
     values: Settings
 
 
-class OutOfOrderVersion(ValueError):
+class OutOfOrderVersion(Refused):
     """Versions are numbered in approval order; a new one must come after the latest."""
 
 
