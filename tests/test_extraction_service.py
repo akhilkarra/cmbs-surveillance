@@ -557,3 +557,31 @@ def test_a_bad_recording_file_is_refused_and_audited(seeded, tmp_path: Path):
     seeded.rollback()
     [entry] = _refusals(seeded)
     assert (entry.action, entry.subject) == ("import model recordings", "recordings")
+
+
+def test_a_reading_stored_by_another_run_first_is_reused(recorded):
+    from cmbs.access.roles import Role
+    from cmbs.access.service import Actor
+    from cmbs.extraction.service import _store
+
+    first = _extract(recorded)
+    comment = recorded.scalars(select(ReportComment).where(ReportComment.loan_id == "2")).one()
+    settings = in_force(recorded)
+    source = SourceText(comment.comment, Classification.PUBLIC, "loan 2")
+    reading = read_text(source, ModelClient(DbRecordings(recorded)), settings, now=TODAY)
+    again = _store(
+        recorded,
+        actor=Actor("quinn", Role.QUANT),
+        deal=FIXTURE_DEAL,
+        comment=comment,
+        reading=reading,
+        settings=settings,
+        run_id=None,
+    )
+    assert again == first.comments[0]
+    assert _count(recorded, Extraction) == 1
+
+
+def test_reading_a_comment_view_of_an_unknown_deal_is_refused(seeded):
+    with pytest.raises(UnknownDeal):
+        comment_view(seeded, "pat", deal="No Such Trust", loan="2", period=SEPTEMBER)

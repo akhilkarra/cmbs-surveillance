@@ -40,7 +40,6 @@ ABBREVIATIONS = frozenset(
     }
 )
 _BOUNDARY = re.compile(r"""[.!?]["')\]]*\s+(?=[A-Z0-9"'(\[])""")
-_LAST_WORD = re.compile(r"(\S+)$")
 
 
 class EvidenceNotFound(Refused):
@@ -58,11 +57,9 @@ def normalize(text: str) -> str:
     return " ".join(text.split())
 
 
-def _ends_with_abbreviation(text: str) -> bool:
-    match = _LAST_WORD.search(text)
-    if match is None:
-        return False
-    word = match.group(1).lower()
+def _ends_with_abbreviation(piece: str) -> bool:
+    """Whether `piece`, which ends at a sentence boundary, ends with a listed abbreviation."""
+    word = piece.rsplit(maxsplit=1)[-1].lower()
     return word.endswith(".") and word[:-1] in ABBREVIATIONS
 
 

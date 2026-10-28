@@ -225,3 +225,20 @@ def test_judgments_are_decided_against_the_band(changes, expected):
 def test_a_wider_band_sends_the_same_answer_to_review():
     results = decide_fields({"borrower_request": _judgment()}, low=LOW, high=Decimal("0.95"))
     assert results["borrower_request"].decision == Decision(Outcome.REVIEW, UNSETTLED_SUPPORT)
+
+
+@pytest.mark.parametrize(
+    ("name", "wrong"),
+    [
+        (value_name("dscr"), NoulAnswer(noul=0.5)),
+        (
+            support_name("dscr"),
+            choice_answer(Choice(instructions="x", criteria={"a": None}), "a", 1),
+        ),
+    ],
+)
+def test_reading_an_answer_of_the_wrong_type_is_an_error(name, wrong):
+    response = _response({})
+    broken = response.model_copy(update={"answers": response.answers | {name: wrong}})
+    with pytest.raises(TypeError, match=f"{name} is not a"):
+        read(PLAN, SENTENCES, broken)
