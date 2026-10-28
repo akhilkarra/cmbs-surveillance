@@ -17,5 +17,18 @@ services:
       timeout: 3s
       retries: 15
 
+  web:
+    # Vite dev server for the React app (grill log Q13, Q19). npm runs here, never on the host:
+    # `docker compose run --rm web npm test`.
+    image: node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
+    working_dir: /app
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+
 volumes:
   pgdata:
+  web_node_modules:

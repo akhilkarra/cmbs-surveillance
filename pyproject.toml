@@ -18,8 +18,9 @@ cmbs = "cmbs.cli:app"
 [dependency-groups]
 dev = [
     "behavex>=4.6.8",
+    "mutmut>=3.8.0",
     "playwright>=1.64.1",
-    "pytest>=8",
+    "pytest>=8,<9.2",  # mutmut 3.8.0 reads item._nodeid, which pytest 9.2.0 removed
     "ruff>=0.17",
 ]
 
@@ -61,3 +62,10 @@ name = "ruff_format"
 type = "module"
 module = "ruff"
 options = "format REVISION_SCRIPT_FILENAME"
+
+[tool.mutmut]
+# `uv run mutmut run`, then `uv run mutmut results` and `uv run mutmut show <name>`.
+# Migrations are declarative and tested directly against Postgres (tests/test_migrations.py).
+source_paths = ["src/cmbs"]
+do_not_mutate = ["src/cmbs/db/migrations/*"]
+pytest_add_cli_args_test_selection = ["tests"]

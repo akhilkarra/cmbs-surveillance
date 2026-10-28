@@ -27,3 +27,7 @@ reports/
 
 # firm- and people-specific prep material; stays local, never committed
 private/
+
+# mutation testing
+mutants/
+.stryker-tmp/

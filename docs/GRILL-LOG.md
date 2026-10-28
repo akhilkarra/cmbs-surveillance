@@ -161,3 +161,11 @@ Context: the 14 drafts were read as a PM, an analyst, a desk quant, a risk offic
 | Q48 | **Same whole loan in several deals:** links are maintained explicitly by a quant, never inferred. A linked loan raises one alert listing every deal with combined exposure. | Proposed |
 | Q49 | **Reproducibility and export:** rebuilding from stored raw filings must give an identical panel; an as-of export carries the as-of date, settings version, model and prompt version, and marks values awaiting review or overridden. Exports are audited. | Proposed |
 | Q50 | **Inventory now 26 features, 127 scenarios** in six groups (data, extraction, surveillance, governance, operations, surfaces). Q30's count of 14 is superseded. | Proposed |
+
+## Round 8 (2026-10-27): mutation testing and the web scaffold
+Context: you asked for mutation testing with mutmut for Python and Stryker for React. `research/22-trust-agent-dev.md` had listed Stryker as skipped; this reverses that.
+
+| # | Decision | Status |
+|---|---|---|
+| Q51 | **Mutation testing in CI, with floors that only go up.** mutmut 3.8 mutates `src/cmbs` (not migrations) and must keep its score at or above 58%, the score on 2026-10-27, checked by `tools/check_mutation_score.py`. Stryker 10.1 with the Vitest runner and the TypeScript checker mutates `web/src` and breaks below 90%; it scores 100% today. Code no test reaches counts against the Python score. pytest is capped below 9.2 because mutmut 3.8.0 reads `item._nodeid`, which pytest 9.2.0 (released 2026-10-27) removed. First finding: `tests/test_schedule_al.py` leaves 44 mutants alive, because most parsed tape fields (paid-through date, special-servicer transfer date and others) are never asserted. | Decided by you |
+| Q52 | **`web/` scaffolded now, with Node only in a container.** Vite 8, React 19.3, strict TypeScript, Vitest 5; the Compose `web` service (`node:24-alpine`, pinned by digest) runs npm, so nothing is installed on the host. TypeScript is pinned to 6.0.3, not 7: TypeScript 7 drops the JavaScript compiler API that Stryker calls. The only code is display formatters (money, DSCR, financials age) used by the dashboard scenarios; the UI formats values from the API and never recomputes them. Biome and the orval client (Q12, Q13) are still to come. | Decided by you |

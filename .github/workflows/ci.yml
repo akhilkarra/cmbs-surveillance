@@ -44,5 +44,30 @@ jobs:
         run: uv run behavex -t 'not @draft' --parallel-processes 2 -o output/behavex
         env:
           DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
+      # The floor is the score on 2026-10-27; raise it as tests improve.
+      - name: Mutation score
+        run: |
+          uv run mutmut run > /dev/null
+          uv run mutmut export-cicd-stats
+          uv run python tools/check_mutation_score.py --min 58
       - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
         run: uv run python tools/check_approved_features.py --range "${{ github.event.pull_request.base.sha || github.event.before }}..${{ github.sha }}"
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      # Fails below the break threshold in web/stryker.config.json.
+      - name: Mutation score
+        run: npm run mutate
