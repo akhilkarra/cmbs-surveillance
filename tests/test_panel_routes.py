@@ -4,11 +4,14 @@ import datetime as dt
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine
+from sqlalchemy.orm import Session
 
 from cmbs import clock
 from cmbs.api.app import create_app
 from cmbs.tape.service import load_tape
 from tests.conftest import needs_db
+from tests.fixtures.tape.database import app_database_fixture, module_database_fixture  # noqa: F401
 from tests.fixtures.tape.tapes import fixture_bytes
 
 DEAL = "Fixture Trust 2026-F1"
@@ -20,19 +23,26 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
+@pytest.fixture(scope="module")
+def fixture_tape_loaded(module_database: Engine) -> None:
+    """The fixture tape, loaded once for the module. Only the superseded test adds to it, with
+    a filing dated after every other test's as-of date."""
+    with Session(module_database) as db:
+        load_tape(
+            db,
+            deal=DEAL,
+            content=fixture_bytes(),
+            file_name="ex102.xml",
+            accession="0009900001-26-000101",
+            filing_date=dt.date(2026, 9, 29),
+            cik=9_900_001,
+        )
+        db.commit()
+
+
 @pytest.fixture
-def loaded(seeded):
-    load_tape(
-        seeded,
-        deal=DEAL,
-        content=fixture_bytes(),
-        file_name="ex102.xml",
-        accession="0009900001-26-000101",
-        filing_date=dt.date(2026, 9, 29),
-        cik=9_900_001,
-    )
-    seeded.commit()
-    return seeded
+def loaded(fixture_tape_loaded, app_database: Session) -> Session:
+    return app_database
 
 
 def test_loans_need_a_user(client):

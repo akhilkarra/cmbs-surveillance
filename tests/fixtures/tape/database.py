@@ -6,13 +6,16 @@ those checkpoints dominated the run. Tests that only need their own writes to va
 use `tx`: a session on the module's database inside a transaction that is rolled back when the
 test ends. `session.commit()` inside a test commits a savepoint only.
 
-Not for tests whose work must be seen by another connection (the API, the CLI, a second
-thread) or that record refusals, which `cmbs.audit.service` commits on its own connection:
-those keep the per-test `db` and `seeded` fixtures from tests/conftest.py.
+Tests whose work another connection must see (the API, the CLI) use `app_database`: the same
+module database, exported as DATABASE_URL, where commits stay for the rest of the module, so
+each test writes under its own accession numbers. Tests that need a database to themselves
+(counting refusals, which `cmbs.audit.service` commits on its own connection, or two sessions
+racing) keep the per-test `db` and `seeded` fixtures from tests/conftest.py.
 
-Import both fixtures into a test module to use them (they register as `module_database`
-and `tx`):
+Import the fixtures into a test module to use them (they register as `module_database`,
+`tx` and `app_database`):
     from tests.fixtures.tape.database import module_database_fixture, tx_fixture  # noqa: F401
+    from tests.fixtures.tape.database import app_database_fixture  # noqa: F401
 """
 
 import os
@@ -22,6 +25,7 @@ import pytest
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
+from cmbs.db import engine as cmbs_engine
 from cmbs.db.registry import load_all_tables
 
 
@@ -39,7 +43,20 @@ def module_database_fixture(db_template, request) -> Iterator[Engine]:
         db.commit()
     yield bind
     bind.dispose()
+    cmbs_engine.dispose(bind.url.render_as_string(hide_password=False))
     databases.drop(name)
+
+
+@pytest.fixture(name="app_database")
+def app_database_fixture(module_database: Engine, monkeypatch) -> Iterator[Session]:
+    """The module's database as DATABASE_URL, for the API and CLI, and a session on it.
+
+    Writes are committed and stay for the rest of the module, so tests that write use their
+    own accession numbers or deals.
+    """
+    monkeypatch.setenv("DATABASE_URL", module_database.url.render_as_string(hide_password=False))
+    with Session(module_database) as session:
+        yield session
 
 
 @pytest.fixture(name="tx")
