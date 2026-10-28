@@ -48,3 +48,10 @@ def data_snapshot() -> dict[str, str]:
             ).scalar_one()
             fingerprints[f"{schema}.{table}"] = digest
     return fingerprints
+
+
+def changed_tables(before: dict[str, str], after: dict[str, str]) -> list[str]:
+    """Tables whose contents differ, including tables added or dropped since `before`."""
+    return sorted(
+        name for name in before.keys() | after.keys() if before.get(name) != after.get(name)
+    )

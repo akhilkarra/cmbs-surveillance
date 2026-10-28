@@ -8,7 +8,7 @@ from behave import given, then  # pyright: ignore[reportAttributeAccessIssue]
 
 from cmbs.access.roles import Role
 from cmbs.access.service import ensure_user
-from cmbs.testing.bdd import data_snapshot, in_session
+from cmbs.testing.bdd import changed_tables, data_snapshot, in_session
 
 
 @given("these users and roles:")
@@ -37,8 +37,7 @@ def step_report_says(context, text):
 @then("no stored data changes")
 def step_no_stored_data_changes(context):
     assert context.snapshot is not None, "no When step ran before this check"
-    after = data_snapshot()
-    changed = sorted(k for k in after if after[k] != context.snapshot.get(k))
+    changed = changed_tables(context.snapshot, data_snapshot())
     assert not changed, f"stored data changed in {changed}"
 
 
