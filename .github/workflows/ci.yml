@@ -58,13 +58,16 @@ jobs:
         run: uv run behavex -t 'not @draft' --parallel-processes 2 -o output/behavex
         env:
           DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
-      # Raise the floor as tests improve. No DATABASE_URL here: parallel mutant runs would race on
-      # the migration tests' scratch database, so those tests skip.
+      # Raise the floor as tests improve. With a database, so code reached only by database tests
+      # is mutation-tested too; every test uses its own scratch database, named per process, and
+      # four workers match the runner's cores.
       - name: Mutation score
+        env:
+          DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
         run: |
-          uv run mutmut run > /dev/null
+          uv run mutmut run --max-children 4 > /dev/null
           uv run mutmut export-cicd-stats
-          uv run python tools/check_mutation_score.py --min 68
+          uv run python tools/check_mutation_score.py --min 71
       - name: Feature files carry a status tag, and approved ones match the manifest and carry approval
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
