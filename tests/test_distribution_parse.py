@@ -440,3 +440,18 @@ def test_computershare_delinquency_status_with_a_superscript_footnote():
             actual_balance=Decimal("11032552.34"),
         ),
     )
+
+
+def test_a_blank_pros_id_in_the_real_report_is_noted_not_merged():
+    """Loan 57's Pros ID blanked in the real BANK 2018-BNK13 report: loan 11's comment must
+    not swallow loan 57's row and comment."""
+    content = fixture(BNK13)
+    row = content.rindex(b"470109040")  # loan 57's servicer number in Part 2
+    blank = content.rindex(b">57</font>", 0, row)
+    content = content[:blank] + b"></font>" + content[blank + len(b">57</font>") :]
+    expected = parse_report(fixture(BNK13))
+    parsed = parse_report(content)
+    assert parsed.comments == expected.comments[:1]
+    assert parsed.notes == (
+        f"{SS2}: a row with no prospectus loan id was not read: '470109040 MF NY 11/24/25 0'",
+    )

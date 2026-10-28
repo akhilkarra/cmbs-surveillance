@@ -18,6 +18,7 @@ import itertools
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from enum import Enum
 
 from cmbs.distribution.grid import Cell, Row, Title, clean, header_label, title_key
 from cmbs.distribution.values import loan_id
@@ -157,8 +158,8 @@ def _continues_header(row: Row, layout: Layout, width: int) -> bool:
     return not (len(filled) == 1 and filled[0].span * 2 >= width)
 
 
-def find_header(spec: TableSpec, rows: Sequence[Row]) -> tuple[Layout, int] | None:
-    """The layout and the index of the first row after the header, or None.
+def find_header(spec: TableSpec, rows: Sequence[Row]) -> tuple[Layout, int, int] | None:
+    """The layout, the index of the header's first row and of the first row after it, or None.
 
     The smallest block of rows with every required column is found first, then widened by the
     header-like rows below it (up to the first loan) and above it (up to a blank row), as long
@@ -185,7 +186,7 @@ def find_header(spec: TableSpec, rows: Sequence[Row]) -> tuple[Layout, int] | No
                 if wider is None:
                     break
                 layout, start = wider, start - 1
-            return layout, end
+            return layout, start, end
     return None
 
 
@@ -203,15 +204,41 @@ class _Draft:
             self.values.setdefault(name, []).append(cell.text)
 
 
-class _Reader:
-    """Reads the records of one table spec across the sections it appears in."""
+class _Row(Enum):
+    """What a row without a loan id is, in a table that has a free-text column."""
 
-    def __init__(self, spec: TableSpec) -> None:
+    TEXT = "more of the comment above"
+    LOAN_WITHOUT_ID = "a loan row whose prospectus id is missing"
+    OTHER = "a total, legend, footnote or footer line"
+
+
+_PROSE = re.compile(r"[a-z].*\s.*[a-z]", re.IGNORECASE)
+_TOTAL = re.compile(r"^\s*totals?\b", re.IGNORECASE)
+NOTE_TEXT_LIMIT = 80
+
+
+def _quoted(row: Row) -> str:
+    text = " ".join(cell.text for cell in row.filled())
+    return repr(text if len(text) <= NOTE_TEXT_LIMIT else text[: NOTE_TEXT_LIMIT - 3] + "...")
+
+
+class _Reader:
+    """Reads the records of one table spec across the sections and page tables it spans.
+
+    Computershare starts a new table on every page, so the loan whose comment was being read
+    is carried from one page table to the next: comment lines at the top of a page (blank loan
+    id) still join it. A "Totals" row ends the carry.
+    """
+
+    def __init__(self, spec: TableSpec, notes: list[str]) -> None:
         self.spec = spec
+        self.notes = notes
         self.free_text = spec.free_text
         self.drafts: dict[str, _Draft] = {}
         self.layout: Layout | None = None
+        self.columns: list[HeaderColumn] = []
         self.width = 0
+        self.carried: _Draft | None = None
 
     def _open_ended(self, name: str, column: HeaderColumn) -> bool:
         return name == self.free_text and column.last
@@ -223,45 +250,84 @@ class _Reader:
     def _read_table(self, rows: list[Row]) -> None:
         found = find_header(self.spec, rows)
         if found is not None:
-            self.layout, start = found
+            self.layout, header, start = found
+            self.columns = header_columns(rows[header:start])
             self.width = max(row.width for row in rows[:start])
         elif self.layout is not None and max(row.width for row in rows) == self.width:
             start = 0  # the table carried onto another page without repeating its header
         else:
             return
         layout = self.layout
-        current: _Draft | None = None
+        # `current` takes comment lines now; `last` is the loan carried to the next page table,
+        # which survives the page's footer but not a "Totals" row.
+        current = last = self.carried
+        loans_here = False
         for row in rows[start:]:
             if not row.filled():
                 continue
             loan = _loan_of(row, layout)
             if loan is not None:
-                current = self.drafts.setdefault(loan, _Draft(loan))
+                current = last = self.drafts.setdefault(loan, _Draft(loan))
+                loans_here = True
                 for name, column in layout.items():
                     if name != LOAN:
                         open_ended = self._open_ended(name, column)
                         current.take(name, _cells_under(row, column, open_ended=open_ended))
-            elif current is not None and self._continue_text(current, row, layout):
                 continue
-            else:
+            kind = self._kind(row, layout)
+            if kind is _Row.TEXT and current is not None:
+                current.take(self.free_text or "", row.filled())
+            elif kind is _Row.TEXT and not loans_here:
+                self.notes.append(
+                    f"{self.spec.name}: text with no loan above it was not read: {_quoted(row)}"
+                )
+            elif kind is _Row.LOAN_WITHOUT_ID:
+                self.notes.append(
+                    f"{self.spec.name}: a row with no prospectus loan id was not read: "
+                    f"{_quoted(row)}"
+                )
+                # Its comment lines follow; they belong to no known loan, so they go nowhere.
+                current = last = _Draft("")
+            elif kind is _Row.OTHER:
                 current = None
+                key = " ".join(
+                    cell.text for cell in _cells_under(row, layout[LOAN], open_ended=False)
+                )
+                if _TOTAL.match(key):
+                    last = None
+        self.carried = last
 
-    def _continue_text(self, draft: _Draft, row: Row, layout: Layout) -> bool:
-        """Add a row's text to the loan above when it can only be more of the free text: the
-        loan id column is empty and no filled cell sits inside another column read here."""
+    def _kind(self, row: Row, layout: Layout) -> _Row:
+        """Classify a row with no loan id. Only a table with a free-text column has comment
+        lines; its rows with something in the loan id column are totals, legends or footers.
+
+        A comment line is a row whose cells all sit in the comment column, or a single cell
+        that spans several columns or reads as prose (Computershare's short last line of a
+        comment can sit under the loan id column of the next table along). Any other row with
+        values under the table's other columns is a loan row whose id is missing.
+        """
         name = self.free_text
         if name is None or name not in layout or _cells_under(row, layout[LOAN], open_ended=False):
-            return False
-        others = [column for key, column in layout.items() if key not in (LOAN, name)]
+            return _Row.OTHER
+        text = layout[name]
+        open_ended = self._open_ended(name, text)
         filled = row.filled()
-        if any(
-            column.start <= cell.start and cell.end <= column.end
-            for cell in filled
-            for column in others
+        if all(
+            cell.start >= text.start and (open_ended or cell.end <= text.end) for cell in filled
         ):
-            return False
-        draft.take(name, filled)
-        return True
+            return _Row.TEXT
+
+        def inside(cell: Cell, columns: Iterable[HeaderColumn]) -> bool:
+            return any(column.start <= cell.start and cell.end <= column.end for column in columns)
+
+        read = [column for key, column in layout.items() if key not in (LOAN, name)]
+        if any(inside(cell, read) for cell in filled):
+            return _Row.LOAN_WITHOUT_ID  # a value under a column this table reads
+        unread = [column for column in self.columns if column not in layout.values()]
+        valued = [cell for cell in filled if inside(cell, unread)]
+        if len(filled) == 1 and (not valued or _PROSE.search(filled[0].text)):
+            return _Row.TEXT
+        return _Row.LOAN_WITHOUT_ID if valued else _Row.TEXT
 
     def records(self, notes: list[str]) -> list[Record]:
         result = []
@@ -303,7 +369,7 @@ def read_table(
     found = [rows for key, rows in report if key == spec.key and rows]
     if not found:
         return None
-    reader = _Reader(spec)
+    reader = _Reader(spec, notes)
     for rows in found:
         reader.read_section(rows)
     if reader.layout is None:

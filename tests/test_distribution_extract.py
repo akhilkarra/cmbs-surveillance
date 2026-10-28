@@ -106,6 +106,7 @@ def test_the_header_stops_at_a_blank_row_above_it():
             LOAN: HeaderColumn("pros id", 0, 1),
             "note": HeaderColumn("special servicing comments", 1, 2, True),
         },
+        2,
         4,
     )
 
@@ -133,7 +134,7 @@ def test_header_rows_above_the_smallest_block_are_added_to_it():
         "<tr><td>11</td><td>01/01/26</td><td>03/31/26</td><td>07/27/26</td>"
         "<td>20,092,857.80</td><td>214,557.19</td></tr>"
     )
-    layout, start = find_header(spec, table) or ({}, -1)
+    layout, _, start = find_header(spec, table) or ({}, -1, -1)
     assert start == 4
     assert layout["ara"] == HeaderColumn("appraisal reduction amount", 4, 5)
     assert layout["ara_date"] == HeaderColumn(
@@ -215,7 +216,7 @@ def test_rows_below_the_header_extend_it_until_the_first_loan():
         "<tr><td></td><td>Status</td><td></td></tr>"
         "<tr><td>11</td><td>3</td><td>Text</td></tr>"
     )
-    layout, start = find_header(SPEC, table) or ({}, -1)
+    layout, _, start = find_header(SPEC, table) or ({}, -1, -1)
     assert start == 2
     assert layout["status"] == HeaderColumn("loan status", 1, 2)
 
@@ -225,7 +226,7 @@ def test_a_full_width_line_under_the_header_is_not_part_of_it():
         "<tr><td>Pros ID</td><td>Status</td><td>Comment</td></tr>"
         "<tr><td colspan='3'>No loans this period</td></tr>"
     )
-    layout, start = find_header(SPEC, table) or ({}, -1)
+    layout, _, start = find_header(SPEC, table) or ({}, -1, -1)
     assert start == 1
     assert layout["note"].label == "comment"
 
@@ -355,7 +356,7 @@ def test_a_row_that_would_break_a_required_column_is_not_added_to_the_header():
         "<tr><td></td><td>veto</td><td>more</td></tr>"
         "<tr><td>11</td><td>3</td><td>Text</td></tr>"
     )
-    layout, start = find_header(strict, table) or ({}, -1)
+    layout, _, start = find_header(strict, table) or ({}, -1, -1)
     assert start == 1
     assert layout["status"].label == "status"
 
@@ -368,7 +369,7 @@ def test_a_row_above_that_would_break_a_required_column_is_not_added_to_the_head
         "<tr><td>Pros ID</td><td>Status</td><td>Comment</td></tr>"
         "<tr><td>11</td><td>3</td><td>Text</td></tr>"
     )
-    layout, start = find_header(strict, table) or ({}, -1)
+    layout, _, start = find_header(strict, table) or ({}, -1, -1)
     assert start == 2
     assert layout[LOAN].label == "pros id"
 
@@ -379,7 +380,7 @@ def test_rows_above_are_added_only_while_the_header_has_room():
         + "<tr><td>Pros ID</td><td>Comment</td></tr>"
         + "<tr><td>11</td><td>Text</td></tr>"
     )
-    layout, start = find_header(SPEC, table) or ({}, -1)
+    layout, _, start = find_header(SPEC, table) or ({}, -1, -1)
     assert start == 6
     assert layout[LOAN].label == "a2 a3 a4 pros id"
 
@@ -390,7 +391,7 @@ def test_a_header_has_at_most_four_rows():
         + "".join(f"<tr><td>a{n}</td><td>b{n}</td></tr>" for n in range(5))
         + "<tr><td>11</td><td>Text</td></tr>"
     )
-    layout, start = find_header(SPEC, table) or ({}, -1)
+    layout, _, start = find_header(SPEC, table) or ({}, -1, -1)
     assert start == 4
     assert layout[LOAN].label == "pros id a0 a1 a2"
 
@@ -405,3 +406,121 @@ def test_a_blank_row_does_not_end_a_comment():
         "</table>"
     )
     assert found == [Record("11", {"note": "One. Two."})]
+
+
+# Computershare starts a new table on every page; a page ends with a footer row.
+PAGE_HEADER = "<tr><td>Pros ID</td><td>Loan ID</td><td>Status</td><td>Comments</td></tr>"
+FOOTER = "<tr><td colspan='3'>(c) Administrator. Confidential.</td><td>Page 1</td></tr>"
+
+
+@pytest.mark.parametrize(
+    "second_page_opening",
+    [
+        "<tr><td>Loan Notes (continued)</td></tr>" + PAGE_HEADER,  # title and header repeated
+        "",  # the table simply carries on, no header
+    ],
+)
+def test_comment_lines_at_the_top_of_the_next_page_join_the_loan(second_page_opening):
+    found, notes = read(
+        "<table><tr><td>Loan Notes</td></tr>"
+        + PAGE_HEADER
+        + "<tr><td>11</td><td>1852535</td><td>2</td><td></td></tr>"
+        "<tr><td></td><td colspan='3'>Line one on page one.</td></tr>"
+        + FOOTER
+        + "</table><table>"
+        + second_page_opening
+        + "<tr><td></td><td colspan='3'>Line two on page two.</td></tr>"
+        "<tr><td>57</td><td>470109040</td><td>0</td><td></td></tr>"
+        "<tr><td></td><td colspan='3'>Loan 57's line.</td></tr>"
+        "</table>"
+    )
+    assert found == [
+        Record("11", {"status": "2", "note": "Line one on page one. Line two on page two."}),
+        Record("57", {"status": "0", "note": "Loan 57's line."}),
+    ]
+    assert notes == []
+
+
+def test_comment_text_with_no_loan_above_it_is_noted_not_dropped_silently():
+    found, notes = read(
+        "<table><tr><td>Loan Notes</td></tr>" + PAGE_HEADER + FOOTER + "</table>"
+        "<table>"
+        + PAGE_HEADER
+        + "<tr><td></td><td colspan='3'>A line whose loan is not in this report.</td></tr>"
+        "</table>"
+    )
+    assert found == []
+    assert notes == [
+        "Loan Notes: text with no loan above it was not read: "
+        "'A line whose loan is not in this report.'"
+    ]
+
+
+def test_a_totals_row_ends_the_loan_carried_to_the_next_page():
+    found, notes = read(
+        "<table><tr><td>Loan Notes</td></tr>"
+        + PAGE_HEADER
+        + "<tr><td>11</td><td>1852535</td><td>2</td><td>Kept.</td></tr>"
+        "<tr><td>Totals</td><td></td><td></td><td></td></tr></table>"
+        "<table><tr><td></td><td colspan='3'>Not for loan 11.</td></tr></table>"
+    )
+    assert found == [Record("11", {"status": "2", "note": "Kept."})]
+    assert notes == ["Loan Notes: text with no loan above it was not read: 'Not for loan 11.'"]
+
+
+def test_a_loan_row_missing_its_id_is_noted_and_not_merged_into_the_loan_above():
+    # Specially Serviced Loan Detail - Part 2 with loan 57's Pros ID blank: its row and its
+    # comment lines must not become part of loan 11's comment.
+    spec = TableSpec("Loan Notes", (ID, NOTE))
+    notes: list[str] = []
+    found = read_table(
+        spec,
+        report(
+            "<table><tr><td>Loan Notes</td></tr>"
+            "<tr><td>Pros ID</td><td>Loan ID</td><td>Type</td><td>Comments</td></tr>"
+            "<tr><td>11</td><td>1852535</td><td>OF</td><td></td></tr>"
+            "<tr><td></td><td colspan='3'>Loan 11's line.</td></tr>"
+            "<tr><td></td><td>470109040</td><td>MF</td><td></td></tr>"
+            "<tr><td></td><td colspan='3'>Counsel has cleared conflicts.</td></tr>"
+            "<tr><td></td><td>taxes ($180k).</td><td></td><td></td></tr>"
+            "</table>"
+        ),
+        notes,
+    )
+    assert found == [Record("11", {"note": "Loan 11's line."})]
+    assert notes == ["Loan Notes: a row with no prospectus loan id was not read: '470109040 MF'"]
+
+
+def test_a_single_value_under_an_unread_column_is_a_loan_row_not_comment_text():
+    spec = TableSpec("Loan Notes", (ID, NOTE))
+    notes: list[str] = []
+    found = read_table(
+        spec,
+        report(
+            "<table><tr><td>Loan Notes</td></tr>"
+            "<tr><td>Pros ID</td><td>Loan ID</td><td>Comments</td></tr>"
+            "<tr><td>11</td><td>1852535</td><td>Text.</td></tr>"
+            "<tr><td></td><td>470109040</td><td></td></tr>"
+            "</table>"
+        ),
+        notes,
+    )
+    assert found == [Record("11", {"note": "Text."})]
+    assert notes == ["Loan Notes: a row with no prospectus loan id was not read: '470109040'"]
+
+
+def test_a_long_row_is_shortened_in_its_note():
+    spec = TableSpec("Loan Notes", (ID, NOTE))
+    notes: list[str] = []
+    read_table(
+        spec,
+        report(
+            "<table><tr><td>Loan Notes</td></tr>"
+            "<tr><td>Pros ID</td><td>Loan ID</td><td>Comments</td></tr>"
+            "<tr><td>11</td><td>1852535</td><td>Text.</td></tr>"
+            f"<tr><td></td><td>{'x' * 100}</td><td></td></tr>"
+            "</table>"
+        ),
+        notes,
+    )
+    assert notes == [f"Loan Notes: a row with no prospectus loan id was not read: '{'x' * 77}...'"]
