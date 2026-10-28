@@ -17,7 +17,7 @@ from cmbs.coverage.service import classify_deal
 from cmbs.db import engine
 from cmbs.deals.service import by_name
 from cmbs.edgar.discovery import Discovery, discover
-from cmbs.edgar.replay import Live, Recorder, default_source
+from cmbs.edgar.replay import Live, Recorder, Source, default_source
 from cmbs.edgar.service import discover_deal
 from cmbs.errors import Refused
 
@@ -64,6 +64,16 @@ def _day(on: dt.datetime | None) -> dt.date:
     return on.date() if on is not None else clock.today()
 
 
+def _look_up(name: str, day: dt.date, user: str, source: Source) -> Discovery | None:
+    """One deal in its own transaction; a refusal is printed and the next deal still runs."""
+    try:
+        with engine.session() as db:
+            return discover_deal(db, source, name, day, user=user)
+    except Refused as refused:
+        typer.echo(f"{' '.join(name.split()) or repr(name)}: {refused}", err=True)
+        return None
+
+
 @app.command("deal")
 def discover_one(
     names: Annotated[list[str], typer.Argument(help="Deal display names, e.g. 'BANK 2018-BNK13'.")],
@@ -73,21 +83,27 @@ def discover_one(
     """Look deals up, register their filings and print their coverage class."""
     day = _day(on)
     source = default_source()
-    with refusals(), engine.session() as db:
-        for name in names:
-            found = discover_deal(db, source, name, day, user=user)
+    failed = False
+    for name in names:
+        found = _look_up(name, day, user, source)
+        if found is None:
+            failed = True
+            continue
+        with engine.session() as db:
             deal = by_name(db, found.deal)
             if deal is None:  # pragma: no cover - discover_deal registers the deal
                 raise RuntimeError(f"{found.deal} was not registered")
             classified = classify_deal(db, deal, day)
-            for line in describe(found):
-                typer.echo(line)
-            typer.echo(f"  coverage: {classified.coverage.value} ({classified.detail})")
+        for line in describe(found):
+            typer.echo(line)
+        typer.echo(f"  coverage: {classified.coverage.value} ({classified.detail})")
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command("book")
 def discover_book(user: User, on: On = None) -> None:
-    """Look up every deal in the book as of the date."""
+    """Look up every deal in the book as of the date, each in its own transaction."""
     day = _day(on)
     source = default_source()
     with refusals(), engine.session() as db:
@@ -95,9 +111,16 @@ def discover_book(user: User, on: On = None) -> None:
         if book is None:
             typer.echo(f"no positions file is dated on or before {day.isoformat()}", err=True)
             raise typer.Exit(1)
-        for name in sorted({held.deal for held in book.positions}):
-            found = discover_deal(db, source, name, day, user=user)
+        names = sorted({held.deal for held in book.positions})
+    failed = False
+    for name in names:
+        found = _look_up(name, day, user, source)
+        if found is None:
+            failed = True
+        else:
             typer.echo(describe(found)[0])
+    if failed:
+        raise typer.Exit(1)
 
 
 @app.command("record")

@@ -56,6 +56,11 @@ def test_cli_prints_refusals(seeded, tmp_path):
         cli, ["book", "load", str(path), "--as-of", "2026-09-30", "--user", "olly"]
     )
     assert invalid.output.strip() == "the positions file has no face amount column"
+    # The right is checked before the file is read.
+    unreadable = runner.invoke(
+        cli, ["book", "load", str(path), "--as-of", "2026-09-30", "--user", "pat"]
+    )
+    assert unreadable.output.strip() == "pm may not load positions"
     reader = runner.invoke(cli, ["book", "exposure", "--user", "olly"])
     assert reader.output.strip() == "operator may not read the panel"
 
@@ -95,3 +100,6 @@ def test_api_refuses_a_bad_amount_and_a_user_without_the_right(seeded, client):
     refused = client.post("/book/positions", json=good, headers={"X-CMBS-User": "alex"})
     assert refused.status_code == 403
     assert refused.json() == {"detail": "analyst may not load positions"}
+    # The right is checked before the amounts are read.
+    both = client.post("/book/positions", json=bad, headers={"X-CMBS-User": "alex"})
+    assert both.status_code == 403

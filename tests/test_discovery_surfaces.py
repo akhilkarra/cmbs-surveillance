@@ -10,7 +10,8 @@ from typer.testing import CliRunner
 
 from cmbs.api.app import create_app
 from cmbs.cli import app as cli
-from cmbs.edgar import commands, replay, search
+from cmbs.deals.service import by_name
+from cmbs.edgar import commands, discovery, replay, search
 from cmbs.edgar.discovery import Discovery, FoundFiling, Match
 from tests.conftest import needs_db
 
@@ -71,7 +72,7 @@ def test_cli_discovers_a_deal_and_prints_its_coverage(seeded, replayed):
 def test_cli_prints_a_refusal_and_exits_1(seeded, replayed):
     result = runner.invoke(cli, ["discover", "deal", "BANK 2018-BNK13", "--user", "olly"])
     assert result.exit_code == 1
-    assert result.output.strip() == "operator may not read the panel"
+    assert result.output.strip() == "BANK 2018-BNK13: operator may not read the panel"
 
 
 @needs_db
@@ -177,3 +178,38 @@ def test_api_refuses_users_who_cannot_read_the_panel(seeded, replayed):
     )
     assert response.status_code == 403
     assert response.json() == {"detail": "operator may not read the panel"}
+
+
+@needs_db
+def test_cli_keeps_each_deal_found_when_another_is_refused(seeded, replayed):
+    result = runner.invoke(
+        cli, ["discover", "deal", " ", "HYT 2024-RGCY", "--on", "2026-10-27", "--user", "alex"]
+    )
+    assert result.exit_code == 1
+    assert "' ': name the deal to look up" in result.output
+    assert "HYT 2024-RGCY: no issuing entity on EDGAR" in result.output
+    assert "  coverage: not publicly reported" in result.output
+    seeded.expire_all()
+    assert by_name(seeded, "HYT 2024-RGCY") is not None
+
+
+@needs_db
+def test_cli_book_discovery_reports_each_refused_deal_and_exits_1(seeded, monkeypatch, tmp_path):
+    monkeypatch.setenv(replay.REPLAY_ENV, str(RECORDINGS))
+    book = tmp_path / "book.csv"
+    book.write_text("deal,class,face amount\nHYT 2024-RGCY,E,1\nKSL 2026-HT3,A,1\n")
+    runner.invoke(cli, ["book", "load", str(book), "--as-of", "2026-09-30", "--user", "olly"])
+
+    def ambiguous(source, name, on):
+        if name == "KSL 2026-HT3":
+            raise discovery.AmbiguousDeal("several EDGAR entities match")
+        return real(source, name, on)
+
+    real = discovery.discover
+    monkeypatch.setattr("cmbs.edgar.service.discover", ambiguous)
+    result = runner.invoke(cli, ["discover", "book", "--on", "2026-10-27", "--user", "quinn"])
+    assert result.exit_code == 1
+    assert result.output.splitlines() == [
+        "HYT 2024-RGCY: no issuing entity on EDGAR",
+        "KSL 2026-HT3: several EDGAR entities match",
+    ]
