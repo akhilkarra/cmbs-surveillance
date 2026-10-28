@@ -21,8 +21,14 @@ def server_url() -> str:
     return url
 
 
+# A test that waits on a lock is a bug (or a mutant), not a slow test: fail it fast.
+TEST_CONNECTION_OPTIONS = "-c lock_timeout=5000 -c statement_timeout=30000"
+
+
 def _url_for(name: str) -> str:
-    return make_url(server_url()).set(database=name).render_as_string(hide_password=False)
+    url = make_url(server_url()).set(database=name)
+    url = url.update_query_dict({"options": TEST_CONNECTION_OPTIONS})
+    return url.render_as_string(hide_password=False)
 
 
 def _admin(sql: str) -> None:

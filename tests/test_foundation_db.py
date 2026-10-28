@@ -180,6 +180,9 @@ def test_flags_keep_both_sides_per_loan(db):
         message="report says delinquent, tape says current",
         sides={"report": "delinquent", "tape": "current"},
     )
+    other = get_or_create(db, "Fixture Trust 2026-F2")
+    raise_flag(db, deal_id=other.id, loan="4", check="text_vs_tape", message="other deal")
     (flag,) = flags_for(db, deal_id=deal.id, loan="4")
     assert flag.sides == {"report": "delinquent", "tape": "current"}
     assert flags_for(db, deal_id=deal.id, loan="5") == []
+    assert [f.message for f in flags_for(db, deal_id=other.id, loan="4")] == ["other deal"]
