@@ -12,7 +12,8 @@ Feature: Abstention and human review
     And the field is marked "auto-accepted"
 
   Scenario: An unsettled answer goes to review
-    Given the model gives a probability of 0.55 that loan "2"'s comment supports a forbearance request
+    Given the model gives "forbearance" a probability of 0.55 as loan "2"'s borrower request
+    And it gives a probability of 0.90 that sentence 3 supports that answer
     When the decision rules run
     Then loan "2"'s borrower request is left empty in the panel
     And a review item shows the comment, the question and the probability 0.55
