@@ -17,13 +17,13 @@ from cmbs.dashboard.service import (
     BadMonth,
     BookRow,
     Check,
-    LoanAlert,
     LoanRef,
     MonthRef,
     TapeValue,
 )
 from cmbs.domain import Period
 from cmbs.errors import Refused
+from cmbs.extraction.service import FieldView
 from cmbs.tape.tables import LoanPeriod
 
 F1, F2 = "Fixture Trust 2026-F1", "Fixture Trust 2026-F2"
@@ -139,11 +139,16 @@ def test_a_loan_whose_balance_is_not_reported_has_no_balance():
     assert service.book_row(alert(covered(F1, "7", "25000000.00", None))).balance is None
 
 
-def test_an_empty_book_says_so():
-    assert (
-        service.book_note(Period(2026, 10), True) == "no open alerts on the book for October 2026"
+def test_an_empty_book_says_whether_the_month_was_built():
+    october = Period(2026, 10)
+    assert service.book_note(october, built=True, empty=True) == (
+        "no open alerts on the book for October 2026"
     )
-    assert service.book_note(Period(2026, 10), False) is None
+    assert service.book_note(october, built=False, empty=True) == (
+        "the October 2026 alerts have not been built"
+    )
+    assert service.book_note(october, built=True, empty=False) is None
+    assert service.book_note(october, built=False, empty=False) is None
 
 
 # ---------------------------------------------------------------------------- links and loads
@@ -182,12 +187,16 @@ def test_what_loaded_a_value_names_the_run_or_the_user():
 
 def test_the_checks_have_fixed_words_and_outcomes():
     assert Check("contract passed", "passed") == CONTRACT_PASSED
-    assert Check("roll-forward not checked", "not checked") == ROLLFORWARD_NOT_CHECKED
+    assert (
+        Check("scheduled balance roll-forward not checked", "not checked")
+        == ROLLFORWARD_NOT_CHECKED
+    )
     assert Check("evidence checked", "passed") == EVIDENCE_CHECKED
-    assert (service.PASSED, service.FAILED, service.NOT_CHECKED) == (
+    assert (service.PASSED, service.FAILED, service.NOT_CHECKED, service.DECIDED) == (
         "passed",
         "failed",
         "not checked",
+        "decided",
     )
 
 
@@ -199,8 +208,15 @@ def test_an_accepted_value_is_verified_by_its_status_and_its_sentence():
         Check("auto-accepted", "passed"),
         Check("evidence checked", "passed"),
     )
+
+
+def test_a_value_a_person_settled_is_a_decision_not_a_passed_check():
     assert service.field_checks("pending", "human-reviewed", 1, SENTENCES) == (
-        Check("human-reviewed", "passed"),
+        Check("human-reviewed", "decided"),
+        Check("evidence checked", "passed"),
+    )
+    assert service.field_checks("modification", "overridden", 3, SENTENCES) == (
+        Check("overridden", "decided"),
         Check("evidence checked", "passed"),
     )
 
@@ -215,6 +231,97 @@ def test_evidence_is_checked_only_when_the_sentence_is_in_the_comment(sentence):
 def test_a_field_without_a_value_has_nothing_verified():
     assert service.field_checks(None, "needs review", 2, SENTENCES) == ()
     assert service.field_checks(None, "not stated", None, SENTENCES) == ()
+    assert service.field_checks(None, "not determinable", None, SENTENCES) == ()
+
+
+ON = dt.datetime(2026, 10, 2, 9, 30, tzinfo=dt.UTC)
+
+
+def field(**changes) -> FieldView:
+    values = {
+        "field": "workout_strategy",
+        "label": "workout strategy",
+        "status": "auto-accepted",
+        "value": "modification",
+        "display": "modification",
+        "sentence": 3,
+        "evidence": "Three.",
+        "model_value": "foreclosure",
+        "answer_probability": Decimal("0.55"),
+        "support_probability": Decimal("0.92"),
+        "review_reason": None,
+        "decided_by": None,
+        "decided_at": None,
+    }
+    return FieldView(**{**values, **changes})
+
+
+def test_an_override_names_who_when_why_and_what_the_model_read():
+    view = field(
+        status="overridden",
+        overridden_by="alex",
+        overridden_at=ON,
+        override_reason="the special servicer's October letter",
+    )
+    shown = service.comment_value(view, SENTENCES)
+    assert shown.decision == (
+        "overridden by alex on 2026-10-02: the special servicer's October letter; "
+        'the model read "foreclosure"'
+    )
+    assert (shown.overridden_by, shown.overridden_at, shown.override_reason) == (
+        "alex",
+        ON,
+        "the special servicer's October letter",
+    )
+    assert (shown.model_value, shown.value) == ("foreclosure", "modification")
+    assert shown.checks == (Check("overridden", "decided"), Check("evidence checked", "passed"))
+    no_answer = service.decision_text(
+        field(model_value=None, overridden_by="alex", overridden_at=None, override_reason="x"),
+        None,
+    )
+    assert no_answer == "overridden by alex on an unknown day: x; the model gave no value"
+
+
+def test_a_review_decision_names_who_and_when():
+    view = field(status="human-reviewed", decided_by="alex", decided_at=ON)
+    shown = service.comment_value(view, SENTENCES, "ignored: not declined")
+    assert shown.decision == "human-reviewed by alex on 2026-10-02"
+    assert (shown.decided_by, shown.decided_at, shown.declined_reason) == ("alex", ON, None)
+
+
+def test_a_declined_field_says_not_determinable_with_who_and_why():
+    view = field(
+        status="not determinable",
+        value=None,
+        display=None,
+        sentence=None,
+        evidence=None,
+        decided_by="alex",
+        decided_at=ON,
+    )
+    shown = service.comment_value(view, SENTENCES, "the comment names no strategy yet")
+    assert shown.decision == (
+        "declined as not determinable by alex on 2026-10-02: the comment names no strategy yet"
+    )
+    assert (shown.value, shown.checks, shown.declined_reason) == (
+        None,
+        (),
+        "the comment names no strategy yet",
+    )
+    assert service.decision_text(view, None) == (
+        "declined as not determinable by alex on 2026-10-02"
+    )
+
+
+def test_a_value_nobody_settled_by_hand_has_no_decision():
+    shown = service.comment_value(field(), SENTENCES)
+    assert (shown.decision, shown.decided_by, shown.overridden_by) == (None, None, None)
+    assert (
+        service.comment_value(
+            field(status="needs review", value=None, display=None), SENTENCES
+        ).decision
+        is None
+    )
 
 
 def loan_row(**values) -> LoanPeriod:
@@ -244,7 +351,7 @@ def test_tape_values_are_sent_as_text_with_their_kind_and_checks():
     contract, balance = (CONTRACT_PASSED,), (CONTRACT_PASSED, rolled)
     assert values == (
         TapeValue("ending_balance", "ending balance", "money", "30000000.00", balance),
-        TapeValue("beginning_balance", "beginning balance", "money", None, balance),
+        TapeValue("beginning_balance", "beginning scheduled balance", "money", None, balance),
         TapeValue("payment_status", "payment status", "text", "90+ days", contract),
         TapeValue("paid_through_date", "paid-through date", "date", None, contract),
         TapeValue(
@@ -304,6 +411,21 @@ def test_financials_show_their_end_and_age():
     assert found.status == "619 days old at period end, 637 days old at filing"
 
 
+def test_financials_ending_after_the_period_end_are_a_data_problem_not_a_negative_age():
+    late = service.financials(loan_row(financials_end=dt.date(2026, 12, 31)))
+    assert (late.end, late.days_at_period_end, late.days_at_filing) == (
+        dt.date(2026, 12, 31),
+        None,
+        None,
+    )
+    assert late.status == "financials end 2026-12-31, after the period end"
+    same_day = service.financials(loan_row(financials_end=dt.date(2026, 9, 11)))
+    assert (same_day.days_at_period_end, same_day.status) == (
+        0,
+        "0 days old at period end, 18 days old at filing",
+    )
+
+
 def test_financials_of_an_excluded_or_unreported_loan_have_no_age():
     coop = service.financials(loan_row(property_type="CH"))
     assert (coop.days_at_period_end, coop.status) == (None, "excluded: co-op")
@@ -315,20 +437,14 @@ def test_financials_of_an_excluded_or_unreported_loan_have_no_age():
     )
 
 
-def test_a_loans_alerts_are_those_covering_it_in_that_deal():
-    views = [
-        alert(covered(F1, "7", "25000000.00")),
-        alert(covered(F2, "7", "40000000.00")),
-        alert(covered(F2, "3", "40000000.00"), covered(F1, "7", "25000000.00")),
-        alert(covered(F1, "2", "25000000.00")),
-    ]
-    assert service.covers(views[0], F1, "7")
-    assert not service.covers(views[1], F1, "7")
-    assert service.loan_alerts(views, F1, "7") == (
-        LoanAlert(12, "high", "transferred to special servicing on 2026-09-02", "new"),
-        LoanAlert(12, "high", "transferred to special servicing on 2026-09-02", "new"),
+def test_an_alerts_state_on_a_day_is_its_last_change_by_then():
+    assert service.state_on([]) == "new"
+    assert service.state_on(["acknowledged by pat on 2026-10-01"]) == (
+        "acknowledged by pat on 2026-10-01"
     )
-    assert service.loan_alerts(views, F2, "2") == ()
+    assert service.state_on(["acknowledged by pat on 2026-10-01", "closed by alex"]) == (
+        "closed by alex"
+    )
 
 
 def test_a_missing_comment_says_which_month():

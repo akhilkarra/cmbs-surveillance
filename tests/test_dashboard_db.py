@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cmbs import clock
@@ -23,14 +24,17 @@ from cmbs.dashboard import service
 from cmbs.dashboard.service import Check, LoanRef, MonthRef
 from cmbs.distribution.service import load_report
 from cmbs.domain import money
-from cmbs.extraction.service import extract_comments
+from cmbs.extraction.service import decide_review, extract_comments
+from cmbs.extraction.tables import ReviewItem
 from cmbs.model.client import ModelClient
 from cmbs.model.recordings import DbRecordings
 from cmbs.panel.service import UnknownDeal
+from cmbs.review.service import decline, override
 from cmbs.runs.service import NotLoaded, start_run
 from cmbs.tape.service import load_tape
 from cmbs.testing.world import FIXTURE_CIK
 from tests.conftest import FIXTURES, needs_db
+from tests.fixtures.model.synthetic import LOAN_2_SEPTEMBER, loan_2_september_comment, recording
 from tests.fixtures.model.synthetic import load as load_recordings
 from tests.test_alert_service import (
     AUGUST,
@@ -51,9 +55,9 @@ HEADERS = {"X-CMBS-User": "pat"}
 PASSED = "passed"
 
 
-@pytest.fixture
-def world(seeded: Session) -> dict[str, int]:
-    db = seeded
+def build_world(db: Session, *, unsettled_workout: bool = False) -> dict[str, int]:
+    """The module's world; `unsettled_workout` extracts loan 2 with its workout strategy answer
+    inside the abstention band, so that field waits for review."""
     load_month(db, F1, AUGUST)
     clock.set_now(dt.datetime(2026, 9, 29, 18, tzinfo=dt.UTC))
     run = start_run(db, kind="refresh deal", started_by="olly")
@@ -90,12 +94,28 @@ def world(seeded: Session) -> dict[str, int]:
     )
     clock.set_now(BUILT)
     alerts.build_alerts(db, deal_id=deal_id(db, F1), period=SEPTEMBER)
-    load_recordings(DbRecordings(db))
+    if unsettled_workout:
+        answers = {**LOAN_2_SEPTEMBER, "workout_strategy": ("modification", 0.55, 0.92, 4)}
+        DbRecordings(db).put(recording(loan_2_september_comment(), answers))
+    else:
+        load_recordings(DbRecordings(db))
     client = ModelClient(DbRecordings(db), provider=None, replay_only=True, allow_synthetic=True)
     extract_comments(db, user="quinn", deal=F1, period=SEPTEMBER, loan="2", client=client)
     db.commit()
     clock.set_now(READ)
     return {"run": run.id}
+
+
+@pytest.fixture
+def world(seeded: Session) -> dict[str, int]:
+    return build_world(seeded)
+
+
+@pytest.fixture
+def reviewing(seeded: Session) -> int:
+    """The world with loan 2's workout strategy waiting for review; the item's id."""
+    build_world(seeded, unsettled_workout=True)
+    return seeded.scalars(select(ReviewItem.id).where(ReviewItem.field == "workout_strategy")).one()
 
 
 # ---------------------------------------------------------------------------- the book
@@ -181,7 +201,7 @@ def test_the_loan_page_shows_the_tape_with_its_checks_and_run(world, seeded):
     assert (balance.field, balance.value) == ("ending_balance", "30000000.00")
     assert balance.checks == (
         Check("contract passed", PASSED),
-        Check("roll-forward not checked", "not checked"),
+        Check("scheduled balance roll-forward not checked", "not checked"),
     )
     financials = page.financials
     assert (financials.end, financials.days_at_period_end) == (dt.date(2024, 12, 31), 619)
@@ -352,7 +372,7 @@ def test_the_loan_route_reads_a_month_and_a_day(world, client):
         "value": "30000000.00",
         "checks": [
             {"label": "contract passed", "outcome": "passed"},
-            {"label": "roll-forward not checked", "outcome": "not checked"},
+            {"label": "scheduled balance roll-forward not checked", "outcome": "not checked"},
         ],
     }
     assert body["financials"]["days_at_period_end"] == 619
@@ -372,3 +392,171 @@ def test_the_routes_refuse_bad_months_unknown_loans_and_missing_users(world, cli
     assert missing.status_code == 422
     assert missing.json()["detail"].startswith("no September 2026 values of loan 99")
     assert client.get("/dashboard/book").status_code == 401
+
+
+# ---------------------------------------------------------------------------- review's review
+
+
+def comment_values(db: Session, **kw) -> dict[str, service.CommentValue]:
+    page = service.loan_page(db, reader="pat", deal=F1, loan="2", **kw)
+    assert page.comment is not None
+    return {value.field: value for value in page.comment.values}
+
+
+@needs_db
+def test_an_overridden_value_shows_who_when_why_and_the_models_value(world, seeded):
+    clock.set_now(dt.datetime(2026, 10, 2, 9, 30, tzinfo=dt.UTC))
+    override(
+        seeded,
+        "alex",
+        deal=F1,
+        loan="2",
+        period=SEPTEMBER,
+        field="borrower_request",
+        value="loan modification",
+        sentence=3,
+        reason="the borrower asked for new terms, not only time",
+    )
+    seeded.commit()
+    shown = comment_values(seeded, as_of=dt.date(2026, 10, 2))["borrower_request"]
+    assert (shown.status, shown.value, shown.model_value) == (
+        "overridden",
+        "loan modification",
+        "maturity extension",
+    )
+    assert (shown.overridden_by, shown.override_reason) == (
+        "alex",
+        "the borrower asked for new terms, not only time",
+    )
+    assert shown.overridden_at == dt.datetime(2026, 10, 2, 9, 30, tzinfo=dt.UTC)
+    assert shown.decision == (
+        "overridden by alex on 2026-10-02: the borrower asked for new terms, not only time; "
+        'the model read "maturity extension"'
+    )
+    assert shown.checks == (Check("overridden", "decided"), Check("evidence checked", PASSED))
+    before = comment_values(seeded, as_of=dt.date(2026, 10, 1))["borrower_request"]
+    assert (before.status, before.decision) == ("auto-accepted", None)
+
+
+@needs_db
+def test_a_human_reviewed_value_shows_who_decided_it_and_when(reviewing, seeded):
+    clock.set_now(dt.datetime(2026, 10, 2, 9, 30, tzinfo=dt.UTC))
+    decide_review(seeded, "alex", reviewing, value="modification", sentence=4)
+    seeded.commit()
+    shown = comment_values(seeded, as_of=dt.date(2026, 10, 2))["workout_strategy"]
+    assert (shown.status, shown.value, shown.decided_by) == (
+        "human-reviewed",
+        "modification",
+        "alex",
+    )
+    assert shown.decision == "human-reviewed by alex on 2026-10-02"
+    assert shown.checks == (
+        Check("human-reviewed", "decided"),
+        Check("evidence checked", PASSED),
+    )
+
+
+@needs_db
+def test_a_declined_field_shows_not_determinable_with_who_and_why(reviewing, seeded):
+    clock.set_now(dt.datetime(2026, 10, 2, 9, 30, tzinfo=dt.UTC))
+    decline(seeded, "alex", reviewing, reason="the comment names no strategy yet")
+    seeded.commit()
+    shown = comment_values(seeded, as_of=dt.date(2026, 10, 2))["workout_strategy"]
+    assert (shown.status, shown.value, shown.checks) == ("not determinable", None, ())
+    assert (shown.decided_by, shown.declined_reason) == (
+        "alex",
+        "the comment names no strategy yet",
+    )
+    assert shown.decision == (
+        "declined as not determinable by alex on 2026-10-02: the comment names no strategy yet"
+    )
+    waiting = comment_values(seeded, as_of=dt.date(2026, 10, 1))["workout_strategy"]
+    assert (waiting.status, waiting.decision, waiting.declined_reason) == (
+        "needs review",
+        None,
+        None,
+    )
+
+
+# ---------------------------------------------------------------------------- review fixes
+
+
+@needs_db
+def test_the_loans_alerts_stand_as_they_were_on_the_day(world, seeded):
+    page = service.loan_page(seeded, reader="pat", deal=F1, loan="7")
+    [alert] = page.alerts
+    clock.set_now(dt.datetime(2026, 10, 2, 9, tzinfo=dt.UTC))
+    alerts.acknowledge(seeded, user="pat", alert_id=alert.alert_id)
+    clock.set_now(dt.datetime(2026, 10, 3, 9, tzinfo=dt.UTC))
+    alerts.close(seeded, user="alex", alert_id=alert.alert_id, note="known")
+    seeded.commit()
+
+    def state(day: dt.date) -> list[str]:
+        found = service.loan_page(seeded, reader="pat", deal=F1, loan="7", as_of=day).alerts
+        return [shown.state_text for shown in found]
+
+    assert state(dt.date(2026, 10, 1)) == ["new"]
+    assert state(dt.date(2026, 10, 2)) == ["acknowledged by pat on 2026-10-02"]
+    assert state(dt.date(2026, 10, 3)) == ["closed by alex"]
+    # Built on 2026-09-30: the day before, the alert did not exist.
+    assert state(dt.date(2026, 9, 29)) == []
+
+
+@needs_db
+def test_a_superseded_alert_leaves_the_loan_from_the_day_it_was_superseded(world, seeded):
+    [alert] = service.loan_page(seeded, reader="pat", deal=F1, loan="7").alerts
+    clock.set_now(dt.datetime(2026, 10, 5, 9, tzinfo=dt.UTC))
+    load_tape(
+        seeded,
+        deal=F1,
+        content=month_tape(SEPTEMBER),
+        file_name="2026-09-amended.xml",
+        accession="0009900001-26-000903",
+        filing_date=dt.date(2026, 10, 5),
+        cik=FIXTURE_CIK,
+        form="ABS-EE/A",
+        amends=TAPE_ACCESSION,
+    )
+    alerts.build_alerts(seeded, deal_id=deal_id(seeded, F1), period=SEPTEMBER)
+    seeded.commit()
+    assert [
+        a.alert_id
+        for a in service.loan_page(
+            seeded, reader="pat", deal=F1, loan="7", period=SEPTEMBER, as_of=dt.date(2026, 10, 4)
+        ).alerts
+    ] == [alert.alert_id]
+    assert (
+        service.loan_page(
+            seeded, reader="pat", deal=F1, loan="7", period=SEPTEMBER, as_of=dt.date(2026, 10, 5)
+        ).alerts
+        == ()
+    )
+
+
+@needs_db
+def test_a_loan_number_is_read_as_stored(world, seeded):
+    page = service.loan_page(seeded, reader="pat", deal=F1, loan="02")
+    assert page.loan == "2"
+    assert page.comment is not None
+    assert page.tape.values[0].value == "30000000.00"
+
+
+@needs_db
+def test_flags_carry_their_ids(world, seeded):
+    flag = raise_flag(
+        seeded,
+        deal_id=deal_id(seeded, F1),
+        loan="2",
+        check="reconciliation",
+        message="paid-through differs",
+        period=SEPTEMBER.first_day,
+    )
+    seeded.commit()
+    [shown] = service.loan_page(seeded, reader="pat", deal=F1, loan="2").flags
+    assert (shown.id, shown.check) == (flag.id, "reconciliation")
+
+
+@needs_db
+def test_a_month_not_built_is_told_apart_from_an_empty_book(world, seeded):
+    page = service.book_page(seeded, reader="pat", period=AUGUST)
+    assert (page.rows, page.note) == ((), "the August 2026 alerts have not been built")

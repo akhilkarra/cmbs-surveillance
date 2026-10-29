@@ -28,33 +28,45 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, aliased
 
 from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
 from cmbs.alerts import service as alerts
 from cmbs.alerts.codes import PAYMENT_STATUS, WORKOUT_STRATEGY, name_of
+from cmbs.alerts.lifecycle import State
+from cmbs.alerts.rules import SEVERITY_ORDER, Severity
 from cmbs.alerts.service import AlertView
-from cmbs.alerts.tables import AlertBuild
+from cmbs.alerts.tables import Alert, AlertBuild, AlertLoan
 from cmbs.analysis.staleness import loan_staleness
+from cmbs.audit.tables import AuditEntry
 from cmbs.checks.tables import CheckFlag
 from cmbs.distribution.service import canonical_loan
 from cmbs.domain import Period
 from cmbs.edgar.archives import filing_base_url
 from cmbs.errors import Refused
-from cmbs.extraction.service import CommentView, FieldView, comment_view
-from cmbs.extraction.tables import Extraction
+from cmbs.extraction.service import (
+    NOT_DETERMINABLE,
+    OVERRIDDEN,
+    CommentView,
+    FieldView,
+    comment_view,
+)
+from cmbs.extraction.tables import AUTO_ACCEPTED, ExtractedField, Extraction, ReviewItem
 from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
+from cmbs.review.tables import ReviewDecline
 from cmbs.runs import service as runs
 from cmbs.tape.tables import LoanPeriod
 
-# What a check found: "passed", "failed", or "not checked" (the check could not run yet).
+# What a check found: "passed", "failed", or "not checked" (the check could not run yet); or
+# "decided" when a person settled the value (a review decision or an override), not a check.
 PASSED = "passed"
 FAILED = "failed"
 NOT_CHECKED = "not checked"
+DECIDED = "decided"
 NOT_IN_AUDIT_TRAIL = "load not in the audit trail"
 
 # How the web app formats a value; the value itself is always sent as text, so no digit is lost.
@@ -79,7 +91,8 @@ class Check:
 
 
 CONTRACT_PASSED = Check("contract passed", PASSED)
-ROLLFORWARD_NOT_CHECKED = Check("roll-forward not checked", NOT_CHECKED)
+# Grill log Q81: the roll-forward ties the scheduled balance.
+ROLLFORWARD_NOT_CHECKED = Check("scheduled balance roll-forward not checked", NOT_CHECKED)
 EVIDENCE_CHECKED = Check("evidence checked", PASSED)
 
 
@@ -164,13 +177,24 @@ def book_row(view: AlertView) -> BookRow:
     )
 
 
-def book_note(period: Period, empty: bool) -> str | None:
-    return f"no open alerts on the book for {period.label}" if empty else None
+def book_note(period: Period, *, built: bool, empty: bool) -> str | None:
+    """Why the book view is empty: the month's alerts were not built yet, or none is open on
+    the book (as `cmbs.alerts.service.list_note` tells a deal's month apart)."""
+    if not empty:
+        return None
+    if not built:
+        return f"the {period.label} alerts have not been built"
+    return f"no open alerts on the book for {period.label}"
 
 
 def _latest_built(db: Session) -> Period | None:
     latest = db.scalar(select(func.max(AlertBuild.period)))
     return Period.of(latest) if latest is not None else None
+
+
+def _built(db: Session, period: Period) -> bool:
+    found = db.scalar(select(AlertBuild.id).where(AlertBuild.period == period.first_day).limit(1))
+    return found is not None
 
 
 def book_page(db: Session, *, reader: str, period: Period | None = None) -> BookPage:
@@ -184,7 +208,7 @@ def book_page(db: Session, *, reader: str, period: Period | None = None) -> Book
         next=month_ref(month.shift(1)),
         as_of=clock.today(),
         rows=rows,
-        note=book_note(month, not rows),
+        note=book_note(month, built=_built(db, month), empty=not rows),
     )
 
 
@@ -248,7 +272,15 @@ class CommentValue:
     evidence: str | None
     checks: tuple[Check, ...]
     review_reason: str | None
+    model_value: str | None
     decided_by: str | None
+    decided_at: dt.datetime | None
+    overridden_by: str | None
+    overridden_at: dt.datetime | None
+    override_reason: str | None
+    declined_reason: str | None
+    # Who settled the value by hand, when and why, as the page says it; None when nobody did.
+    decision: str | None
 
 
 @dataclass(frozen=True)
@@ -264,12 +296,15 @@ class CommentSection:
 
 @dataclass(frozen=True)
 class LoanFlag:
+    id: int
     check: str
     message: str
 
 
 @dataclass(frozen=True)
 class LoanAlert:
+    """An alert on the loan for the month, in its state on the page's day."""
+
     alert_id: int
     severity: str
     message: str
@@ -335,7 +370,7 @@ def tape_values(row: LoanPeriod, rollforward: Check) -> tuple[TapeValue, ...]:
         ),
         TapeValue(
             "beginning_balance",
-            "beginning balance",
+            "beginning scheduled balance",
             MONEY,
             _money(row.beginning_balance),
             balance_checks,
@@ -379,7 +414,17 @@ def rollforward_check(db: Session, *, deal_id: int, period: Period, loan: str) -
 
 
 def financials(row: LoanPeriod) -> Financials:
+    """The most recent financials and their age. Financials that end after the period end are
+    a data problem, said as such, never a negative age."""
     measured = loan_staleness(panel.tape_loan(row))
+    if measured.days_vs_period_end is not None and measured.days_vs_period_end < 0:
+        return Financials(
+            start=row.financials_start,
+            end=row.financials_end,
+            days_at_period_end=None,
+            days_at_filing=None,
+            status=f"financials end {row.financials_end}, after the period end",
+        )
     return Financials(
         start=row.financials_start,
         end=row.financials_end,
@@ -392,18 +437,50 @@ def financials(row: LoanPeriod) -> Financials:
 def field_checks(
     value: str | None, status: str, sentence: int | None, sentences: Sequence[str]
 ) -> tuple[Check, ...]:
-    """What verified an extracted value: how it was accepted (its status), and "evidence
-    checked" when the sentence behind it is one of the comment's. A field with no value (one
-    awaiting review, or not stated) has nothing verified."""
+    """What verified an extracted value: how it was accepted, and "evidence checked" when the
+    sentence behind it is one of the comment's. Auto-accepted passed the decision table; any
+    other status with a value (human-reviewed, overridden) is a person's decision. A field with
+    no value (awaiting review, not stated, not determinable) has nothing verified."""
     if value is None:
         return ()
-    accepted = Check(status, PASSED)
+    accepted = Check(status, PASSED if status == AUTO_ACCEPTED else DECIDED)
     if sentence is not None and 1 <= sentence <= len(sentences):
         return (accepted, EVIDENCE_CHECKED)
     return (accepted,)
 
 
-def comment_value(view: FieldView, sentences: Sequence[str]) -> CommentValue:
+def _day(moment: dt.datetime | None) -> str:
+    return "an unknown day" if moment is None else moment.astimezone(dt.UTC).date().isoformat()
+
+
+def decision_text(view: FieldView, declined_reason: str | None) -> str | None:
+    """Who settled a field by hand, when and why:
+    'overridden by alex on 2026-10-02: <reason>; the model read "modification"',
+    'declined as not determinable by alex on 2026-10-02: <reason>',
+    'human-reviewed by alex on 2026-10-02'. None when no person settled it."""
+    if view.overridden_by is not None:
+        model = (
+            "the model gave no value"
+            if view.model_value is None
+            else f'the model read "{view.model_value}"'
+        )
+        return (
+            f"{OVERRIDDEN} by {view.overridden_by} on {_day(view.overridden_at)}: "
+            f"{view.override_reason}; {model}"
+        )
+    if view.decided_by is None:
+        return None
+    on = _day(view.decided_at)
+    if view.status == NOT_DETERMINABLE:
+        why = f": {declined_reason}" if declined_reason else ""
+        return f"declined as {NOT_DETERMINABLE} by {view.decided_by} on {on}{why}"
+    return f"{view.status} by {view.decided_by} on {on}"
+
+
+def comment_value(
+    view: FieldView, sentences: Sequence[str], declined_reason: str | None = None
+) -> CommentValue:
+    reason = declined_reason if view.status == NOT_DETERMINABLE else None
     return CommentValue(
         field=view.field,
         label=view.label,
@@ -413,7 +490,14 @@ def comment_value(view: FieldView, sentences: Sequence[str]) -> CommentValue:
         evidence=view.evidence,
         checks=field_checks(view.display, view.status, view.sentence, sentences),
         review_reason=view.review_reason,
+        model_value=view.model_value,
         decided_by=view.decided_by,
+        decided_at=view.decided_at,
+        overridden_by=view.overridden_by,
+        overridden_at=view.overridden_at,
+        override_reason=view.override_reason,
+        declined_reason=reason,
+        decision=decision_text(view, reason),
     )
 
 
@@ -442,6 +526,7 @@ def _comment(db: Session, view: CommentView) -> CommentSection:
     run = extraction.run_id if extraction is not None else None
     by = extraction.extracted_by if extraction is not None else None
     at = extraction.extracted_at if extraction is not None else None
+    declines = _decline_reasons(db, extraction.id) if extraction is not None else {}
     sentences = tuple(view.sentences)
     return CommentSection(
         source=_source(db, view.accession),
@@ -450,8 +535,22 @@ def _comment(db: Session, view: CommentView) -> CommentSection:
         model=view.model,
         prompt_version=view.prompt_version,
         settings_version=view.settings_version,
-        values=tuple(comment_value(field, sentences) for field in view.fields.values()),
+        values=tuple(
+            comment_value(field, sentences, declines.get(name))
+            for name, field in view.fields.items()
+        ),
     )
+
+
+def _decline_reasons(db: Session, extraction_id: int) -> dict[str, str]:
+    """Why each declined field of the extraction could not be settled, by field name."""
+    rows = db.execute(
+        select(ReviewItem.field, ReviewDecline.reason)
+        .join(ReviewDecline, ReviewDecline.item_id == ReviewItem.id)
+        .join(ExtractedField, ExtractedField.id == ReviewItem.field_id)
+        .where(ExtractedField.extraction_id == extraction_id)
+    ).all()
+    return {field: reason for field, reason in rows}
 
 
 def _end_of(day: dt.date) -> dt.datetime:
@@ -472,18 +571,58 @@ def _flags(
         )
         .order_by(CheckFlag.id)
     )
-    return tuple(LoanFlag(flag.check, flag.message) for flag in found)
+    return tuple(LoanFlag(flag.id, flag.check, flag.message) for flag in found)
 
 
-def covers(view: AlertView, deal: str, loan: str) -> bool:
-    return any(covered.deal == deal and covered.loan == loan for covered in view.loans)
+def state_on(changes: Sequence[str]) -> str:
+    """An alert's state on a day: the last state change made by then, or "new"."""
+    return changes[-1] if changes else State.NEW.value
 
 
-def loan_alerts(views: Sequence[AlertView], deal: str, loan: str) -> tuple[LoanAlert, ...]:
+def _state_changes(db: Session, alert_id: int, end: dt.datetime) -> list[str]:
+    """The alert's state after each change made before `end`, oldest first."""
+    return [
+        after
+        for after in db.scalars(
+            select(AuditEntry.after)
+            .where(
+                AuditEntry.subject == alerts.ALERT,
+                AuditEntry.subject_key == str(alert_id),
+                AuditEntry.field == "state",
+                AuditEntry.outcome == "done",
+                AuditEntry.at < end,
+            )
+            .order_by(AuditEntry.at, AuditEntry.id)
+        )
+        if after is not None
+    ]
+
+
+def _loan_alerts(
+    db: Session, deal_id: int, loan: str, period: Period, day: dt.date
+) -> tuple[LoanAlert, ...]:
+    """The loan's alerts for the month as they stood at the end of `day`: raised by then and
+    not yet superseded for this deal, each in the state the audit trail shows it was in."""
+    end = _end_of(day)
+    superseding = aliased(AlertBuild)
+    found = db.scalars(
+        select(Alert)
+        .join(AlertLoan, AlertLoan.alert_id == Alert.id)
+        .outerjoin(superseding, superseding.id == AlertLoan.superseded_by)
+        .where(
+            AlertLoan.deal_id == deal_id,
+            AlertLoan.loan == loan,
+            Alert.period == period.first_day,
+            Alert.raised_at < end,
+            or_(AlertLoan.superseded_by.is_(None), superseding.built_at >= end),
+        )
+    ).all()
+    ordered = sorted(found, key=lambda alert: (SEVERITY_ORDER[Severity(alert.severity)], alert.id))
     return tuple(
-        LoanAlert(view.id, view.severity.value, view.message, view.state_text)
-        for view in views
-        if covers(view, deal, loan)
+        LoanAlert(
+            alert.id, alert.severity, alert.message, state_on(_state_changes(db, alert.id, end))
+        )
+        for alert in ordered
     )
 
 
@@ -496,8 +635,10 @@ def loan_page(
     period: Period | None = None,
     as_of: dt.date | None = None,
 ) -> LoanPage:
-    """One loan as the panel shows it on `as_of` (today), for a month (the deal's latest)."""
+    """One loan as the panel shows it on `as_of` (today), for a month (the deal's latest).
+    The loan is read as stored ('02' is loan 2), as the comment's extraction is."""
     authorize(db, reader, Action.READ_PANEL)
+    loan = canonical_loan(loan)
     deal_row = panel.deal_named(db, deal)
     day = as_of or clock.today()
     month = period or panel.tape_as_of(db, deal_row.name, day).period
@@ -505,7 +646,6 @@ def loan_page(
     row = panel.as_of(db, day, deal_id=deal_row.id, period=month, loan=loan)[0]
     rollforward = rollforward_check(db, deal_id=deal_row.id, period=month, loan=loan)
     view = comment_view(db, reader, deal=deal_row.name, loan=loan, period=month, as_of=day)
-    listed = alerts.month_alerts(db, reader=reader, deal=deal_row.name, period=month)
     return LoanPage(
         deal=deal_row.name,
         loan=loan,
@@ -522,5 +662,5 @@ def loan_page(
         comment=_comment(db, view) if view is not None else None,
         comment_note=comment_note(month) if view is None else None,
         flags=_flags(db, deal_row.id, loan, month, day),
-        alerts=loan_alerts(listed.alerts, deal_row.name, loan),
+        alerts=_loan_alerts(db, deal_row.id, loan, month, day),
     )
