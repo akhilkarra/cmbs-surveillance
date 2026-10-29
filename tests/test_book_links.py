@@ -23,8 +23,9 @@ from cmbs.book.service import (
     whole_loans_of,
 )
 from cmbs.book.tables import WholeLoan
-from cmbs.deals.service import by_name, get_or_create
+from cmbs.deals.service import by_name
 from tests.conftest import needs_db
+from tests.test_alert_service import AUGUST, load_month
 
 F1, F2, F3 = "Fixture Trust 2026-F1", "Fixture Trust 2026-F2", "Fixture Trust 2026-F3"
 
@@ -125,8 +126,46 @@ def test_a_whole_loan_never_gets_a_second_note_in_one_deal():
 # ---------------------------------------------------------------------------- linking
 
 
+@pytest.fixture
+def tapes(seeded):
+    """August 2026 tapes of three fixture deals, each with loans 1 to 7."""
+    for deal in (F1, F2, F3):
+        load_month(seeded, deal, AUGUST)
+    seeded.commit()
+    return seeded
+
+
 @needs_db
-def test_a_quant_links_a_whole_loan_and_it_is_audited(seeded):
+def test_a_link_names_registered_deals_and_loans_on_their_tapes(tapes):
+    seeded = tapes
+    unknown = "no deal named 'No Such Trust 2026-X'"
+    with pytest.raises(InvalidLink, match=f"^{unknown}$"):
+        link_whole_loan(
+            seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef("No Such Trust 2026-X", "3")]
+        )
+    seeded.rollback()
+    off_tape = f"loan 99 of {F2} is not on any loaded loan tape of that deal"
+    with pytest.raises(InvalidLink, match=f"^{off_tape}$"):
+        link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "99")])
+    seeded.rollback()
+    # A companion note is an asset of the tape but not a loan row: it is not a loan to link.
+    with pytest.raises(InvalidLink, match="^loan 1A of "):
+        link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1A"), NoteRef(F2, "3")])
+    seeded.rollback()
+    assert by_name(seeded, "No Such Trust 2026-X") is None
+    assert seeded.scalars(select(WholeLoan)).all() == []
+    refused = seeded.scalars(
+        select(AuditEntry).where(AuditEntry.outcome == "refused").order_by(AuditEntry.id)
+    ).all()
+    assert [(e.user_name, e.action, e.reason) for e in refused[:2]] == [
+        ("quinn", "link whole loan", unknown),
+        ("quinn", "link whole loan", off_tape),
+    ]
+
+
+@needs_db
+def test_a_quant_links_a_whole_loan_and_it_is_audited(tapes):
+    seeded = tapes
     clock.set_now(dt.datetime(2026, 9, 30, 12, tzinfo=dt.UTC))
     whole = link_whole_loan(
         seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(" Fixture Trust 2026-F2", "3")]
@@ -154,7 +193,8 @@ def test_a_quant_links_a_whole_loan_and_it_is_audited(seeded):
 
 
 @needs_db
-def test_a_third_deal_joins_an_existing_whole_loan(seeded):
+def test_a_third_deal_joins_an_existing_whole_loan(tapes):
+    seeded = tapes
     whole = link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
     joined = link_whole_loan(seeded, user="morgan", notes=[NoteRef(F2, "3"), NoteRef(F3, "5")])
     assert joined == whole
@@ -192,8 +232,8 @@ def test_a_user_without_roles_may_not_link(seeded):
 
 
 @needs_db
-def test_an_impossible_link_is_refused_audited_and_changes_nothing(seeded):
-    get_or_create(seeded, F1)
+def test_an_impossible_link_is_refused_audited_and_changes_nothing(tapes):
+    seeded = tapes
     first = link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
     second = link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "2"), NoteRef(F3, "5")])
     seeded.commit()
@@ -228,7 +268,8 @@ def test_an_impossible_link_is_refused_audited_and_changes_nothing(seeded):
 
 
 @needs_db
-def test_a_deal_may_not_hold_two_notes_of_one_whole_loan(seeded):
+def test_a_deal_may_not_hold_two_notes_of_one_whole_loan(tapes):
+    seeded = tapes
     whole = link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
     with pytest.raises(InvalidLink, match=f"^whole loan {whole} already has a note in {F1}$"):
-        link_whole_loan(seeded, user="quinn", notes=[NoteRef(F2, "3"), NoteRef(F1, "9")])
+        link_whole_loan(seeded, user="quinn", notes=[NoteRef(F2, "3"), NoteRef(F1, "2")])

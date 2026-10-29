@@ -23,10 +23,11 @@ from cmbs.access.roles import PERMISSIONS, ROLE_ORDER, Action, Role
 from cmbs.access.service import Actor, PermissionRefused, UnknownUser, authorize, roles_of
 from cmbs.audit.service import record, record_refusal, refuse
 from cmbs.book.tables import Position, PositionsFile, WholeLoan, WholeLoanNote
-from cmbs.deals.service import get_or_create
+from cmbs.deals.service import get_or_create, resolve
 from cmbs.deals.tables import Deal
 from cmbs.domain import format_money, money
 from cmbs.errors import Refused
+from cmbs.tape.tables import LoanPeriod
 
 COLUMNS = ("deal", "class", "face amount")
 
@@ -355,13 +356,17 @@ def authorize_linking(db: Session, user: str) -> Actor:
 def link_whole_loan(db: Session, *, user: str, notes: Sequence[NoteRef]) -> int:
     """Record that the notes are one whole loan; returns its id. Needs a quant.
 
-    Deals are registered (or found) and locked in name order, so two links naming the same deals
-    take turns, and the existing links are read under those locks.
+    Every deal must already be registered (a link never creates a deal) and every loan must be on
+    a loaded tape of its deal. Deals are locked in name order, so two links naming the same
+    deals take turns, and the existing links are read under those locks.
     """
     actor = authorize_linking(db, user)
     try:
         cleaned = clean_notes(notes)
-        deal_ids = {name: get_or_create(db, name).id for name in sorted({n.deal for n in cleaned})}
+        deal_ids = {name: _known_deal(db, name) for name in sorted({n.deal for n in cleaned})}
+        for note in cleaned:
+            if not _on_a_tape(db, deal_ids[note.deal], note.loan):
+                raise InvalidLink(f"{note} is not on any loaded loan tape of that deal")
         linked = [_whole_loan_id(db, deal_ids[n.deal], n.loan) for n in cleaned]
         existing = {wl for wl in linked if wl is not None}
         occupied = set(
@@ -406,6 +411,35 @@ def link_whole_loan(db: Session, *, user: str, notes: Sequence[NoteRef]) -> int:
         detail={"notes": [{"deal": n.deal, "loan": n.loan} for n in cleaned]},
     )
     return whole_loan_id
+
+
+def _known_deal(db: Session, name: str) -> int:
+    """The registered deal's id, its row locked; InvalidLink if no deal has that name."""
+    deal = resolve(db, name)
+    if deal is None:
+        raise InvalidLink(f"no deal named {name!r}")
+    db.execute(select(Deal.id).where(Deal.id == deal.id).with_for_update())
+    return deal.id
+
+
+def _on_a_tape(db: Session, deal_id: int, loan: str) -> bool:
+    """Whether any loaded tape of the deal reports the loan."""
+    found = db.scalar(
+        select(LoanPeriod.loan)
+        .where(LoanPeriod.deal_id == deal_id, LoanPeriod.loan == loan)
+        .limit(1)
+    )
+    return found is not None
+
+
+def whole_loan_notes(db: Session, whole_loan_id: int) -> list[tuple[int, str]]:
+    """The (deal id, loan) of every note of the whole loan, by deal."""
+    rows = db.execute(
+        select(WholeLoanNote.deal_id, WholeLoanNote.loan)
+        .where(WholeLoanNote.whole_loan_id == whole_loan_id)
+        .order_by(WholeLoanNote.deal_id)
+    )
+    return [(deal_id, loan) for deal_id, loan in rows]
 
 
 def _whole_loan_id(db: Session, deal_id: int, loan: str) -> int | None:
