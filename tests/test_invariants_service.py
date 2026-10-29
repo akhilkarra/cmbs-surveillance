@@ -162,7 +162,7 @@ def test_the_cli_refuses_with_the_message(loaded):
         cli, ["invariants", "pool", "--deal", DEAL, "--user", "pat", "--period", "Smarch 2026"]
     )
     assert bad.exit_code == 2
-    assert "--period" in bad.output
+    assert "not a period like 'September 2026'" in bad.output
 
 
 @pytest.fixture
