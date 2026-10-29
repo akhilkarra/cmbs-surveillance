@@ -24,6 +24,7 @@ from cmbs.distribution.tables import DistributionReport
 from cmbs.domain import Period, money
 from cmbs.edgar.archives import filing_base_url
 from cmbs.edgar.replay import Replay
+from cmbs.errors import Refused
 from cmbs.panel.service import UnknownDeal
 from cmbs.refresh import service
 from cmbs.refresh.claims import (
@@ -627,6 +628,26 @@ def test_loaded_months_get_their_alert_counts(book, sources, monkeypatch):
     assert report.run.headline().endswith("14 loan rows loaded, 4 alerts raised")
     book.expire_all()
     assert [m.alerts for m in book.scalars(select(RunMonth))] == [2, 2]
+
+
+def test_a_month_whose_alerts_are_refused_is_not_loaded(seeded, sources, monkeypatch):
+    class NoEarlierMonth(Refused):
+        pass
+
+    def build(db, **kw):
+        raise NoEarlierMonth("no month before September 2026 to compare with")
+
+    fake = types.ModuleType("cmbs.alerts.service")
+    fake.build_alerts = build  # pyright: ignore[reportAttributeAccessIssue]
+    monkeypatch.setitem(sys.modules, "cmbs.alerts.service", fake)
+    clock.set_now(TODAY)
+    report = service.refresh_deal("quinn", F2, sources=sources)
+    assert months_of(report) == [(F2, "September 2026", "not loaded", "alerts could not be built")]
+    assert report.run.summary["stopped"]["detail"] == (
+        "no month before September 2026 to compare with"
+    )
+    seeded.expire_all()
+    assert count(seeded, LoanTape) == 0  # the month rolled back with its alerts
 
 
 # ---------------------------------------------------------------------------- tracing

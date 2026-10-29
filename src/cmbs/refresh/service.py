@@ -198,7 +198,10 @@ def load_month(
     except Refused as error:
         raise MonthNotLoaded("10-D was refused", str(error)) from error
     reconciliation = reconcile(db, deal_id=deal.id, period=month.period, as_of=on)
-    alerts = build_alerts(db, deal_id=deal.id, period=month.period, actor=actor, run_id=run_id)
+    try:
+        alerts = build_alerts(db, deal_id=deal.id, period=month.period, actor=actor, run_id=run_id)
+    except Refused as error:
+        raise MonthNotLoaded("alerts could not be built", str(error)) from error
     return MonthResult(
         period=month.period,
         outcome=MonthOutcome.LOADED,
