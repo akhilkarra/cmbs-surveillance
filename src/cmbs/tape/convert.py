@@ -43,6 +43,8 @@ class LoanPeriodRow:
     master_servicer_return_date: dt.date | None
     workout_strategy: str | None
     modification_code: str | None
+    # The rate for the period as a fraction (0.03768 is 3.768%), every digit as reported.
+    interest_rate: Decimal | None
     property_count: int
     property_type: str | None
     property_name: str | None
@@ -130,6 +132,7 @@ LOAN_SOURCES: dict[str, Source] = {
     ),
     "workout_strategy": Source("workoutStrategyCode", "workout strategy", read_code),
     "modification_code": Source("modificationCode", "modification code", read_code),
+    "interest_rate": Source("reportPeriodInterestRatePercentage", "interest rate", read_decimal),
 }
 PROPERTY_SOURCES: dict[str, Source] = {
     "property_type": Source("propertyTypeCode", "property type", read_code),

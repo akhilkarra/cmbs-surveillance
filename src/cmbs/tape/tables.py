@@ -136,6 +136,8 @@ class LoanPeriod(Base):
     master_servicer_return_date: Mapped[date | None] = mapped_column(Date)
     workout_strategy: Mapped[str | None] = mapped_column(Text)
     modification_code: Mapped[str | None] = mapped_column(Text)
+    # The period's interest rate as a fraction (0.03768 is 3.768%), every digit as reported.
+    interest_rate: Mapped[Decimal | None] = mapped_column(Numeric)
     # Property values: one property's as reported, or several combined (cmbs.tape.properties).
     property_count: Mapped[int] = mapped_column(Integer)
     property_type: Mapped[str | None] = mapped_column(Text)

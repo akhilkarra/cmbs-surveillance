@@ -47,6 +47,7 @@ EVERY_TAG = asset(
     mostRecentMasterServicerReturnDate="07-20-2026",
     workoutStrategyCode="8",
     modificationCode="4",
+    reportPeriodInterestRatePercentage=".04815000",
 )
 
 
@@ -71,6 +72,7 @@ def test_reads_every_field_from_its_tag():
         master_servicer_return_date=dt.date(2026, 7, 20),
         workout_strategy="8",
         modification_code="4",
+        interest_rate=Decimal("0.04815000"),
         property_count=1,
         property_type="MU",
         property_name="Cedar Medical Office",
@@ -92,6 +94,7 @@ def test_money_is_kept_to_the_cent_and_ratios_keep_every_digit():
     assert str(row.unscheduled_principal) == "10000.00"
     assert str(row.noi) == "612000.50"
     assert str(row.dscr) == "1.0712"
+    assert str(row.interest_rate) == "0.04815000"
 
 
 def test_a_loan_reporting_nothing_has_only_its_number_and_period_end():
@@ -144,6 +147,15 @@ def test_every_unreadable_value_is_a_reason_in_field_order():
         "most recent financials end is not a date: '13-01-2026'",
         "most recent NOI is not a number: 'n/a'",
     ]
+
+
+def test_a_rate_that_is_not_a_number_is_a_reason_and_a_zero_rate_is_zero():
+    unreadable = tape(asset("8", reportPeriodInterestRatePercentage="4.5%"))
+    assert to_row(only(unreadable)) == ["interest rate is not a number: '4.5%'"]
+    zero = to_row(only(tape(asset("8", reportPeriodInterestRatePercentage="0.00"))))
+    assert isinstance(zero, LoanPeriodRow)
+    assert zero.interest_rate == Decimal("0.00")
+    assert zero.interest_rate is not None
 
 
 def test_a_loan_without_a_number_cannot_be_typed():
