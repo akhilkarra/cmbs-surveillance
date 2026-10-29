@@ -59,6 +59,18 @@ class NoTape(Refused):
     """No loan tape of the month had been filed by the day the checks read."""
 
 
+def _deal(db: Session, deal: str) -> Deal:
+    found = deals.by_name(db, deal)
+    if found is None:
+        raise UnknownDeal(f"no deal named {deal!r}")
+    return found
+
+
+def deal_id(db: Session, deal: str) -> int:
+    """The registry id of the deal a name (or an alias) names; UnknownDeal otherwise."""
+    return _deal(db, deal).id
+
+
 # Reading text versus tape.
 
 
@@ -339,9 +351,7 @@ def _run(
     actor = authorize(db, user, Action.RUN_REFRESH)
     day = clock.today()
     try:
-        deal_row = deals.by_name(db, deal)
-        if deal_row is None:
-            raise UnknownDeal(f"no deal named {deal!r}")
+        deal_row = _deal(db, deal)
         _lock(db, deal_row.id)
         if not panel.current_tapes(db, day, deal_id=deal_row.id, period=period):
             raise NoTape(
@@ -430,6 +440,14 @@ def run_checks(
     return _run(db, user=user, deal=deal, period=period, run_id=run_id, reads=reads)
 
 
+# The checks by the names the command line and the API use.
+CHECKS: dict[str, Callable[..., CheckSummary]] = {
+    "all": run_checks,
+    "text-vs-tape": check_text_vs_tape,
+    "rollforward": check_rollforward,
+}
+
+
 # Reading flags.
 
 
@@ -459,9 +477,7 @@ def flags(
 ) -> list[FlagView]:
     """A deal's check flags and notes, optionally for one month or loan, oldest first."""
     authorize(db, reader, Action.READ_PANEL)
-    deal_row = deals.by_name(db, deal)
-    if deal_row is None:
-        raise UnknownDeal(f"no deal named {deal!r}")
+    deal_row = _deal(db, deal)
     query = select(CheckFlag).where(CheckFlag.deal_id == deal_row.id)
     if period is not None:
         query = query.where(CheckFlag.period == period.first_day)
