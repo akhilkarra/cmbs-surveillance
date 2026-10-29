@@ -19,7 +19,6 @@ NAME = "audit"
 app = typer.Typer(help="Read the append-only audit log.", no_args_is_help=True)
 
 User = Annotated[str, typer.Option(envvar="CMBS_USER", help="Who is reading.")]
-Day = Annotated[dt.datetime | None, typer.Option(formats=["%Y-%m-%d"])]
 
 
 @contextmanager
@@ -48,8 +47,14 @@ def history(
 def log(
     user: User,
     by: Annotated[str | None, typer.Option(help="Only this user's entries.")] = None,
-    start: Annotated[Day, typer.Option(help="From this day (UTC), inclusive.")] = None,
-    end: Annotated[Day, typer.Option(help="To this day (UTC), inclusive.")] = None,
+    start: Annotated[
+        dt.datetime | None,
+        typer.Option(formats=["%Y-%m-%d"], help="From this day (UTC), inclusive."),
+    ] = None,
+    end: Annotated[
+        dt.datetime | None,
+        typer.Option(formats=["%Y-%m-%d"], help="To this day (UTC), inclusive."),
+    ] = None,
     deal: Annotated[str | None, typer.Option(help="Only this deal's loans.")] = None,
     loan: Annotated[str | None, typer.Option(help="Only this loan (with --deal).")] = None,
     run: Annotated[int | None, typer.Option(help="Only this run's entries.")] = None,
