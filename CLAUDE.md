@@ -29,7 +29,7 @@ Exact versions live in `pyproject.toml`, `uv.lock` and `web/package.json`; this 
 uvx pre-commit install                                           # once: commit and push hooks
 uvx pre-commit run --all-files                                   # every commit-stage check
 docker compose up -d --wait db                                   # Postgres on localhost:5432
-export DATABASE_URL=postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
+export DATABASE_URL=postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs   # the `cmbs` command also reads .env
 uv run alembic upgrade head                                      # migrations
 uv run alembic revision --autogenerate -m "<what changed>"       # new migration
 uv run pytest --cov                                              # coverage floor; DB tests skip without DATABASE_URL
