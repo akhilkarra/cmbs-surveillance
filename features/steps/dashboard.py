@@ -95,10 +95,11 @@ CLOSED_AT = dt.datetime(2026, 10, 28, 11, 0, tzinfo=dt.UTC)
 READ_AT = dt.datetime(2026, 10, 28, 12, 0, tzinfo=dt.UTC)
 STORY_RUN = 43
 
-# Loan 2's balance rolls forward in both months: $30,000,000.00 at the start, no principal paid
-# or adjusted and no loss, $30,000,000.00 at the end.
+# Loan 2's scheduled balance rolls forward in both months (grill log Q81): $30,000,000.00 at the
+# start, no principal paid or adjusted and no loss, $30,000,000.00 at the end.
 ROLLFORWARD = {
     "reportPeriodBeginningScheduleLoanBalanceAmount": "30000000.00",
+    "reportPeriodEndScheduledLoanBalanceAmount": "30000000.00",
     "scheduledPrincipalAmount": "0.00",
     "unscheduledPrincipalCollectedAmount": "0.00",
     "otherPrincipalAdjustmentAmount": "0.00",
