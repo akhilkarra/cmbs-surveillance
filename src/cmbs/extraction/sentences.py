@@ -2,8 +2,16 @@
 
 Splitting is deterministic code, never the model (grill log Q15). A sentence ends at ".", "!" or
 "?" followed by whitespace and a capital letter, a digit or an opening quote or bracket. So
-"3/6/2025", "0.71x" and "61.4%" never split (no whitespace follows their dots), and neither do
-the abbreviations servicers write ("U.S. Bank", "approx. 5", "No. 2"), which are listed.
+"3/6/2025", "0.71x" and "61.4%" never split (no whitespace follows their dots). A dot after
+these words does not end a sentence either:
+
+- a listed abbreviation ("U.S. Bank", "approx. 5", "Acme Inc. Holdings") or a month
+  ("Dec. 31, 2024"), so "paid in Dec. The loan" stays one sentence;
+- a single capital letter, an initial ("John A. Smith"). "Class A. The loan" therefore stays one
+  sentence; servicer comments name people far more often than they end on a class letter;
+- "No." or "Nos." only before a number ("No. 5"); "said no. The" ends;
+- "St." as Saint ("in St. Louis"), which is when the word before it is not capitalised. After a
+  capitalised word it is a street ("on Main St. The loan"), and the sentence may end there.
 
 Evidence must be one whole sentence of the comment, quoted exactly once whitespace is
 normalised; anything else is "evidence not found in source".
@@ -16,7 +24,7 @@ from cmbs.errors import Refused
 
 EVIDENCE_NOT_FOUND = "evidence not found in source"
 
-# Words that end with a dot without ending a sentence, compared in lower case without the dot.
+# Words that never end a sentence with their dot, in lower case without the dot.
 ABBREVIATIONS = frozenset(
     {
         "approx",
@@ -30,15 +38,16 @@ ABBREVIATIONS = frozenset(
         "mr",
         "mrs",
         "ms",
-        "no",
-        "nos",
         "sq",
         "sr",
-        "st",
         "u.s",
         "vs",
     }
 )
+MONTHS = frozenset(
+    {"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"}
+)
+NUMBER_SIGNS = frozenset({"no", "nos"})
 _BOUNDARY = re.compile(r"""[.!?]["')\]]*\s+(?=[A-Z0-9"'(\[])""")
 
 
@@ -57,10 +66,23 @@ def normalize(text: str) -> str:
     return " ".join(text.split())
 
 
-def _ends_with_abbreviation(piece: str) -> bool:
-    """Whether `piece`, which ends at a sentence boundary, ends with a listed abbreviation."""
-    word = piece.rsplit(maxsplit=1)[-1].lower()
-    return word.endswith(".") and word[:-1] in ABBREVIATIONS
+def _continues(piece: str, following: str) -> bool:
+    """Whether the dot ending `piece` belongs to a word, so the sentence goes on into
+    `following` (the text after the boundary)."""
+    words = piece.split()
+    last = words[-1]
+    if not last.endswith("."):
+        return False
+    stem = last[:-1].lower()
+    if stem in ABBREVIATIONS or stem in MONTHS:
+        return True
+    if len(stem) == 1 and last[0].isupper():
+        return True
+    if stem in NUMBER_SIGNS:
+        return following[:1].isdigit()
+    if stem == "st":
+        return len(words) == 1 or not words[-2][:1].isupper()
+    return False
 
 
 def split(comment: str) -> list[Sentence]:
@@ -70,7 +92,7 @@ def split(comment: str) -> list[Sentence]:
     start = 0
     for boundary in _BOUNDARY.finditer(text):
         piece = text[start : boundary.end()].strip()
-        if _ends_with_abbreviation(piece):
+        if _continues(piece, text[boundary.end() :]):
             continue
         pieces.append(piece)
         start = boundary.end()

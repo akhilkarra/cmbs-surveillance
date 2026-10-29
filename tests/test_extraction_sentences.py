@@ -67,7 +67,13 @@ def test_sentence_ends(comment, expected):
         "Space is approx. 5 percent vacant.",
         "See No. 2 above.",
         "The tenant is Acme Inc. Holdings.",
-        "The asset is on Main St. Louis Road.",
+        "The asset is in St. Louis today.",
+        "St. Louis is the market.",
+        "As of Dec. 31, 2024 the DSCR was 1.10x.",
+        "As of Sept. 30 occupancy fell.",
+        "The guarantor John A. Smith signed.",
+        "See No. 5 above.",
+        "Loans Nos. 3 and 4 are cross-collateralized.",
         "Recoveries, e.g. Rents, continue.",
         "Mr. Smith signed.",
     ],
@@ -112,3 +118,26 @@ def test_numbered_finds_a_sentence_by_number():
     assert found is not None and found.text.startswith("As of 12/31/2024")
     assert numbered(sentences, 0) is None
     assert numbered(sentences, 5) is None
+
+
+@pytest.mark.parametrize(
+    ("comment", "expected"),
+    [
+        (
+            "The servicer said no. The borrower agreed.",
+            ["The servicer said no.", "The borrower agreed."],
+        ),
+        (
+            "The asset is on Main St. The loan is current.",
+            ["The asset is on Main St.", "The loan is current."],
+        ),
+        (
+            "The asset is in St. Louis. The loan is current.",
+            ["The asset is in St. Louis.", "The loan is current."],
+        ),
+        ("Rated A. B notes paid.", ["Rated A. B notes paid."]),
+        ("Paid in Dec. The loan is current.", ["Paid in Dec. The loan is current."]),
+    ],
+)
+def test_the_reviewers_boundary_cases(comment, expected):
+    assert texts(comment) == expected
