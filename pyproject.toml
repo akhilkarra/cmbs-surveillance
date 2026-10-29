@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cmbs = "cmbs.cli:app"
+cmbs = "cmbs.cli:main"
 
 [dependency-groups]
 dev = [

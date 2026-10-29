@@ -29,7 +29,7 @@ Exact versions live in `pyproject.toml`, `uv.lock` and `web/package.json`; this 
 uvx pre-commit install                                           # once: commit and push hooks
 uvx pre-commit run --all-files                                   # every commit-stage check
 docker compose up -d --wait db                                   # Postgres on localhost:5432
-export DATABASE_URL=postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
+export DATABASE_URL=postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs   # the `cmbs` command also reads .env
 uv run alembic upgrade head                                      # migrations
 uv run alembic revision --autogenerate -m "<what changed>"       # new migration
 uv run pytest --cov                                              # coverage floor; DB tests skip without DATABASE_URL
@@ -42,7 +42,7 @@ docker compose run --rm web npm run mutate                       # Stryker
 docker compose up -d web                                         # Vite dev server on localhost:5173
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above except the dev server. Python mutation testing is paused (grill log Q76): it runs only while the repository variable `MUTATION_TESTING` is `on`.
+CI (`.github/workflows/ci.yml`) runs all of the above except the dev server. Mutation testing, Python and web, is paused (grill log Q76, Q86): it runs only while the repository variable `MUTATION_TESTING` is `on`.
 
 ## Pins and gotchas
 

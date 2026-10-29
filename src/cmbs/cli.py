@@ -9,6 +9,7 @@ from typing import Annotated
 
 import typer
 
+from cmbs import envfile
 from cmbs.analysis import staleness
 from cmbs.db.registry import all_command_modules
 from cmbs.edgar import archives, search, submissions
@@ -114,3 +115,9 @@ def analyze_staleness(
             f"POOLED n={len(pooled)} median={statistics.median(pooled)}"
             f" p75={pct(pooled, 0.75)} p90={pct(pooled, 0.9)}"
         )
+
+
+def main() -> None:
+    """The `cmbs` command: the local `.env` first (it never overrides the environment)."""
+    envfile.load(Path.cwd() / ".env")
+    app()
