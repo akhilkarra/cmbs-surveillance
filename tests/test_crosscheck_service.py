@@ -30,7 +30,12 @@ from cmbs.distribution.service import load_report
 from cmbs.domain import Period, money
 from cmbs.extraction.questions import sentence_name, support_name, value_name
 from cmbs.extraction.sentences import split
-from cmbs.extraction.service import decide_review, extract_comments, open_review_items
+from cmbs.extraction.service import (
+    comment_view,
+    decide_review,
+    extract_comments,
+    open_review_items,
+)
 from cmbs.model.client import ModelClient
 from cmbs.model.recordings import DbRecordings
 from cmbs.model.scripted import ScriptedProvider, choice_answer, respond
@@ -402,9 +407,7 @@ def test_a_value_awaiting_review_is_not_compared_until_decided(seeded):
     load_comment(seeded, SEPTEMBER, COMMENT, answer_p=0.55)
     day = dt.date(2026, 10, 1)
     clock.set_now(at(day))
-    (result,) = text_vs_tape(
-        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
-    )
+    (result,) = text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day)
     assert [f.check for f in result.findings] == [rules.NEWER_FINANCIALS]
 
     (item,) = [i for i in open_review_items(seeded, "alex") if i.field == "transfer_date"]
@@ -412,12 +415,10 @@ def test_a_value_awaiting_review_is_not_compared_until_decided(seeded):
     decide_review(seeded, "alex", item.id, value="11/15/2024", sentence=1)
     seeded.commit()
     # Point in time: the decision is visible from the day it was made.
-    (before,) = text_vs_tape(
-        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
-    )
+    (before,) = text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day)
     assert [f.check for f in before.findings] == [rules.NEWER_FINANCIALS]
     (after,) = text_vs_tape(
-        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=dt.date(2026, 10, 2)
+        seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=dt.date(2026, 10, 2)
     )
     assert [(f.check, f.status) for f in after.findings] == [
         (rules.TRANSFER_DATE, rules.Status.FLAG),
@@ -429,9 +430,7 @@ def test_a_comment_for_a_loan_not_on_the_tape_is_skipped(seeded):
     load_month(seeded, SEPTEMBER, loan("1", SEPTEMBER))
     load_comment(seeded, SEPTEMBER, COMMENT)
     day = dt.date(2026, 10, 1)
-    (result,) = text_vs_tape(
-        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
-    )
+    (result,) = text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day)
     assert result.findings == []
     assert result.skipped == "loan 2 is not on the September 2026 tape as of 2026-10-01"
 
@@ -441,12 +440,7 @@ def test_comments_are_not_read_before_their_10d_was_filed(seeded):
     load_comment(seeded, SEPTEMBER, COMMENT)
     on_filing = filed(SEPTEMBER)
     # Extracted the day after filing: on the filing day itself nothing was extracted yet.
-    assert (
-        text_vs_tape(
-            seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=on_filing
-        )
-        == []
-    )
+    assert text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=on_filing) == []
 
 
 def test_flags_need_a_known_deal_and_the_right_to_read(seeded):
@@ -486,7 +480,7 @@ def test_decimal_gap_is_exact_to_the_cent(seeded):
 
 
 def _transfer_checks(db: Session, day: dt.date) -> list[tuple[str, rules.Status]]:
-    (result,) = text_vs_tape(db, reader="pat", deal_id=deal_id(db), period=SEPTEMBER, as_of=day)
+    (result,) = text_vs_tape(db, deal_id=deal_id(db), period=SEPTEMBER, as_of=day)
     return [(f.check, f.status) for f in result.findings]
 
 
@@ -516,7 +510,7 @@ def test_an_overridden_transfer_date_is_the_one_compared(seeded):
     # Point in time: before the override the extracted date stands; from it, the override.
     assert _transfer_checks(seeded, day)[0] == (rules.TRANSFER_DATE, rules.Status.FLAG)
     (result,) = text_vs_tape(
-        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=dt.date(2026, 10, 2)
+        seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=dt.date(2026, 10, 2)
     )
     transfer = result.findings[0]
     assert (transfer.check, transfer.status) == (rules.TRANSFER_DATE, rules.Status.AGREE)
@@ -546,7 +540,50 @@ def test_compared_statuses():
     )
 
 
-def test_reading_text_versus_tape_needs_the_right_to_read_the_panel(seeded):
-    two_months(seeded)
+def test_an_operator_runs_the_checks_comments_included(seeded):
+    """Running checks needs "run refreshes and backfills" only: reading the comments compared
+    is system work under that authority, though an operator may not read the panel."""
+    load_month(
+        seeded,
+        SEPTEMBER,
+        loan("2", SEPTEMBER, mostRecentSpecialServicerTransferDate="03-06-2025"),
+    )
+    load_comment(seeded, SEPTEMBER, COMMENT)
+    clock.set_now(at(dt.date(2026, 10, 1)))
+    summary = run_checks(seeded, user="olly", deal=DEAL, period=SEPTEMBER)
+    seeded.commit()
+    assert [(f.loan, f.check, f.new) for f in summary.flags] == [
+        ("2", rules.TRANSFER_DATE, True),
+        ("2", rules.NEWER_FINANCIALS, True),
+    ]
+    again = check_text_vs_tape(seeded, user="olly", deal=DEAL, period=SEPTEMBER)
+    assert [(f.check, f.new) for f in again.flags] == [
+        (rules.TRANSFER_DATE, False),
+        (rules.NEWER_FINANCIALS, False),
+    ]
+    entry = seeded.scalars(
+        select(AuditEntry).where(AuditEntry.action == "raise check flag").order_by(AuditEntry.id)
+    ).first()
+    assert entry is not None and (entry.user_name, entry.role) == ("olly", "operator")
+    # The panel's public read still refuses an operator.
     with pytest.raises(PermissionRefused, match="^operator may not read the panel$"):
-        text_vs_tape(seeded, reader="olly", deal_id=deal_id(seeded), period=SEPTEMBER)
+        comment_view(seeded, "olly", deal=DEAL, loan="2", period=SEPTEMBER)
+
+
+def test_text_versus_tape_needs_the_right_to_run_refreshes(seeded):
+    load_month(seeded, SEPTEMBER, loan("2", SEPTEMBER))
+    with pytest.raises(PermissionRefused, match="^pm may not run refreshes and backfills$"):
+        check_text_vs_tape(seeded, user="pat", deal=DEAL, period=SEPTEMBER)
+    with pytest.raises(PermissionRefused, match="^risk may not run refreshes and backfills$"):
+        run_checks(seeded, user="rae", deal=DEAL, period=SEPTEMBER)
+
+
+def test_panel_fields_is_comment_view_without_a_reader(seeded):
+    from cmbs.extraction.service import panel_fields
+
+    load_month(seeded, SEPTEMBER, loan("2", SEPTEMBER))
+    load_comment(seeded, SEPTEMBER, COMMENT, answer_p=0.55)
+    for day in (dt.date(2026, 9, 29), dt.date(2026, 10, 1)):
+        args = {"deal": DEAL, "loan": "2", "period": SEPTEMBER, "as_of": day}
+        assert panel_fields(seeded, **args) == comment_view(seeded, "pat", **args)
+    assert panel_fields(seeded, deal=DEAL, loan="2", period=SEPTEMBER) is not None

@@ -214,6 +214,22 @@ def test_api_refusals(loaded, client):
         403,
         "operator may not read the panel",
     )
+    reading = client.get(
+        "/checks/text-vs-tape",
+        params={"deal": DEAL, "period": "September 2026"},
+        headers={"X-CMBS-User": "olly"},
+    )
+    assert (reading.status_code, reading.json()["detail"]) == (
+        403,
+        "operator may not read the panel",
+    )
+    # Running the checks is the operator's to do.
+    ran = client.post(
+        "/checks/run",
+        json={"deal": DEAL, "period": "September 2026"},
+        headers={"X-CMBS-User": "olly"},
+    )
+    assert ran.status_code == 200, ran.text
     unknown = client.get(
         "/checks/text-vs-tape",
         params={"deal": "Nope", "period": "September 2026"},

@@ -3,10 +3,15 @@
 Reads (`text_vs_tape`, `rollforward`) are point in time and write nothing, so the dashboard and
 the refresh routine can call them freely. Each reads the month as known on `as_of` (default
 today): the loan tape current on that day (`cmbs.panel.service`), and each comment as the panel
-showed it then, through its public read (`cmbs.extraction.service.comment_view`), which lays
-review decisions and overrides on top of the extraction. Only values whose status settles them
-(accepted, human-reviewed, overridden) are compared; a value awaiting review or a declined
-field is not. Reading comments needs the right to read the panel.
+showed it then (`cmbs.extraction.service.panel_fields`, what `comment_view` shows), with
+review decisions, overrides and declines laid on top of the extraction. Only values whose
+status settles them (accepted, human-reviewed, overridden) are compared; a value awaiting
+review or a declined field is not.
+
+The reads authorize nobody. Running the checks needs only "run refreshes and backfills":
+reading the comments a check compares is system work under that authority, so an operator's
+run is not refused. A user reading results (the API's GET routes, `cmbs crosscheck
+rollforward`) needs the right to read the panel, which that surface checks.
 
 `check_text_vs_tape`, `check_rollforward` and `run_checks` raise what the reads find as check
 flags (`cmbs.checks.service`), each keeping both sides. Neither source is changed. A flag already
@@ -38,7 +43,7 @@ from cmbs.distribution.tables import DistributionReport
 from cmbs.domain import Period
 from cmbs.errors import Refused
 from cmbs.extraction.fields import spec, typed
-from cmbs.extraction.service import OVERRIDDEN, CommentView, comment_view
+from cmbs.extraction.service import OVERRIDDEN, CommentView, panel_fields
 from cmbs.extraction.tables import AUTO_ACCEPTED, HUMAN_REVIEWED, Extraction
 from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
@@ -94,7 +99,7 @@ def _end_of(day: dt.date) -> dt.datetime:
 
 def _commented_loans(db: Session, deal_id: int, period: Period, day: dt.date) -> list[str]:
     """Loans with an extracted comment for the month as known on `day`: from a 10-D public by
-    then, extracted by the end of the day (UTC), as `comment_view` reads them."""
+    then, extracted by the end of the day (UTC), as `panel_fields` reads them."""
     loans = db.scalars(
         select(Extraction.loan_id)
         .join(Filing, Filing.accession == Extraction.accession)
@@ -159,15 +164,14 @@ def tape_side(row: LoanPeriod) -> rules.TapeSide:
 
 
 def text_vs_tape(
-    db: Session, *, reader: str, deal_id: int, period: Period, as_of: dt.date | None = None
+    db: Session, *, deal_id: int, period: Period, as_of: dt.date | None = None
 ) -> list[LoanTextVsTape]:
     """Every extracted comment of the deal's month against the tape, as known on `as_of`.
 
-    The comment's values are read through the panel's public read (`comment_view`, as `reader`
-    on `as_of`), so whatever the panel lays on top of an extraction, a review decision or an
-    override, is what is compared.
+    The comment's values are what the panel showed on `as_of` (`panel_fields`), so whatever it
+    lays on top of an extraction, a review decision, an override or a decline, is what is
+    compared. Authorizes nobody: the caller holds the authority.
     """
-    authorize(db, reader, Action.READ_PANEL)
     day = as_of or clock.today()
     deal = db.get_one(Deal, deal_id)
     tolerance = in_force(db).values.transfer_date_tolerance_periods
@@ -175,7 +179,7 @@ def text_vs_tape(
     views = [
         view
         for loan in _commented_loans(db, deal_id, period, day)
-        if (view := comment_view(db, reader, deal=deal.name, loan=loan, period=period, as_of=day))
+        if (view := panel_fields(db, deal=deal.name, loan=loan, period=period, as_of=day))
         is not None
     ]
     report_dates = _report_dates(db, {view.accession for view in views})
@@ -409,7 +413,7 @@ def check_text_vs_tape(
     """Compare the month's comments with its tape as known today, and flag what disagrees."""
 
     def reads(db: Session, deal_row: Deal, day: dt.date) -> CheckSummary:
-        found = text_vs_tape(db, reader=user, deal_id=deal_row.id, period=period, as_of=day)
+        found = text_vs_tape(db, deal_id=deal_row.id, period=period, as_of=day)
         return CheckSummary(deal_row.name, period, day, text_vs_tape=found)
 
     return _run(db, user=user, deal=deal, period=period, run_id=run_id, reads=reads)
@@ -437,9 +441,7 @@ def run_checks(
             deal_row.name,
             period,
             day,
-            text_vs_tape=text_vs_tape(
-                db, reader=user, deal_id=deal_row.id, period=period, as_of=day
-            ),
+            text_vs_tape=text_vs_tape(db, deal_id=deal_row.id, period=period, as_of=day),
             rollforward=rollforward(db, deal_id=deal_row.id, period=period, as_of=day),
         )
 
