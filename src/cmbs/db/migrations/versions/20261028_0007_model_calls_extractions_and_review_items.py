@@ -7,10 +7,10 @@ an accepted field has a value; a field a reviewer decided (a value, or "not stat
 decided it and when; a decided review item is complete; a recording was answered by the model
 it asked.
 
-Chained onto 0005, the head of main when this branch started (grill log Q71).
+Chained onto 0003, the head of main after the loan tapes merged (grill log Q71).
 
 Revision ID: 0007
-Revises: 0005
+Revises: 0003
 Create Date: 2026-10-28 19:45:45.047212
 """
 
@@ -21,7 +21,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0007"
-down_revision: str | Sequence[str] | None = "0005"
+down_revision: str | Sequence[str] | None = "0003"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
