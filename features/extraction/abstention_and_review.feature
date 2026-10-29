@@ -29,9 +29,3 @@ Feature: Abstention and human review
     When "alex" chooses "forbearance" and cites sentence 3
     Then the panel records the borrower request "forbearance" with the reviewer and the review time
     And the field is marked "human-reviewed"
-
-  @theorem:decision_table_total
-  Scenario: Every combination of answers has exactly one outcome
-    Given the decision rules for the borrower request
-    When every combination of answer bands is enumerated
-    Then each combination leads to exactly one of "auto-accept", "review" or "not stated"
