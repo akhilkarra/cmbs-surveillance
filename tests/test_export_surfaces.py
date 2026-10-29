@@ -19,7 +19,7 @@ from tests.test_routine_world import backfill
 pytestmark = needs_db
 runner = CliRunner()
 SEP = Period(2026, 9)
-TODAY = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.UTC)
+TODAY = dt.datetime(2026, 10, 7, 9, 0, tzinfo=dt.UTC)
 
 
 def test_the_cli_exports_and_rebuilds(seeded, tmp_path):

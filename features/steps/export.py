@@ -4,7 +4,8 @@ value wait for review (also used by features/surfaces/ask.feature and dashboard.
 "The panel" is "Fixture Trust 2026-F1" loaded from August 2025 to September 2026 by a quant's
 backfill on 2026-10-01, every month's comments extracted (`tests/test_routine_world.py`). A
 scenario that exports without saying what is loaded exports that panel. Exports are taken on
-2026-10-06 at noon; an override in a Given step is made that morning.
+2026-10-07 (an export is as of a day that has ended); an override in a Given step is made on
+2026-10-06.
 """
 
 import csv
@@ -38,7 +39,7 @@ from tests.test_routine_world import (
 )
 
 FIRST, LAST = Period(2025, 8), Period(2026, 9)
-EXPORT_TIME = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.UTC)
+EXPORT_TIME = dt.datetime(2026, 10, 7, 9, 0, tzinfo=dt.UTC)
 OVERRIDE_TIME = dt.datetime(2026, 10, 6, 10, 0, tzinfo=dt.UTC)
 OVERRIDE = ("forbearance", 3, "the request is for payment relief, not more time")
 

@@ -8,13 +8,15 @@ the stored panel stays exactly as it was, whatever the rebuild found. The deals'
 locked first, so no load of those deals runs while the rebuild reads them. Every rebuild is
 audited with both checksums.
 
-**Export** (`export_panel`) writes the panel as it was known on a date: the loan rows of each
-tape filed by then (`cmbs.panel.service.as_of`), and each loan-month's extracted comment fields
-as `cmbs.extraction.service.comment_view` showed them that day, so a value still waiting for
-review on that day reads "needs review" with no value, and a value an analyst overrode reads
-"overridden". The file names the as-of date and the settings in force that day (settings version,
-model, prompt version). Every export is recorded (who, when, as of, rows, file hash) and
-audited.
+**Export** (`export_panel`) writes the panel as of a day that has ended: the loan rows of each
+tape published by then (`cmbs.panel.service.as_of`), and each loan-month's extracted comment
+fields as `cmbs.extraction.service.comment_view` showed them that day, so a value still waiting
+for review on that day reads "needs review" with no value, and a value an analyst overrode reads
+"overridden". It is what had been published by the as-of date, as the panel knew it when the
+export was taken: a later backfill can add rows published before that date, so the record says
+when the export was taken. The file names the as-of date and the settings in force that day
+(settings version, model, prompt version). Every export is recorded (who, when, as of, rows,
+file hash) and audited.
 """
 
 import datetime as dt
@@ -69,6 +71,10 @@ class CorruptRawFile(Refused):
 
 class UnknownFormat(Refused):
     pass
+
+
+class DayNotOver(Refused):
+    """An export is as of a day that has ended: today's filings may still arrive."""
 
 
 def _refuse(db: Session, error: Refused, actor: Actor, action: str, key: str | None) -> NoReturn:
@@ -331,10 +337,12 @@ def export_rows(db: Session, reader: str, deals: Sequence[Deal], day: dt.date) -
 def export_panel(
     db: Session, user: str, *, as_of: dt.date, fmt: str = "csv", deal: str | None = None
 ) -> Export:
-    """The panel as known at the end of `as_of`, as a CSV or Parquet file; recorded and
-    audited. One deal, or every deal with a tape."""
+    """The panel as known at the end of `as_of`, a day before today, as a CSV or Parquet file;
+    recorded and audited. One deal, or every deal with a tape."""
     actor = authorize(db, user, Action.EXPORT)
     try:
+        if as_of >= clock.today():
+            raise DayNotOver("an export is as of a day that has ended")
         if fmt not in FORMATS:
             raise UnknownFormat(f"exports are {' or '.join(FORMATS)}, not {fmt!r}")
         deals = _deals(db, deal)

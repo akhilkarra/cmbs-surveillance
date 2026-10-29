@@ -18,6 +18,7 @@ from cmbs.export import service
 from cmbs.export.service import (
     EXPORT_COLUMNS,
     CorruptRawFile,
+    DayNotOver,
     NothingToRebuild,
     UnknownDeal,
     UnknownFormat,
@@ -37,7 +38,7 @@ from tests.test_routine_world import backfill, wait_for_review
 pytestmark = needs_db
 
 JUL, AUG, SEP = Period(2026, 7), Period(2026, 8), Period(2026, 9)
-EXPORT_DAY = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.UTC)
+EXPORT_DAY = dt.datetime(2026, 10, 7, 9, 0, tzinfo=dt.UTC)
 
 
 @pytest.fixture
@@ -191,7 +192,7 @@ def test_an_export_carries_extracted_fields_with_their_status(loaded):
     clock.set_now(EXPORT_DAY)
     in_session(lambda db: wait_for_review(db, field="workout_strategy"))
     made = in_session(
-        lambda db: export_panel(db, "quinn", as_of=EXPORT_DAY.date(), deal=FIXTURE_DEAL)
+        lambda db: export_panel(db, "quinn", as_of=dt.date(2026, 10, 6), deal=FIXTURE_DEAL)
     )
     rows = {(row["loan"], row["period"]): row for row in _rows(made.content)}
     loan_2 = rows[("2", "2026-09-01")]
@@ -320,6 +321,7 @@ def test_the_settings_named_are_those_in_force_on_the_as_of_date(loaded):
 
 
 def test_export_refusals(loaded):
+    clock.set_now(EXPORT_DAY)
     with pytest.raises(PermissionRefused) as pm:
         in_session(lambda db: export_panel(db, "pat", as_of=dt.date(2026, 10, 6)))
     assert str(pm.value) == "pm may not export"
@@ -328,6 +330,11 @@ def test_export_refusals(loaded):
     assert str(fmt.value) == "exports are csv or parquet, not 'xlsx'"
     with pytest.raises(UnknownDeal):
         in_session(lambda db: export_panel(db, "quinn", as_of=dt.date(2026, 10, 6), deal="X"))
+    clock.set_now(EXPORT_DAY)
+    for day in (EXPORT_DAY.date(), dt.date(2026, 10, 8)):
+        with pytest.raises(DayNotOver) as early:
+            in_session(lambda db, day=day: export_panel(db, "quinn", as_of=day))
+        assert str(early.value) == "an export is as of a day that has ended"
     with pytest.raises(NoSettings) as unset:
         in_session(lambda db: export_panel(db, "quinn", as_of=dt.date(2026, 9, 14)))
     assert str(unset.value) == "no settings approved by 2026-09-14T23:59:59.999999+00:00"
@@ -337,4 +344,4 @@ def test_export_refusals(loaded):
             select(func.count()).select_from(AuditEntry).where(AuditEntry.outcome == "refused")
         )
     )
-    assert refusals == 4
+    assert refusals == 6
