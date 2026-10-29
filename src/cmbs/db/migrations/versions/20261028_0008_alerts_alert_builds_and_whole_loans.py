@@ -7,7 +7,7 @@ loans link the pari passu notes of one loan held through several deals, so a lin
 raises one alert (Q48). All application state in `app`.
 
 Revision ID: 0008
-Revises: 0003
+Revises: 0007
 Create Date: 2026-10-28 21:00:17.311077
 """
 
@@ -18,7 +18,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0008"
-down_revision: str | Sequence[str] | None = "0003"
+down_revision: str | Sequence[str] | None = "0007"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
