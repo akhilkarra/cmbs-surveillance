@@ -42,7 +42,7 @@ docker compose run --rm web npm run mutate                       # Stryker
 docker compose up -d web                                         # Vite dev server on localhost:5173
 ```
 
-CI (`.github/workflows/ci.yml`) runs all of the above except the dev server. Python mutation testing is paused (grill log Q76): it runs only while the repository variable `MUTATION_TESTING` is `on`.
+CI (`.github/workflows/ci.yml`) runs all of the above except the dev server. Mutation testing, Python and web, is paused (grill log Q76, Q86): it runs only while the repository variable `MUTATION_TESTING` is `on`.
 
 ## Pins and gotchas
 

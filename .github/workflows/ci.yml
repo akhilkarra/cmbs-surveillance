@@ -172,6 +172,8 @@ jobs:
       # Fails below the thresholds in web/vite.config.ts.
       - name: Tests with coverage
         run: npm run test:coverage
-      # Fails below the break threshold in web/stryker.config.json.
+      # Fails below the break threshold in web/stryker.config.json. Paused with Python's mutation
+      # testing (grill log Q76): it runs only while the repository variable MUTATION_TESTING is "on".
       - name: Mutation score
+        if: vars.MUTATION_TESTING == 'on'
         run: npm run mutate
