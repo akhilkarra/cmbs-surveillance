@@ -375,22 +375,57 @@ _RUNNING: dict[str, _Server] = {}
 BUILD = "[ -x node_modules/.bin/vite ] || npm ci; npm run build"
 
 
-def _bundle_sources() -> list[Path]:
-    """What the bundle is built from: the page, the config and src/ apart from its tests."""
-    files = [WEB / "index.html", WEB / "package-lock.json", WEB / "vite.config.ts"]
+# The files beside src/ that change what the build makes.
+BUNDLE_CONFIG = (
+    "index.html",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json",
+    "vite.config.ts",
+)
+DOCKER_MISSING = (
+    "cannot build the dashboard: the docker command was not found. Start Docker (OrbStack) "
+    "and run the scenarios again, or build web/dist with "
+    "`docker compose run --rm web npm run build` first."
+)
+
+
+def bundle_sources(web: Path = WEB) -> list[Path]:
+    """What the bundle is built from: the page, the build and type configs, the dependencies,
+    and src/ apart from its tests."""
+    files = [web / name for name in BUNDLE_CONFIG]
     return files + [
         path
-        for path in (WEB / "src").rglob("*")
+        for path in (web / "src").rglob("*")
         if path.is_file() and ".test." not in path.name and not path.name.startswith("test-")
     ]
 
 
-def _bundle_is_fresh() -> bool:
-    index = DIST / "index.html"
+def bundle_is_fresh(web: Path = WEB) -> bool:
+    index = web / "dist" / "index.html"
     if not index.is_file():
         return False
     built = index.stat().st_mtime
-    return all(path.stat().st_mtime <= built for path in _bundle_sources())
+    return all(path.stat().st_mtime <= built for path in bundle_sources(web) if path.exists())
+
+
+def build_bundle(run=subprocess.run) -> None:
+    """Build web/dist in the web container; a readable failure when Docker is missing."""
+    try:
+        built = run(
+            # A fresh node_modules volume is installed first, from the lock file.
+            ["docker", "compose", "run", "--rm", "--no-deps", "web", "sh", "-c", BUILD],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError as missing:
+        raise AssertionError(DOCKER_MISSING) from missing
+    assert built.returncode == 0, (
+        "building the dashboard failed; build it with "
+        "`docker compose run --rm web npm run build`:\n" + built.stdout + built.stderr
+    )
 
 
 def ensure_bundle() -> None:
@@ -400,20 +435,8 @@ def ensure_bundle() -> None:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if _bundle_is_fresh():
-            return
-        built = subprocess.run(
-            # A fresh node_modules volume is installed first, from the lock file.
-            ["docker", "compose", "run", "--rm", "--no-deps", "web", "sh", "-c", BUILD],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        assert built.returncode == 0, (
-            "building the dashboard failed; build it with "
-            "`docker compose run --rm web npm run build`:\n" + built.stdout + built.stderr
-        )
+        if not bundle_is_fresh():
+            build_bundle()
 
 
 def base_url() -> str:
@@ -669,7 +692,12 @@ def step_balance_shows(context, first, second, third):
         row.locator('[data-testid="loaded"]')
     )
     passed = passed_checks(row) + texts(row.locator('[data-testid="loaded"]'))
-    missing = [text for text in (first, second, third) if text not in passed]
+    # The roll-forward names what it ties: "scheduled balance roll-forward passed" (Q81).
+    missing = [
+        text
+        for text in (first, second, third)
+        if not any(shown == text or shown.endswith(f" {text}") for shown in passed)
+    ]
     assert not missing, f"the ending balance shows {shown}; not passed: {missing}"
 
 
@@ -692,4 +720,6 @@ def step_workout_shows(context, text):
 def step_financials_show(context, day, age):
     section = context.page.locator('[data-testid="financials"]')
     assert section.locator('[data-testid="financials-end"]').inner_text() == day.isoformat()
-    assert section.locator('[data-testid="financials-age"]').inner_text() == age
+    # The API's own words, e.g. "619 days old at period end, 637 days old at filing".
+    shown = section.locator('[data-testid="financials-age"]').inner_text()
+    assert shown.startswith(f"{age},") or shown == age, shown
