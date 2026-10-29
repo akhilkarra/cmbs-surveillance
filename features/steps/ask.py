@@ -14,9 +14,10 @@ from behave import given, then, when  # pyright: ignore[reportAttributeAccessIss
 from cmbs import clock
 from cmbs.ask.answer import COMMENT_FORM, NOT_IN_DATA, READ_ONLY, Kind
 from cmbs.ask.service import ask, loan_facts
+from cmbs.db.models import SCHEMAS
 from cmbs.extraction.fields import WORKOUT_STRATEGIES
 from cmbs.extraction.service import comment_view
-from cmbs.testing.bdd import attempt, in_session
+from cmbs.testing.bdd import attempt, changed_tables, data_snapshot, in_session
 from tests.test_routine_world import SEPTEMBER, accession, backfill
 
 ASKED = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.UTC)
@@ -39,6 +40,9 @@ def step_asks(context, user, question):
     deal = getattr(context, "deal", None)
     assert deal is not None, "no step named the deal"
     context.question = question
+    # Asking writes nothing anywhere: not the data layers ("no stored data changes" checks
+    # those), and not the application state either (audit log, runs, review items, cache).
+    before = data_snapshot(SCHEMAS)
     answer = attempt(
         context,
         lambda: in_session(
@@ -46,6 +50,8 @@ def step_asks(context, user, question):
         ),
     )
     assert answer is not None, f"asking was refused: {context.refusal}"
+    changed = changed_tables(before, data_snapshot(SCHEMAS))
+    assert changed == [], f"asking wrote to {changed}"
     context.answer = answer
     context.cited = []
 

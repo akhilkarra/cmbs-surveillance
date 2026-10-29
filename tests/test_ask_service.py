@@ -22,6 +22,7 @@ from cmbs.ask.service import (
     tape_value,
 )
 from cmbs.cli import app as cli
+from cmbs.db.models import SCHEMAS
 from cmbs.domain import Period
 from cmbs.testing.bdd import changed_tables, data_snapshot, in_session
 from cmbs.testing.world import FIXTURE_DEAL
@@ -146,7 +147,7 @@ def test_a_field_awaiting_review_is_a_fact_without_a_value(panel):
 
 @needs_db
 def test_asking_reads_and_never_writes(panel):
-    before = data_snapshot()
+    before = data_snapshot(SCHEMAS)
     answer = in_session(lambda db: ask(db, "pat", QUESTION, deal=FIXTURE_DEAL))
     assert [f.name for f in answer.stated] == [
         "transfer_reason",
@@ -163,7 +164,9 @@ def test_asking_reads_and_never_writes(panel):
         lambda db: ask(db, "pat", "What does the borrower want?", deal=FIXTURE_DEAL, loan="2")
     )
     assert [f.name for f in given.stated] == ["borrower_request", "request_status"]
-    assert changed_tables(before, data_snapshot()) == []
+    after = data_snapshot(SCHEMAS)
+    assert "app.audit_entry" in after
+    assert changed_tables(before, after) == []
 
 
 @needs_db
@@ -259,3 +262,14 @@ def test_the_api_gives_facts_and_answers(panel):
     )
     missing = client.get("/ask/facts", params={"deal": FIXTURE_DEAL, "loan": "99"}, headers=pm)
     assert missing.status_code == 422
+
+
+@needs_db
+def test_the_full_snapshot_sees_application_state(seeded):
+    """An audit entry is not data, but asking must not write one either."""
+    from cmbs.audit.service import record
+
+    layers, everything = data_snapshot(), data_snapshot(SCHEMAS)
+    in_session(lambda db: record(db, user="pat", action="look"))
+    assert changed_tables(layers, data_snapshot()) == []
+    assert changed_tables(everything, data_snapshot(SCHEMAS)) == ["app.audit_entry"]

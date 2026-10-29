@@ -1,6 +1,6 @@
 """Helpers for behave step modules. Steps call the service layer through these."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from sqlalchemy import text
@@ -27,8 +27,11 @@ def in_session[T](action: Callable[[Session], T]) -> T:
         return action(db)
 
 
-def data_snapshot() -> dict[str, str]:
-    """A fingerprint of every table in the data layers. Logs (audit, runs) are not data."""
+def data_snapshot(schemas: Sequence[str] = LAYERS) -> dict[str, str]:
+    """A fingerprint of every table in the data layers. Logs (audit, runs) are not data.
+
+    Pass `SCHEMAS` to fingerprint the application state too (users, audit log, runs, review
+    items, the replay cache), for actions that must write nothing at all, such as asking."""
     fingerprints: dict[str, str] = {}
     with engine.session() as db:
         tables = db.execute(
@@ -37,7 +40,7 @@ def data_snapshot() -> dict[str, str]:
                 "WHERE table_schema = ANY(:schemas) AND table_type = 'BASE TABLE' "
                 "ORDER BY 1, 2"
             ),
-            {"schemas": list(LAYERS)},
+            {"schemas": list(schemas)},
         ).all()
         for schema, table in tables:
             digest = db.execute(
