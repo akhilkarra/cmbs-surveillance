@@ -20,7 +20,7 @@ from cmbs.access.roles import Role
 from cmbs.access.service import Actor, PermissionRefused, UnknownUser
 from cmbs.alerts import service
 from cmbs.alerts.lifecycle import AlertStateRefused, State
-from cmbs.alerts.rules import Severity
+from cmbs.alerts.rules import Finding, Rule, Severity
 from cmbs.alerts.service import (
     AlertSummary,
     AlertView,
@@ -615,7 +615,7 @@ def test_loans_off_the_tape_are_one_alert_on_the_deal_a_quarantined_one_with_its
         Severity.MEDIUM,
         "no longer reported",
         "3 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
-        f"(loans 3, 5, 7); loan 7 quarantined in {september}: {reason}",
+        f"(loans 3, 5, 7); loan 7 quarantined: {reason}",
     )
     (covered,) = alert.loans
     assert (covered.deal, covered.loan, covered.loans, covered.label, covered.accession) == (
@@ -784,6 +784,161 @@ def test_the_alert_on_the_deal_moves_through_its_lifecycle_and_vintages_as_one(s
     assert (third.raised, third.superseded, third.alerts) == (0, 1, ())
     assert third.note == "no changes since August 2026"
     assert [v.id for v in third.superseded_alerts] == [group.id, second.alerts[0].id]
+
+
+NEGATIVE: dict[tuple[str, str], str | None] = {("7", "reportPeriodEndActualBalanceAmount"): "-1.00"}
+
+
+@needs_db
+@pytest.mark.parametrize("quarantine", [{}, NEGATIVE], ids=["dropped only", "and quarantined"])
+def test_an_amendment_with_the_same_gap_keeps_the_alert_and_its_state(seeded, quarantine):
+    gap = {("3", ASSET): None, **quarantine}
+    load_month(seeded, F1, AUGUST)
+    original = load_month(seeded, F1, SEPTEMBER, gap)
+    clock.set_now(SEP_30)
+    (group,) = build(seeded, actor=QUANT).alerts
+    service.acknowledge(seeded, user="pat", alert_id=group.id)
+    # The amendment changes something else (loan 1 transfers) and drops the same loans, for
+    # the same reasons, under a new accession.
+    amendment = amend_september(
+        seeded,
+        {**gap, ("1", TRANSFER): "09-02-2026"},
+        on=dt.date(2026, 10, 10),
+        number=3,
+        amends=original,
+    )
+    clock.set_now(OCT_11)
+    second = build(seeded, actor=QUANT)
+    assert (second.raised, second.superseded, second.superseded_alerts) == (1, 0, ())
+    assert len(vintages(seeded)) == 2
+    kept = next(v for v in second.alerts if v.title == "no longer reported")
+    assert (kept.id, kept.message, kept.state_text) == (
+        group.id,
+        group.message,
+        "acknowledged by pat on 2026-09-30",
+    )
+    # The alert still shows the filing that first showed the gap.
+    assert kept.accessions == (original,) and amendment != original
+
+
+@needs_db
+def test_a_changed_quarantine_reason_restates_the_alert(seeded):
+    load_month(seeded, F1, AUGUST)
+    original = load_month(seeded, F1, SEPTEMBER, NEGATIVE)
+    clock.set_now(SEP_30)
+    (group,) = build(seeded).alerts
+    assert group.message.endswith("(loan 7); loan 7 quarantined: ending balance is negative")
+    amend_september(
+        seeded,
+        {("7", "reportPeriodBeginningScheduleLoanBalanceAmount"): "-1.00"},
+        on=dt.date(2026, 10, 10),
+        number=3,
+        amends=original,
+    )
+    clock.set_now(OCT_11)
+    second = build(seeded)
+    assert (second.raised, second.superseded) == (1, 1)
+    (restated,) = second.alerts
+    assert restated.message.endswith("(loan 7); loan 7 quarantined: beginning balance is negative")
+    assert [v.id for v in second.superseded_alerts] == [group.id]
+
+
+def test_a_gap_is_the_same_when_its_loans_and_reasons_are():
+    found = Finding(
+        loan=None,
+        rule=Rule.MISSING,
+        severity=Severity.MEDIUM,
+        title="no longer reported",
+        message="any",
+        accession="a",
+        loans=("3", "7"),
+        reasons=(("7", "ending balance is negative"),),
+    )
+    assert service.same_gap(["3", "7"], {"7": "ending balance is negative"}, found)
+    assert not service.same_gap(["3"], {"7": "ending balance is negative"}, found)
+    assert not service.same_gap(["3", "7"], {}, found)
+    assert not service.same_gap(["3", "7"], {"7": "beginning balance is negative"}, found)
+
+
+def old_shape_gap(db: Session, vintage: AlertBuild, loan: str, rule: Rule, message: str) -> int:
+    """A gap alert on one loan, as a build before decision Q88 stored it."""
+    alert = Alert(
+        subject=subject_of(vintage.deal_id, loan, None),
+        period=vintage.period,
+        rule=rule.value,
+        severity=(Severity.MEDIUM if rule is Rule.MISSING else Severity.LOW).value,
+        title=rule.value,
+        message=message,
+        added=[],
+        settings_version=vintage.settings_version,
+        as_of=vintage.as_of,
+        raised_at=SEP_30,
+        raised_in=vintage.id,
+        state=State.NEW.value,
+    )
+    db.add(alert)
+    db.flush()
+    db.add(
+        AlertLoan(
+            alert_id=alert.id, deal_id=vintage.deal_id, loan=loan, accession=vintage.accession
+        )
+    )
+    db.flush()
+    return alert.id
+
+
+@needs_db
+def test_a_month_built_before_q88_has_its_per_loan_gap_alerts_restated_once(seeded):
+    load_month(seeded, F1, AUGUST, {("4", ASSET): None})
+    load_month(seeded, F1, SEPTEMBER, {("3", ASSET): None, ("5", ASSET): None})
+    clock.set_now(SEP_30)
+    first = build(seeded)
+    # Turn the month back into what a build before Q88 left: one gap alert per loan.
+    for view in first.alerts:
+        seeded.delete(seeded.get_one(Alert, view.id))
+    seeded.flush()
+    vintage = vintages(seeded)[0]
+    gone = "no longer reported: on the August 2026 tape, not on the September 2026 tape"
+    old = [
+        old_shape_gap(seeded, vintage, "3", Rule.MISSING, gone),
+        old_shape_gap(
+            seeded, vintage, "4", Rule.NEW, "newly reported: not on the August 2026 tape"
+        ),
+        old_shape_gap(seeded, vintage, "5", Rule.MISSING, gone),
+    ]
+    service.acknowledge(seeded, user="pat", alert_id=old[0])
+
+    # The month reads nothing new, yet the build restates the gaps, as the build's own action.
+    clock.set_now(OCT_11)
+    second = build(seeded, actor=QUANT)
+    assert (second.raised, second.superseded) == (2, 3)
+    assert [(v.severity.value, v.message) for v in second.alerts] == [
+        (
+            "medium",
+            "2 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
+            "(loans 3, 5)",
+        ),
+        ("low", "1 loan newly reported: not on the August 2026 tape (loan 4)"),
+    ]
+    assert len(vintages(seeded)) == 2
+    assert sorted(v.id for v in second.superseded_alerts) == old
+    reasons = {v.superseded.reason for v in second.superseded_alerts if v.superseded}
+    assert reasons == {service.RESTATED_PER_DEAL}
+    # Never rewritten: pat's acknowledgement stays on the alert it was given to.
+    assert service.read_alert(seeded, reader="pat", alert_id=old[0]).state_text == (
+        "acknowledged by pat on 2026-09-30"
+    )
+    audited = seeded.scalars(
+        select(AuditEntry.subject_key).where(
+            AuditEntry.action == "supersede alert", AuditEntry.user_name == "quinn"
+        )
+    ).all()
+    assert sorted(audited) == sorted(str(alert_id) for alert_id in old)
+
+    # Once restated, building again is a no-op.
+    third = build(seeded, actor=QUANT)
+    assert (third.raised, third.superseded, third.vintage) == (0, 0, second.vintage)
+    assert len(vintages(seeded)) == 2
 
 
 @needs_db

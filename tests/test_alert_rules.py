@@ -30,6 +30,7 @@ from cmbs.alerts.rules import (
     sentences,
     total_balance,
     transfer,
+    unreported_balances,
     workout,
 )
 from cmbs.domain import Period
@@ -497,11 +498,15 @@ def test_loans_dropped_from_the_tape_are_one_medium_alert_for_the_deal():
         Severity.MEDIUM,
         "no longer reported",
         "3 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
-        "(loans 20, 26, 29)",
+        "(loans 20, 26, 29); balance not reported for loan 26",
         loan=None,
         loans=("20", "26", "29"),
         balance=Decimal("1250000.50"),
     )
+    assert unreported_balances([before(loan="5"), before(loan="7")]) == (
+        "; balance not reported for loans 5, 7"
+    )
+    assert unreported_balances([before(ending_balance=Decimal("1.00"))]) == ""
 
 
 def test_one_loan_dropped_is_named_in_the_singular():
@@ -519,7 +524,13 @@ def test_one_loan_dropped_is_named_in_the_singular():
 
 
 def test_a_quarantined_loan_is_listed_with_why_it_is_missing():
-    old = month(AUGUST, OLD, before(loan="7"), before(loan="10"), before(loan="12"))
+    old = month(
+        AUGUST,
+        OLD,
+        before(loan="7", ending_balance=Decimal("1.00")),
+        before(loan="10"),
+        before(loan="12"),
+    )
     new = month(
         SEPTEMBER,
         NEW,
@@ -527,12 +538,19 @@ def test_a_quarantined_loan_is_listed_with_why_it_is_missing():
     )
     found = missing(old, new)
     assert found is not None
+    # The reason, not the filing: the alert's row keeps the accession, and an amendment with
+    # the same loans and reasons is the same alert.
     assert found.message == (
         "3 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
-        f"(loans 7, 10, 12); loan 7 quarantined in {NEW}: ending balance is negative; "
-        f"loan 12 quarantined in {NEW}: rate is out of range"
+        "(loans 7, 10, 12); loan 7 quarantined: ending balance is negative; "
+        "loan 12 quarantined: rate is out of range; balance not reported for loans 10, 12"
     )
-    assert (found.loans, found.balance) == (("7", "10", "12"), None)
+    assert (found.loans, found.balance, found.reasons, found.accession) == (
+        ("7", "10", "12"),
+        Decimal("1.00"),
+        (("7", "ending balance is negative"), ("12", "rate is out of range")),
+        NEW,
+    )
 
 
 def test_loans_that_had_paid_off_may_leave_the_tape():
@@ -576,9 +594,11 @@ def test_loans_new_to_the_tape_are_one_low_alert_for_the_deal():
     )
     one = new_loans(month(AUGUST, OLD), month(SEPTEMBER, NEW, after()))
     assert one is not None
-    assert (one.message, one.balance) == (
-        "1 loan newly reported: not on the August 2026 tape (loan 7)",
+    assert (one.message, one.balance, one.reasons) == (
+        "1 loan newly reported: not on the August 2026 tape (loan 7); "
+        "balance not reported for loan 7",
         None,
+        (),
     )
 
 

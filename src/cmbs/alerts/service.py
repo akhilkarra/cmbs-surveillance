@@ -25,7 +25,7 @@ has its alerts, with zero exposure; they are left out of the book view.
 """
 
 import datetime as dt
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import NoReturn
@@ -47,6 +47,7 @@ from cmbs.alerts.rules import (
     Finding,
     LoanMonth,
     Month,
+    Rule,
     Severity,
     compare,
     count_loans,
@@ -70,6 +71,8 @@ ACKNOWLEDGE = "acknowledge alert"
 ASSIGN = "assign alert"
 CLOSE = "close alert"
 SUPERSEDE = "supersede alert"
+# Why a build supersedes the per-loan gap alerts a build before decision Q88 raised.
+RESTATED_PER_DEAL = "restated as one alert on the deal for every loan no longer or newly reported"
 
 
 class NoTape(Refused):
@@ -520,7 +523,10 @@ def build_alerts(
         before = read_month(db, deal_id, period.shift(-1), day)
         latest = latest_vintage(db, deal_id, period)
         reading = month_reading(after, before, settings.version)
-        if latest is not None and reading_of(latest) == reading:
+        # A month built before Q88 still holds one gap alert per loan: the build restates them
+        # as one alert on the deal even though it reads nothing new (once; then nothing to do).
+        per_loan_gaps = _per_loan_gaps(db, deal_id, period)
+        if latest is not None and reading_of(latest) == reading and not per_loan_gaps:
             return _summary(db, deal, period, latest, raised=0, superseded=0)
         problem = vintage_problem(latest, day, deal.name, period)
         if problem is not None:
@@ -562,6 +568,9 @@ def build_alerts(
     # first, so the new list is raised as a new alert.
     restated = _restated(db, deal, vintage, findings)
     superseded = _supersede(db, deal, vintage, set(), actor, run_id, only=restated)
+    superseded += _supersede(
+        db, deal, vintage, set(), actor, run_id, only=per_loan_gaps, reason=RESTATED_PER_DEAL
+    )
     raised = 0
     supported: set[int] = set()
     for finding in findings:
@@ -585,17 +594,45 @@ def build_alerts(
 def _restated(
     db: Session, deal: Deal, vintage: AlertBuild, findings: Sequence[Finding]
 ) -> set[int]:
-    """The deal's open alerts on the deal itself whose rule the vintage finds again with another
-    message: another list of loans, or another reason for one."""
+    """The deal's open alerts on the deal itself whose rule the vintage finds again meaning
+    something else: another list of loans, or another quarantine reason for one (Q88). The
+    message is not compared: the same loans and reasons found in an amendment are the same
+    alert, whatever else the new filing changes."""
     restated: set[int] = set()
     for finding in findings:
         if finding.loan is not None:
             continue
         subject = subject_of(deal.id, None, None)
         existing = _open_alert(db, [subject], vintage.period, finding.rule.value)
-        if existing is not None and existing.message != finding.message:
+        if existing is None:
+            continue
+        row = db.get_one(AlertLoan, (existing.id, deal.id))
+        if not same_gap(row.loans, row.reasons, finding):
             restated.add(existing.id)
     return restated
+
+
+def same_gap(loans: Sequence[str], reasons: Mapping[str, str], finding: Finding) -> bool:
+    """Whether a stored alert on a deal lists the finding's loans with the same reasons. Pure."""
+    return list(loans) == list(finding.loans) and dict(reasons) == dict(finding.reasons)
+
+
+def _per_loan_gaps(db: Session, deal_id: int, period: Period) -> set[int]:
+    """Alerts of the deal's month that a build before Q88 raised: one per loan no longer or
+    newly reported. They are restated as one alert on the deal by the next build."""
+    return set(
+        db.scalars(
+            select(AlertLoan.alert_id)
+            .join(Alert, Alert.id == AlertLoan.alert_id)
+            .where(
+                AlertLoan.deal_id == deal_id,
+                AlertLoan.loan.is_not(None),
+                AlertLoan.superseded_by.is_(None),
+                Alert.period == period.first_day,
+                Alert.rule.in_([Rule.MISSING.value, Rule.NEW.value]),
+            )
+        )
+    )
 
 
 def _summary(
@@ -701,6 +738,7 @@ def _store(
             deal_id=deal.id,
             loan=finding.loan,
             loans=list(finding.loans),
+            reasons=dict(finding.reasons),
             accession=finding.accession,
             balance=balance,
         )
@@ -718,10 +756,12 @@ def _supersede(
     run_id: int | None,
     *,
     only: set[int] | None = None,
+    reason: str | None = None,
 ) -> int:
     """Mark the deal's loans on alerts of the month that the vintage no longer supports (of
     the alerts `only` names, when given); an alert none of whose deals supports it any more is
-    superseded. Returns how many were marked.
+    superseded, for `reason` (by default, that the month as published no longer shows it).
+    Returns how many were marked.
 
     Nothing is deleted or rewritten: the mark names the vintage, and the alert keeps its state.
     """
@@ -742,7 +782,7 @@ def _supersede(
         query = query.where(AlertLoan.alert_id.in_(only))
     rows = db.scalars(query).all()
     period = Period.of(vintage.period)
-    reason = supersede_reason(period, vintage.as_of, vintage.accession)
+    reason = reason or supersede_reason(period, vintage.as_of, vintage.accession)
     for row in rows:
         alert = db.get_one(Alert, row.alert_id, with_for_update=True, populate_existing=True)
         row.superseded_by = vintage.id

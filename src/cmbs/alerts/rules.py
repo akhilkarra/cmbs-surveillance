@@ -102,7 +102,9 @@ class Finding:
 
     A loan's finding names its `loan`. A deal-level finding (loans no longer or newly reported)
     has no `loan`: it lists its `loans` in loan order, with their total `balance` on the tape
-    that reported them (None when none of them reported one).
+    that reported them (None when none of them reported one) and, for a loan the new tape
+    quarantined, the reason (`reasons`, in loan order). The loans and reasons are what the
+    finding means: the same ones found again are the same alert.
     """
 
     loan: str | None
@@ -114,6 +116,7 @@ class Finding:
     added: tuple[str, ...] = ()
     loans: tuple[str, ...] = ()
     balance: Decimal | None = None
+    reasons: tuple[tuple[str, str], ...] = ()
 
 
 # ---------------------------------------------------------------------------- formatting
@@ -317,6 +320,12 @@ def total_balance(rows: Iterable[LoanMonth]) -> Decimal | None:
     return sum(reported, Decimal("0.00")) if reported else None
 
 
+def unreported_balances(rows: Sequence[LoanMonth]) -> str:
+    """'; balance not reported for loan 7' (or 'loans 5, 7') when the total leaves some out."""
+    unreported = [row.loan for row in rows if row.ending_balance is None]
+    return f"; balance not reported for {name_loans(unreported)}" if unreported else ""
+
+
 def _paid_off(row: LoanMonth) -> bool:
     return row.ending_balance is not None and row.ending_balance == 0
 
@@ -328,19 +337,17 @@ def _in_loan_order(rows: Iterable[LoanMonth]) -> list[LoanMonth]:
 def missing(before: Month, after: Month) -> Finding | None:
     """The loans last month's tape showed and this month's does not, except those that had paid
     off: one finding for the deal listing every loan in loan order, and for a loan quarantined
-    on the new tape the reason. Its balance is their total on last month's tape."""
+    on the new tape the reason. Its balance is their total on last month's tape; the message
+    names any loan whose balance that total leaves out."""
     gone = _in_loan_order(
         row for loan, row in before.loans.items() if loan not in after.loans and not _paid_off(row)
     )
     if not gone:
         return None
     loans = tuple(row.loan for row in gone)
+    reasons = tuple((loan, after.quarantined[loan]) for loan in loans if loan in after.quarantined)
     title = "no longer reported"
-    reasons = "".join(
-        f"; loan {loan} quarantined in {after.accession}: {after.quarantined[loan]}"
-        for loan in loans
-        if loan in after.quarantined
-    )
+    why = "".join(f"; loan {loan} quarantined: {reason}" for loan, reason in reasons)
     return Finding(
         loan=None,
         rule=Rule.MISSING,
@@ -348,17 +355,20 @@ def missing(before: Month, after: Month) -> Finding | None:
         title=title,
         message=(
             f"{count_loans(len(loans))} {title}: on the {before.period.label} tape, "
-            f"not on the {after.period.label} tape ({name_loans(loans)}){reasons}"
+            f"not on the {after.period.label} tape ({name_loans(loans)}){why}"
+            f"{unreported_balances(gone)}"
         ),
         accession=after.accession,
         loans=loans,
         balance=total_balance(gone),
+        reasons=reasons,
     )
 
 
 def new_loans(before: Month, after: Month) -> Finding | None:
     """The loans this month's tape shows and last month's did not: one finding for the deal
-    listing every loan in loan order. Its balance is their total on this month's tape."""
+    listing every loan in loan order. Its balance is their total on this month's tape; the
+    message names any loan whose balance that total leaves out."""
     found = _in_loan_order(row for loan, row in after.loans.items() if loan not in before.loans)
     if not found:
         return None
@@ -371,7 +381,7 @@ def new_loans(before: Month, after: Month) -> Finding | None:
         title=title,
         message=(
             f"{count_loans(len(loans))} {title}: not on the {before.period.label} tape "
-            f"({name_loans(loans)})"
+            f"({name_loans(loans)}){unreported_balances(found)}"
         ),
         accession=after.accession,
         loans=loans,

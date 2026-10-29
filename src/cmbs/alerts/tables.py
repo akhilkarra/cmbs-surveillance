@@ -161,6 +161,9 @@ class AlertLoan(Base):
     loan: Mapped[str | None] = mapped_column(Text)
     # The loans an alert on the deal lists, in loan order; empty for an alert on one loan.
     loans: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # For an alert on the deal, each listed loan the new tape quarantined, with the reason. With
+    # `loans` it is what the alert means: a rebuild finding both again keeps the alert.
+    reasons: Mapped[dict[str, str]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     accession: Mapped[str] = mapped_column(ForeignKey("raw.filing.accession"))
     # The loan's ending balance on the month's tape; None when not reported or not on the tape.
     # For an alert on the deal, the listed loans' total on the tape that reported them.
