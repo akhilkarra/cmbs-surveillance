@@ -5,7 +5,8 @@ float), a date, or None for a value not reported. Two encodings:
 
 - `checksum`: the SHA-256 of the ordered rows, each value written exactly (a Decimal keeps its
   scale, a date is ISO), so equal checksums mean equal panels, field for field.
-- `to_csv` and `to_parquet`: the export file. CSV writes a value not reported as an empty cell;
+- `to_csv` and `to_parquet`: the export file. CSV writes a value not reported as an empty cell
+  and defuses text a spreadsheet would run as a formula;
   Parquet keeps types (money as decimals with every digit, dates as dates) and carries the
   export's provenance (as-of date, settings version, model, prompt version) as file metadata.
 """
@@ -146,13 +147,26 @@ def _text(value: Any) -> str:
     return "" if value is None else str(value)
 
 
+# A cell a spreadsheet would read as a formula starts with one of these.
+FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_cell(value: Any) -> str:
+    """A value as a CSV cell. Text that a spreadsheet would run as a formula ("=HYPERLINK(...)",
+    "@SUM(A1)") gets a leading apostrophe, so it is shown, never run; filed text can say anything.
+    Numbers and dates are written as they are (a negative balance stays a number)."""
+    if isinstance(value, str) and value.startswith(FORMULA_STARTS):
+        return "'" + value
+    return _text(value)
+
+
 def to_csv(rows: Sequence[Row], columns: Sequence[str]) -> bytes:
     """A header, then one line per row; a value not reported is an empty cell."""
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(columns)
+    writer.writerow([csv_cell(column) for column in columns])
     for row in rows:
-        writer.writerow([_text(row.get(column)) for column in columns])
+        writer.writerow([csv_cell(row.get(column)) for column in columns])
     return out.getvalue().encode()
 
 

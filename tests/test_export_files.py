@@ -16,6 +16,7 @@ from cmbs.export.files import (
     column_type,
     comment_columns,
     comment_values,
+    csv_cell,
     differences,
     file_name,
     to_csv,
@@ -186,3 +187,16 @@ def test_parquet_keeps_types_and_metadata():
         ("2", Decimal("0.8812"), None, None, "a"),
     ]
     assert pl.read_parquet_metadata(io.BytesIO(content))["as_of"] == "2026-09-01"
+
+
+def test_csv_defuses_text_a_spreadsheet_would_run():
+    for text in ('=HYPERLINK("http://x","click")', "@SUM(A1)", "+1", "-x", "\tx", "\rx"):
+        assert csv_cell(text) == "'" + text
+    assert csv_cell("maturity extension") == "maturity extension"
+    assert csv_cell("") == ""
+    assert csv_cell(None) == ""
+    assert csv_cell(Decimal("-12000000.00")) == "-12000000.00"
+    assert csv_cell(-3) == "-3"
+    assert csv_cell(DAY) == "2026-09-01"
+    rows = [{"note": "=1+2", "balance": Decimal("-5.00")}, {"note": "@SUM(A1)", "balance": None}]
+    assert to_csv(rows, ["note", "balance"]) == (b"note,balance\n'=1+2,-5.00\n'@SUM(A1),\n")
