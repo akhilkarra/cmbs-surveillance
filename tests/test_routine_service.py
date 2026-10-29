@@ -297,3 +297,24 @@ def test_a_403_from_discovery_says_how_to_fix_it(seeded):
         "failed",
         f"filing discovery failed: {EDGAR_FORBIDDEN}",
     )
+
+
+@needs_db
+def test_a_month_that_fails_after_extraction_keeps_its_model_answers(seeded, crosscheck):
+    """The month rolls back; the answers the model gave are stored, so a retry replays them."""
+    from cmbs.model.tables import ModelCall
+
+    crosscheck.refuse = Refused("no tape")
+    in_session(register)
+    clock.set_now(LOAD_DAY)
+    report = service.backfill("quinn", FIXTURE_DEAL, SEP, SEP, sources=sources())
+    month = report.run.summary["deals"][0]["months"][0]
+    assert (month["outcome"], month["reason"]) == ("not loaded", "checks could not be run")
+
+    def stored(db):
+        return [
+            db.scalar(select(func.count()).select_from(table))
+            for table in (LoanPeriod, Extraction, ModelCall)
+        ]
+
+    assert in_session(stored) == [0, 0, 1]
