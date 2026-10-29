@@ -7,9 +7,8 @@ request are found correctly, then comments that state none are given a request (
 false finds. A scenario that states no predictions measures extraction that found every label.
 
 The override scenario extracts loan 2's comment from the synthetic September 2026 10-D of
-"Fixture Trust 2026-F1" with the recorded (synthetic) model answers, then replaces the panel
-value as an analyst's override does: the value, its sentence and who decided it change, and
-the model's answer stays stored.
+"Fixture Trust 2026-F1" with the recorded (synthetic) model answers, then the analyst overrides
+the value through `cmbs.review.service.override`; the model's answer stays stored.
 """
 
 import datetime as dt
@@ -18,15 +17,12 @@ from pathlib import Path
 
 import parse
 from behave import given, register_type, then, when  # pyright: ignore[reportAttributeAccessIssue]
-from sqlalchemy import select
 
 from cmbs import clock
-from cmbs.audit.service import LOAN, loan_key, record
 from cmbs.distribution.service import load_report
 from cmbs.domain import Period
 from cmbs.extraction import fields
 from cmbs.extraction.service import extract_comments
-from cmbs.extraction.tables import HUMAN_REVIEWED, ExtractedField, Extraction
 from cmbs.model.client import ModelClient
 from cmbs.model.recordings import DbRecordings
 from cmbs.quality import measure
@@ -42,6 +38,7 @@ from cmbs.quality.service import (
     golden_set,
     import_golden_set,
 )
+from cmbs.review.service import override
 from cmbs.settings.service import in_force
 from cmbs.testing.bdd import attempt, in_session
 from cmbs.testing.world import FIXTURE_CIK, FIXTURE_DEAL
@@ -349,35 +346,21 @@ def step_overrode(context, user, loan, label, value, sentence):
     in_session(extract)
     clock.set_now(dt.datetime(2026, 10, 5, 10, tzinfo=dt.UTC))
 
-    # A stand-in for an analyst's override until cmbs.review lands: it is replaced then by
-    # cmbs.review's override service, and candidates come from its label_candidates.
-    def override(db):
-        row = db.scalars(
-            select(ExtractedField)
-            .join(Extraction, Extraction.id == ExtractedField.extraction_id)
-            .where(Extraction.loan_id == loan, ExtractedField.field == spec.name)
-        ).one()
-        before = fields.display(spec, row.value) if row.value is not None else ""
-        row.value = fields.canonical(spec, value)
-        row.sentence = sentence
-        row.status = HUMAN_REVIEWED
-        row.decided_by = user
-        row.decided_at = clock.now()
-        record(
+    view = in_session(
+        lambda db: override(
             db,
-            user=user,
-            role="analyst",
-            action="override value",
-            subject=LOAN,
-            subject_key=loan_key(FIXTURE_DEAL, loan),
-            field=spec.label,
-            before=before,
-            after=fields.display(spec, row.value),
-            reason=f"sentence {sentence}",
+            user,
+            deal=FIXTURE_DEAL,
+            loan=loan,
+            period=SEPTEMBER,
+            field=spec.name,
+            value=value,
+            sentence=sentence,
+            reason="the borrower's request, as the special servicer describes it",
         )
-        return row.model_value
-
-    context.model_value = in_session(override)
+    )
+    assert (view.status, view.value, view.sentence) == ("overridden", value, sentence), view
+    context.model_value = view.model_value
     assert context.model_value not in (None, value), context.model_value
     context.overrider, context.field, context.label_value = user, spec.name, value
 

@@ -370,7 +370,7 @@ def test_a_comment_extracted_and_decided_again_is_one_candidate_with_the_latest_
     extended = service.extend_golden_set(seeded, user="quinn")
     seeded.commit()
     (candidate,) = extended.proposed
-    assert extended.skipped == 1  # the earlier decision
+    assert extended.skipped == 0  # label_candidates keeps only the later decision
     assert candidate.labels == {"alex": {"transfer_reason": "monetary default"}}
     assert candidate.accession == first.accession
 
@@ -439,3 +439,32 @@ def test_predictions_must_name_known_settings_versions(seeded):
     )
     with pytest.raises(service.UnknownSettingsVersion, match="^there is no settings version 9$"):
         service.build_report(seeded, user="quinn", predictions=unknown)
+
+
+def test_an_override_after_the_review_is_the_candidate(seeded):
+    from cmbs.review.service import override
+
+    decided_comment(seeded)
+    clock.set_now(dt.datetime(2026, 10, 3, 9, tzinfo=dt.UTC))
+    override(
+        seeded,
+        "morgan",
+        deal=FIXTURE_DEAL,
+        loan="2",
+        period=SEPTEMBER,
+        field="transfer_reason",
+        value="monetary default",
+        sentence=1,
+        reason="payments were missed",
+    )
+    seeded.commit()
+    clock.set_now(NOW)
+    (candidate,) = service.extend_golden_set(seeded, user="quinn").proposed
+    seeded.commit()
+    assert candidate.labels == {"morgan": {"transfer_reason": "monetary default"}}
+    assert candidate.sentences == {"transfer_reason": 1}
+    # The analyst who overrode cannot confirm; the one who reviewed first may.
+    with pytest.raises(service.SameAnalyst):
+        service.confirm_candidate(seeded, user="morgan", item_id=candidate.id)
+    seeded.rollback()
+    assert service.confirm_candidate(seeded, user="alex", item_id=candidate.id).status == "golden"

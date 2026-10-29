@@ -8,7 +8,7 @@ application state in `app`; the text-versus-tape and roll-forward checks add no 
 raise `silver.check_flag` rows).
 
 Revision ID: 0011
-Revises: 0009
+Revises: 0010
 Create Date: 2026-10-29 00:09:25.158293
 """
 
@@ -19,7 +19,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "0011"
-down_revision: str | Sequence[str] | None = "0009"
+down_revision: str | Sequence[str] | None = "0010"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -8,10 +8,11 @@
   previous report and stores it for good, naming the model, prompt version and the settings
   version in force (whose abstention band decided what was auto-accepted). A model or prompt
   change cites the report's number when it is proposed (grill log Q46).
-- `extend_golden_set` proposes as label candidates the panel values a person decided (review
-  decisions and overrides, Q45): the person who decided is the first labeller. A candidate
-  joins the golden set only when a second analyst confirms it (`confirm_candidate`); a second
-  analyst who disagrees rejects it with a reason (`reject_candidate`).
+- `extend_golden_set` proposes the label candidates `cmbs.review` reads (the latest review
+  decision or override per field, Q45): the person who chose the value is the first labeller.
+  A candidate joins the golden set only when a second analyst confirms it
+  (`confirm_candidate`); a second analyst who disagrees rejects it with a reason
+  (`reject_candidate`).
 
 Writes are authorized first, take an advisory lock, re-read what they change under it, and are
 audited; refusals are audited with the actor.
@@ -32,7 +33,8 @@ from cmbs.deals.tables import Deal
 from cmbs.domain import Period
 from cmbs.errors import Refused
 from cmbs.extraction.fields import spec
-from cmbs.extraction.tables import ExtractedField, Extraction
+from cmbs.extraction.service import NOT_STATED_DECISION
+from cmbs.extraction.tables import Extraction
 from cmbs.quality import measure
 from cmbs.quality.files import LabelledComment, PredictionSet
 from cmbs.quality.measure import GoldenComment
@@ -46,6 +48,7 @@ from cmbs.quality.tables import (
     GoldenLabel,
     QualityReport,
 )
+from cmbs.review.service import label_candidates
 from cmbs.settings.tables import SettingsVersion
 
 IMPORT = "import golden set"
@@ -459,48 +462,33 @@ def _candidate(db: Session, item: GoldenItem) -> CandidateView:
     )
 
 
-def _decided_fields(db: Session) -> list[tuple[Extraction, ExtractedField, str]]:
-    """Panel fields a person decided, with the extraction they belong to and its deal, oldest
-    decision first."""
-    rows = db.execute(
-        select(Extraction, ExtractedField, Deal.name)
-        .join(ExtractedField, ExtractedField.extraction_id == Extraction.id)
-        .join(Deal, Deal.id == Extraction.deal_id)
-        .where(ExtractedField.decided_by.is_not(None))
-        .order_by(ExtractedField.decided_at, ExtractedField.id)
-    ).all()
-    return [(extraction, row, deal) for extraction, row, deal in rows]
-
-
 @dataclass(frozen=True)
 class Extended:
-    """The candidates proposed, and how many decisions proposed nothing: already a golden item
-    or candidate (proposed, confirmed or rejected), or superseded by a later decision on the
-    same loan, month and field."""
+    """The candidates proposed, and how many label candidates proposed nothing because they are
+    already a golden item or candidate (proposed, confirmed or rejected)."""
 
     proposed: list[CandidateView]
     skipped: int
 
 
 def extend_golden_set(db: Session, *, user: str) -> Extended:
-    """Propose the latest decision on each loan, month and field that is not yet a golden item.
+    """Propose each label candidate that is not yet a golden item.
 
-    The person who decided is the candidate's first labeller; a labeller is never given a
-    second label on the same candidate.
+    The candidates are `cmbs.review.service.label_candidates`: the latest value a person chose
+    for each loan, month and field, reviewed or overridden (an override wins a tie). The person
+    who chose it is the first labeller, so a labeller never has two labels on one candidate.
     """
     actor = authorize(db, user, Action.PROPOSE_SETTING)
     _lock(db)
     now = clock.now()
     known = set(db.scalars(select(GoldenItem.key)))
-    decided = _decided_fields(db)
-    latest: dict[str, tuple[Extraction, ExtractedField]] = {}
-    for extraction, row, deal in decided:
-        key = candidate_key(deal, extraction.loan_id, Period.of(extraction.period), row.field)
-        latest[key] = (extraction, row)  # oldest first: the last one seen is the latest
+    chosen = label_candidates(db, actor.user)
     proposed: list[GoldenItem] = []
-    for key, (extraction, row) in latest.items():
-        if key in known or row.decided_by is None:
+    for candidate in chosen:
+        key = candidate_key(candidate.deal, candidate.loan, candidate.period, candidate.field)
+        if key in known:
             continue
+        extraction = db.get_one(Extraction, candidate.extraction_id)
         item = GoldenItem(
             key=key,
             comment=extraction.comment,
@@ -516,14 +504,15 @@ def extend_golden_set(db: Session, *, user: str) -> Extended:
         )
         db.add(item)
         db.flush()
+        value = None if candidate.value == NOT_STATED_DECISION else candidate.value
         db.add(
             GoldenLabel(
                 item_id=item.id,
-                field=row.field,
-                labeller=row.decided_by,
-                value=row.value,
-                sentence=row.sentence,
-                labelled_at=row.decided_at or now,
+                field=candidate.field,
+                labeller=candidate.by,
+                value=value,
+                sentence=candidate.sentence,
+                labelled_at=candidate.at,
             )
         )
         proposed.append(item)
@@ -539,7 +528,7 @@ def extend_golden_set(db: Session, *, user: str) -> Extended:
             subject_key=view.key,
             detail={"labels": view.labels},
         )
-    return Extended(proposed=views, skipped=len(decided) - len(views))
+    return Extended(proposed=views, skipped=len(chosen) - len(views))
 
 
 def candidates(db: Session, *, reader: str) -> list[CandidateView]:

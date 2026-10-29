@@ -1,7 +1,6 @@
 """The checks service on a real database: point-in-time reads, flags with both sides, audit."""
 
 import datetime as dt
-from dataclasses import replace
 from decimal import Decimal
 from html import escape
 from pathlib import Path
@@ -37,6 +36,7 @@ from cmbs.model.recordings import DbRecordings
 from cmbs.model.scripted import ScriptedProvider, choice_answer, respond
 from cmbs.model.types import Choice, ModelRequest, NoulAnswer
 from cmbs.panel.service import deal_named
+from cmbs.review.service import decline, override
 from cmbs.tape.service import load_tape
 from tests.conftest import needs_db
 from tests.fixtures.tape.tapes import asset, tape
@@ -485,22 +485,12 @@ def test_decimal_gap_is_exact_to_the_cent(seeded):
     assert (result.roll.status, result.roll.gap) == (rf.Status.BREAK, Decimal("-0.01"))
 
 
-def _with_transfer(status: str, value: str):
-    """A stand-in for the panel's read that lays a decision on loan 2's transfer date, as the
-    review queue's overrides and declines do inside `comment_view`."""
-    real = crosscheck_service.comment_view
-
-    def read(*args, **kwargs):
-        view = real(*args, **kwargs)
-        if view is None:
-            return None
-        shown = replace(view.fields["transfer_date"], status=status, value=value, sentence=1)
-        return replace(view, fields={**view.fields, "transfer_date": shown})
-
-    return read
+def _transfer_checks(db: Session, day: dt.date) -> list[tuple[str, rules.Status]]:
+    (result,) = text_vs_tape(db, reader="pat", deal_id=deal_id(db), period=SEPTEMBER, as_of=day)
+    return [(f.check, f.status) for f in result.findings]
 
 
-def test_the_value_compared_is_the_one_the_panel_shows(seeded, monkeypatch):
+def test_an_overridden_transfer_date_is_the_one_compared(seeded):
     load_month(
         seeded,
         SEPTEMBER,
@@ -508,28 +498,46 @@ def test_the_value_compared_is_the_one_the_panel_shows(seeded, monkeypatch):
     )
     load_comment(seeded, SEPTEMBER, COMMENT)
     day = dt.date(2026, 10, 1)
-
-    def read() -> list[rules.Finding]:
-        (result,) = text_vs_tape(
-            seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
-        )
-        return result.findings
-
-    assert read()[0].status is rules.Status.FLAG  # 2024-11-15 against 2025-03-06
-
-    # An override to the tape's date is what gets compared: they agree.
-    monkeypatch.setattr(
-        crosscheck_service, "comment_view", _with_transfer("overridden", "2025-03-06")
+    # Auto-accepted 2024-11-15 against the tape's 2025-03-06: four months apart.
+    assert _transfer_checks(seeded, day)[0] == (rules.TRANSFER_DATE, rules.Status.FLAG)
+    clock.set_now(at(dt.date(2026, 10, 2)))
+    override(
+        seeded,
+        "alex",
+        deal=DEAL,
+        loan="2",
+        period=SEPTEMBER,
+        field="transfer_date",
+        value="2025-03-06",
+        sentence=1,
+        reason="the servicer's own transfer notice gives 3/6/2025",
     )
-    transfer = read()[0]
+    seeded.commit()
+    # Point in time: before the override the extracted date stands; from it, the override.
+    assert _transfer_checks(seeded, day)[0] == (rules.TRANSFER_DATE, rules.Status.FLAG)
+    (result,) = text_vs_tape(
+        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=dt.date(2026, 10, 2)
+    )
+    transfer = result.findings[0]
     assert (transfer.check, transfer.status) == (rules.TRANSFER_DATE, rules.Status.AGREE)
     assert transfer.sides["text"]["transfer_date"] == "2025-03-06"
 
-    # A status that does not settle the value (a declined field, say) is not compared.
-    monkeypatch.setattr(
-        crosscheck_service, "comment_view", _with_transfer("declined", "2020-01-01")
+
+def test_a_declined_field_is_not_compared(seeded):
+    load_month(
+        seeded,
+        SEPTEMBER,
+        loan("2", SEPTEMBER, mostRecentSpecialServicerTransferDate="03-06-2025"),
     )
-    assert [f.check for f in read()] == [rules.NEWER_FINANCIALS]
+    load_comment(seeded, SEPTEMBER, COMMENT, answer_p=0.55)
+    (item,) = [i for i in open_review_items(seeded, "alex") if i.field == "transfer_date"]
+    clock.set_now(at(dt.date(2026, 10, 2)))
+    shown = decline(seeded, "alex", item.id, reason="the comment gives two transfer dates")
+    seeded.commit()
+    assert (shown.status, shown.value) == ("not determinable", None)
+    assert _transfer_checks(seeded, dt.date(2026, 10, 2)) == [
+        (rules.NEWER_FINANCIALS, rules.Status.NOTE)
+    ]
 
 
 def test_compared_statuses():

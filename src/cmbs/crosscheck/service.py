@@ -38,7 +38,7 @@ from cmbs.distribution.tables import DistributionReport
 from cmbs.domain import Period
 from cmbs.errors import Refused
 from cmbs.extraction.fields import spec, typed
-from cmbs.extraction.service import CommentView, comment_view
+from cmbs.extraction.service import OVERRIDDEN, CommentView, comment_view
 from cmbs.extraction.tables import AUTO_ACCEPTED, HUMAN_REVIEWED, Extraction
 from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
@@ -49,8 +49,8 @@ from cmbs.tape.tables import LoanPeriod, TapeAsset
 RUN_CHECKS = "run checks"
 RAISE_FLAG = "raise check flag"
 DEAL = "deal"
-# Panel statuses whose values are compared. "overridden" is an analyst's override (cmbs.review).
-OVERRIDDEN = "overridden"
+# Panel statuses whose values are compared: an override (cmbs.review) included, a field
+# declined as not determinable or awaiting review not.
 COMPARED = frozenset({AUTO_ACCEPTED, HUMAN_REVIEWED, OVERRIDDEN})
 # An arbitrary constant naming the checks' advisory locks; the second key is the deal id.
 CHECK_LOCK_SPACE = 0x0C4EC4
