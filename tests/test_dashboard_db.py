@@ -201,7 +201,11 @@ def test_the_loan_page_shows_the_tape_with_its_checks_and_run(world, seeded):
     assert (balance.field, balance.value) == ("ending_balance", "30000000.00")
     assert balance.checks == (
         Check("contract passed", PASSED),
-        Check("scheduled balance roll-forward not checked", "not checked"),
+        Check(
+            "scheduled balance roll-forward not checked: "
+            "beginning balance and scheduled ending balance not reported",
+            "not checked",
+        ),
     )
     financials = page.financials
     assert (financials.end, financials.days_at_period_end) == (dt.date(2024, 12, 31), 619)
@@ -372,7 +376,11 @@ def test_the_loan_route_reads_a_month_and_a_day(world, client):
         "value": "30000000.00",
         "checks": [
             {"label": "contract passed", "outcome": "passed"},
-            {"label": "scheduled balance roll-forward not checked", "outcome": "not checked"},
+            {
+                "label": "scheduled balance roll-forward not checked: "
+                "beginning balance and scheduled ending balance not reported",
+                "outcome": "not checked",
+            },
         ],
     }
     assert body["financials"]["days_at_period_end"] == 619
@@ -560,3 +568,47 @@ def test_flags_carry_their_ids(world, seeded):
 def test_a_month_not_built_is_told_apart_from_an_empty_book(world, seeded):
     page = service.book_page(seeded, reader="pat", period=AUGUST)
     assert (page.rows, page.note) == ((), "the August 2026 alerts have not been built")
+
+
+ROLL = {
+    "reportPeriodBeginningScheduleLoanBalanceAmount": "30000000.00",
+    "reportPeriodEndScheduledLoanBalanceAmount": "30000000.00",
+    "scheduledPrincipalAmount": "0.00",
+    "unscheduledPrincipalCollectedAmount": "0.00",
+    "otherPrincipalAdjustmentAmount": "0.00",
+}
+
+
+def rolled_months(db: Session, september_ending: str) -> None:
+    load_month(db, F1, AUGUST, {("2", tag): value for tag, value in ROLL.items()})
+    september = {**ROLL, "reportPeriodEndScheduledLoanBalanceAmount": september_ending}
+    load_month(db, F1, SEPTEMBER, {("2", tag): value for tag, value in september.items()})
+    db.commit()
+    clock.set_now(READ)
+
+
+@needs_db
+@pytest.mark.parametrize(
+    ("ending", "check"),
+    [
+        ("30000000.00", Check("scheduled balance roll-forward passed", PASSED)),
+        ("29999999.00", Check("scheduled balance roll-forward broken", "failed")),
+    ],
+)
+def test_the_balances_show_the_scheduled_balance_roll_forward(seeded, ending, check):
+    rolled_months(seeded, ending)
+    values = service.loan_page(seeded, reader="pat", deal=F1, loan="2").tape.values
+    by_field = {value.field: value for value in values}
+    for name in ("ending_balance", "beginning_balance"):
+        assert by_field[name].checks == (Check("contract passed", PASSED), check)
+    assert by_field["payment_status"].checks == (Check("contract passed", PASSED),)
+
+
+@needs_db
+def test_the_roll_forward_is_read_point_in_time(seeded):
+    rolled_months(seeded, "30000000.00")
+    page = service.loan_page(
+        seeded, reader="pat", deal=F1, loan="2", period=AUGUST, as_of=dt.date(2026, 9, 1)
+    )
+    # August alone: its own roll ties, and no July tape is needed for a pass.
+    assert page.tape.values[0].checks[1] == Check("scheduled balance roll-forward passed", PASSED)

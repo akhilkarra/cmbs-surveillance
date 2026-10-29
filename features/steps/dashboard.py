@@ -14,8 +14,8 @@ does, through refreshes that replay the synthetic EDGAR in tests/fixtures/refres
   model recording in tests/fixtures/model/ (or, when a scenario says the workout strategy is
   waiting for review, the same recording with that one answer unsettled);
 - the dashboard is read at noon.
-Loan 2's tapes also carry a beginning balance and zero principal, so the balance roll-forward
-(`cmbs.crosscheck`, built in parallel) has what it needs to pass.
+Loan 2's tapes also carry its beginning and ending scheduled balances and zero principal, so the
+scheduled balance roll-forward (`cmbs.crosscheck`, grill log Q81) passes in both months.
 
 **What serves the page.** Each behave process starts one HTTP server on a free local port (a
 thread): `/dashboard/*` goes to the FastAPI app in process, so it reads the scenario's own

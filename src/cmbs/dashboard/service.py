@@ -43,6 +43,8 @@ from cmbs.alerts.tables import Alert, AlertBuild, AlertLoan
 from cmbs.analysis.staleness import loan_staleness
 from cmbs.audit.tables import AuditEntry
 from cmbs.checks.tables import CheckFlag
+from cmbs.crosscheck import rollforward as rf
+from cmbs.crosscheck import service as crosscheck
 from cmbs.distribution.service import canonical_loan
 from cmbs.domain import Period
 from cmbs.edgar.archives import filing_base_url
@@ -403,14 +405,29 @@ def tape_values(row: LoanPeriod, rollforward: Check) -> tuple[TapeValue, ...]:
     )
 
 
-def rollforward_check(db: Session, *, deal_id: int, period: Period, loan: str) -> Check:
-    """The balance roll-forward's verdict on the loan's month.
+ROLLFORWARD = "scheduled balance roll-forward"
 
-    The roll-forward check (`cmbs.crosscheck.rollforward`) is being built in parallel; until it
-    is merged the dashboard says the balance was not checked rather than imply it passed.
-    """
-    del db, deal_id, period, loan
-    return ROLLFORWARD_NOT_CHECKED
+
+def rollforward_verdict(result: rf.LoanRollForward | None) -> Check:
+    """The roll-forward's verdict as the page marks it (grill log Q81): passed; broken (the
+    month's roll or its tie to last month's ending scheduled balance); or not checked, with the
+    reason (a scheduled balance not reported, a realized-loss month), never as a pass."""
+    if result is None:
+        return ROLLFORWARD_NOT_CHECKED
+    if result.status is rf.Status.PASSED:
+        return Check(f"{ROLLFORWARD} passed", PASSED)
+    if result.status is rf.Status.BREAK:
+        return Check(f"{ROLLFORWARD} broken", FAILED)
+    return Check(f"{ROLLFORWARD} not checked: {result.roll.reason}", NOT_CHECKED)
+
+
+def rollforward_check(
+    db: Session, *, deal_id: int, period: Period, loan: str, as_of: dt.date | None = None
+) -> Check:
+    """The balance roll-forward's verdict on the loan's month, on the tapes current on
+    `as_of` (`cmbs.crosscheck.service.rollforward`)."""
+    results = crosscheck.rollforward(db, deal_id=deal_id, period=period, as_of=as_of)
+    return rollforward_verdict(next((r for r in results if r.loan == loan), None))
 
 
 def financials(row: LoanPeriod) -> Financials:
@@ -644,7 +661,7 @@ def loan_page(
     month = period or panel.tape_as_of(db, deal_row.name, day).period
     traced = runs.trace(db, reader, deal=deal_row.name, loan=loan, period=month, as_of=day)
     row = panel.as_of(db, day, deal_id=deal_row.id, period=month, loan=loan)[0]
-    rollforward = rollforward_check(db, deal_id=deal_row.id, period=month, loan=loan)
+    rollforward = rollforward_check(db, deal_id=deal_row.id, period=month, loan=loan, as_of=day)
     view = comment_view(db, reader, deal=deal_row.name, loan=loan, period=month, as_of=day)
     return LoanPage(
         deal=deal_row.name,

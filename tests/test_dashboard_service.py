@@ -8,6 +8,7 @@ import pytest
 from cmbs.alerts.lifecycle import State
 from cmbs.alerts.rules import Severity
 from cmbs.alerts.service import AlertView, CoveredLoan
+from cmbs.crosscheck import rollforward as rf
 from cmbs.dashboard import service
 from cmbs.dashboard.service import (
     CONTRACT_PASSED,
@@ -398,10 +399,60 @@ def test_a_code_not_on_the_schedule_al_list_is_named_as_a_code():
     assert (shown["payment_status"], shown["workout_strategy"]) == ("code Z", "code 42")
 
 
-def test_the_roll_forward_is_not_checked_until_the_crosscheck_lands():
-    assert service.rollforward_check(None, deal_id=1, period=Period(2026, 9), loan="2") == (  # pyright: ignore[reportArgumentType]
-        ROLLFORWARD_NOT_CHECKED
+def rolled(roll: rf.Roll, continuity: rf.Continuity) -> rf.LoanRollForward:
+    return rf.LoanRollForward(
+        loan="2",
+        period=Period(2026, 9),
+        accession="0009900001-26-000419",
+        filed=dt.date(2026, 9, 29),
+        balances=rf.Balances(
+            beginning=Decimal("30000000.00"),
+            scheduled_principal=Decimal("0.00"),
+            unscheduled_principal=Decimal("0.00"),
+            other_principal_adjustments=Decimal("0.00"),
+            realized_loss=None,
+            ending=rf.Ending(Decimal("30000000.00")),
+        ),
+        roll=roll,
+        continuity=continuity,
     )
+
+
+PASS = rf.Status.PASSED
+UNCHECKED = rf.Status.NOT_CHECKED
+
+
+def test_a_roll_forward_that_passes_is_marked_passed():
+    found = rolled(rf.Roll(PASS), rf.Continuity(PASS))
+    assert service.rollforward_verdict(found) == Check(
+        "scheduled balance roll-forward passed", "passed"
+    )
+    # The month's own roll passing is a pass even when last month cannot be compared.
+    first = rolled(rf.Roll(PASS), rf.Continuity(UNCHECKED, reason="no August 2026 tape row"))
+    assert service.rollforward_verdict(first).outcome == "passed"
+
+
+@pytest.mark.parametrize(
+    ("roll", "continuity"),
+    [
+        (rf.Roll(rf.Status.BREAK, gap=Decimal("1.00")), rf.Continuity(PASS)),
+        (rf.Roll(PASS), rf.Continuity(rf.Status.BREAK, gap=Decimal("5.00"))),
+    ],
+)
+def test_a_break_in_the_roll_or_its_tie_to_last_month_is_marked_broken(roll, continuity):
+    assert service.rollforward_verdict(rolled(roll, continuity)) == Check(
+        "scheduled balance roll-forward broken", "failed"
+    )
+
+
+def test_a_roll_forward_that_could_not_run_says_why():
+    loss = rolled(rf.Roll(UNCHECKED, reason=rf.REALIZED_LOSS_MONTH), rf.Continuity(PASS))
+    assert service.rollforward_verdict(loss) == Check(
+        "scheduled balance roll-forward not checked: "
+        "a realized-loss month: the loss includes more than principal",
+        "not checked",
+    )
+    assert service.rollforward_verdict(None) == ROLLFORWARD_NOT_CHECKED
 
 
 def test_financials_show_their_end_and_age():
