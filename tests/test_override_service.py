@@ -4,7 +4,7 @@ audited, history, the CLI view, and label candidates."""
 import datetime as dt
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from cmbs import clock
 from cmbs.access.service import PermissionRefused
@@ -351,3 +351,19 @@ def test_a_declined_field_is_no_label_candidate(seeded, waiting):
     decline(seeded, "alex", waiting.id, reason="vague")
     seeded.commit()
     assert label_candidates(seeded, "quinn") == []
+
+
+def test_a_field_missing_from_the_extraction_cannot_be_overridden(accepted):
+    accepted.execute(delete(ExtractedField).where(ExtractedField.field == "borrower_request"))
+    accepted.commit()
+    with pytest.raises(NoExtraction) as refused:
+        _override(accepted)
+    assert str(refused.value) == (
+        "loan 2's borrower request was not extracted from 0009900001-26-000009"
+    )
+
+
+def test_history_of_an_unknown_deal_is_refused(accepted):
+    with pytest.raises(UnknownDeal, match="^no deal named 'No Such Trust'$"):
+        override_history(accepted, "pat", deal="No Such Trust", loan="2", period=SEPTEMBER)
+    assert override_history(accepted, "pat", deal=FIXTURE_DEAL, loan="7", period=SEPTEMBER) == []
