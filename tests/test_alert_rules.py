@@ -225,10 +225,24 @@ def test_each_step_further_behind_is_worse(old, new, message):
 
 @pytest.mark.parametrize(
     ("old", "new"),
-    [("1", "0"), ("3", "4"), ("1", "4"), ("4", "1"), ("1", "01"), (None, "1"), ("1", None)],
+    [("1", "0"), ("3", "4"), ("5", "3"), ("1", "01"), (None, "1"), ("1", None)],
 )
-def test_a_better_equal_or_unreported_status_is_no_alert(old, new):
+def test_a_better_same_or_unreported_status_is_no_alert(old, new):
     assert payment_status(before(payment_status=old), after(payment_status=new)) is None
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ("1", "4", "payment status changed: 30 days to performing matured balloon"),
+        ("4", "1", "payment status changed: performing matured balloon to 30 days"),
+    ],
+)
+def test_a_change_between_codes_of_equal_rank_is_still_reported(old, new, message):
+    found = payment_status(before(payment_status=old), after(payment_status=new))
+    assert found == finding(
+        Rule.PAYMENT_CHANGED, Severity.MEDIUM, "payment status changed", message
+    )
 
 
 def test_a_change_to_or_from_an_unlisted_code_is_reported_as_a_change():

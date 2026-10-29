@@ -12,8 +12,8 @@ a loan 90 days behind, so each code carries a rank:
                                                     < non-performing matured balloon
 
 and a performing matured balloon ranks with "30 days": the loan has missed its maturity
-payment but keeps paying, the first stage of a maturity default. Two codes of equal rank are
-neither better nor worse than each other.
+payment but keeps paying, the first stage of a maturity default. Two different codes of equal
+rank are neither better nor worse than each other, but the change is still reported.
 """
 
 from dataclasses import dataclass

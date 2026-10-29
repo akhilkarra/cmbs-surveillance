@@ -6,7 +6,7 @@ reported in either month is never compared: "not reported" is not a change.
 
 high    transferred to special servicing: a transfer date appears, or moves later
 medium  payment status worsened: the status ranks further behind (`codes.PAYMENT_STATUS`)
-medium  payment status changed: it changed and a code is not on the Schedule AL list
+medium  payment status changed: to a code of equal rank, or a code not on the Schedule AL list
 medium  paid-through date did not advance: the date stayed, the loan is behind for the month
         and still has a balance
 medium  DSCR fell below <threshold>: at or above the threshold last month, below it now
@@ -149,11 +149,11 @@ def payment_status(before: LoanMonth, after: LoanMonth) -> Finding | None:
         f"{name_of(PAYMENT_STATUS, before.payment_status)} to "
         f"{name_of(PAYMENT_STATUS, after.payment_status)}"
     )
-    if old is not None and new is not None:
-        if new.rank <= old.rank:
-            return None
+    if old is not None and new is not None and new.rank < old.rank:
+        return None
+    if old is not None and new is not None and new.rank > old.rank:
         rule, title = Rule.PAYMENT_WORSENED, "payment status worsened"
-    else:
+    else:  # equal rank (30 days and a performing matured balloon), or a code not on the list
         rule, title = Rule.PAYMENT_CHANGED, "payment status changed"
     return Finding(
         loan=after.loan,
