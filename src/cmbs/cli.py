@@ -117,6 +117,17 @@ def analyze_staleness(
         )
 
 
+@app.command("serve")
+def serve(
+    host: Annotated[str, typer.Option(help="Address to listen on.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port to listen on.")] = 8000,
+) -> None:
+    """Run the API, and the dashboard when it is built (web/dist); open /?user=<name>."""
+    import uvicorn
+
+    uvicorn.run("cmbs.api.app:app", host=host, port=port)
+
+
 def main() -> None:
     """The `cmbs` command: the local `.env` first (it never overrides the environment)."""
     envfile.load(Path.cwd() / ".env")

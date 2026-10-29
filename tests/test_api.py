@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -38,7 +40,8 @@ def test_domain_refusals_become_readable_responses():
     from cmbs.api.app import create_app
     from cmbs.filings.service import ConflictingFiling
 
-    app: FastAPI = create_app()
+    # No dashboard bundle: routes added after the app is built must not sit behind its mount.
+    app: FastAPI = create_app(web_dist=Path("/nonexistent"))
 
     @app.get("/refuse-for-test")
     def refuse() -> None:
