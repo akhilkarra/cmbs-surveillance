@@ -2,7 +2,8 @@
   {
     "answer": [
       "low",
-      "unsettled"
+      "unsettled",
+      "high"
     ],
     "evidence_found": [
       true,
@@ -10,20 +11,6 @@
     ],
     "outcome": "not stated",
     "reason": null,
-    "support": [
-      "low"
-    ]
-  },
-  {
-    "answer": [
-      "high"
-    ],
-    "evidence_found": [
-      true,
-      false
-    ],
-    "outcome": "review",
-    "reason": "no supporting sentence",
     "support": [
       "low"
     ]

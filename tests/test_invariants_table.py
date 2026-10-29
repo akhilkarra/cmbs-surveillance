@@ -1,7 +1,6 @@
 """decision.py's docstring table as rows, and Lean's committed copy of it."""
 
 from cmbs.extraction.decision import (
-    NO_SUPPORTING_SENTENCE,
     UNSETTLED_ANSWER,
     UNSETTLED_SUPPORT,
     Band,
@@ -23,8 +22,7 @@ from cmbs.invariants.table import (
 LOW, UNSETTLED, HIGH = Band
 ANY = (LOW, UNSETTLED, HIGH)
 TABLE = [
-    Row((LOW,), (True, False), (LOW, UNSETTLED), Outcome.NOT_STATED, None),
-    Row((LOW,), (True, False), (HIGH,), Outcome.REVIEW, NO_SUPPORTING_SENTENCE),
+    Row((LOW,), (True, False), ANY, Outcome.NOT_STATED, None),
     Row((UNSETTLED,), (False,), ANY, Outcome.REVIEW, EVIDENCE_NOT_FOUND),
     Row((HIGH,), (False,), ANY, Outcome.REVIEW, EVIDENCE_NOT_FOUND),
     Row((UNSETTLED,), (True,), ANY, Outcome.REVIEW, UNSETTLED_SUPPORT),
@@ -50,14 +48,14 @@ def test_parsing_skips_prose_and_other_tables_and_stops_after_the_table():
     | support | evidence | answer | outcome |
     |---------|----------|--------|---------|
     | high    | found    | high   | auto-accept |
-    | low     | not found | any   | review: no supporting sentence |
+    | low     | not found | any   | review: evidence not found in source |
 
     | support | evidence | answer | outcome |
     | high    | found    | low    | not stated |
     """
     assert parse_rows(text) == [
         Row((HIGH,), (True,), (HIGH,), Outcome.AUTO_ACCEPT, None),
-        Row((LOW,), (False,), ANY, Outcome.REVIEW, NO_SUPPORTING_SENTENCE),
+        Row((LOW,), (False,), ANY, Outcome.REVIEW, EVIDENCE_NOT_FOUND),
     ]
     assert parse_rows("no table here") == []
 
@@ -84,7 +82,8 @@ def test_a_row_matches_only_on_all_three_columns():
     assert not row.matches(Combination(UNSETTLED, True, LOW))
     assert not row.matches(Combination(HIGH, False, LOW))
     assert not row.matches(Combination(HIGH, True, HIGH))
-    assert python_decision(Combination(LOW, False, HIGH)) == (
+    assert python_decision(Combination(LOW, False, HIGH)) == (Outcome.NOT_STATED, None)
+    assert python_decision(Combination(UNSETTLED, True, HIGH)) == (
         Outcome.REVIEW,
-        NO_SUPPORTING_SENTENCE,
+        UNSETTLED_SUPPORT,
     )

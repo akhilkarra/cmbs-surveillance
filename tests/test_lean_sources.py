@@ -46,7 +46,7 @@ def test_the_project_is_lean_core_on_a_pinned_toolchain():
 
 def test_every_theorem_is_audited():
     found = theorems()
-    assert len(found) == 31
+    assert len(found) == 33
     assert found == audited()
 
 

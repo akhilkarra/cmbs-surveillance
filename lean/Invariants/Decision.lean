@@ -8,8 +8,7 @@ table whose rows use "any" and lists of bands:
 
 | support    | evidence  | answer         | outcome                                      |
 |------------|-----------|----------------|----------------------------------------------|
-| low        | any       | low, unsettled | not stated                                   |
-| low        | any       | high           | review: no supporting sentence               |
+| low        | any       | any            | not stated                                   |
 | unsettled  | not found | any            | review: evidence not found in source         |
 | high       | not found | any            | review: evidence not found in source         |
 | unsettled  | found     | any            | review: unsettled support                    |
@@ -21,7 +20,11 @@ for all 18 combinations (3 support bands × 2 evidence results × 3 answer bands
 
 * `table_total`: exactly one row of the table matches;
 * `decide_follows_table`: `decide` gives that row's outcome and reason;
-* `one_outcome`: every combination leads to exactly one of auto-accept, review or not stated.
+* `one_outcome`: every combination leads to exactly one of auto-accept, review or not stated;
+* `support_low_not_stated`: without a supporting sentence the field is not stated, whatever the
+  answer's probability (grill log Q87);
+* `auto_accept_needs_all_three`: nothing is auto-accepted unless support and answer are high and
+  the evidence was found.
 
 Python's `decide` is compared with this one on every combination, and the table with the
 docstring's (`tests/test_lean_oracle.py`).
@@ -46,7 +49,6 @@ deriving DecidableEq, Repr
 def Outcome.all : List Outcome := [.autoAccept, .review, .notStated]
 
 inductive Reason where
-  | noSupportingSentence
   | evidenceNotFound
   | unsettledSupport
   | unsettledAnswer
@@ -60,8 +62,7 @@ deriving DecidableEq, Repr
 /-- The rules, in the order `cmbs.extraction.decision.decide` tests them. -/
 def decide (answer support : Band) (evidenceFound : Bool) : Decision :=
   match support with
-  | .low =>
-    if answer = .high then ⟨.review, some .noSupportingSentence⟩ else ⟨.notStated, none⟩
+  | .low => ⟨.notStated, none⟩
   | _ =>
     if !evidenceFound then ⟨.review, some .evidenceNotFound⟩
     else if support = .unsettled then ⟨.review, some .unsettledSupport⟩
@@ -81,8 +82,7 @@ def Row.matches (row : Row) (answer support : Band) (evidenceFound : Bool) : Boo
     row.answer.contains answer
 
 def table : List Row :=
-  [ ⟨[.low], [true, false], [.low, .unsettled], ⟨.notStated, none⟩⟩,
-    ⟨[.low], [true, false], [.high], ⟨.review, some .noSupportingSentence⟩⟩,
+  [ ⟨[.low], [true, false], Band.all, ⟨.notStated, none⟩⟩,
     ⟨[.unsettled], [false], Band.all, ⟨.review, some .evidenceNotFound⟩⟩,
     ⟨[.high], [false], Band.all, ⟨.review, some .evidenceNotFound⟩⟩,
     ⟨[.unsettled], [true], Band.all, ⟨.review, some .unsettledSupport⟩⟩,
@@ -106,6 +106,16 @@ theorem one_outcome (answer support : Band) (evidenceFound : Bool) :
 theorem reason_iff_review (answer support : Band) (evidenceFound : Bool) :
     (decide answer support evidenceFound).reason.isSome = true ↔
       (decide answer support evidenceFound).outcome = .review := by
+  cases answer <;> cases support <;> cases evidenceFound <;> simp [decide]
+
+theorem support_low_not_stated (answer : Band) (evidenceFound : Bool) :
+    decide answer .low evidenceFound = ⟨.notStated, none⟩ := by
+  rfl
+
+theorem auto_accept_needs_all_three (answer support : Band) (evidenceFound : Bool)
+    (h : (decide answer support evidenceFound).outcome = .autoAccept) :
+    answer = .high ∧ support = .high ∧ evidenceFound = true := by
+  revert h
   cases answer <;> cases support <;> cases evidenceFound <;> simp [decide]
 
 end Invariants.Decision

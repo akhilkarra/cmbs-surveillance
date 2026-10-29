@@ -60,3 +60,5 @@ elab "#audit " names:ident* : command => do
   Invariants.Decision.decide_follows_table
   Invariants.Decision.one_outcome
   Invariants.Decision.reason_iff_review
+  Invariants.Decision.support_low_not_stated
+  Invariants.Decision.auto_accept_needs_all_three

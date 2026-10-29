@@ -144,7 +144,6 @@ def outcomeName : Outcome → String
   | .notStated => "not stated"
 
 def decisionReason : Reason → String
-  | .noSupportingSentence => "no supporting sentence"
   | .evidenceNotFound => "evidence not found in source"
   | .unsettledSupport => "unsettled support"
   | .unsettledAnswer => "unsettled answer"
