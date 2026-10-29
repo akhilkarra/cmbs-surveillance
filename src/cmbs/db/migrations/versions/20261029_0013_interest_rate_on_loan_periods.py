@@ -9,7 +9,7 @@ Rows loaded before these columns existed are filled from the tag as stored in br
 the loader reads it (`cmbs.tape.convert.read_rate`): the same numbers, nulls and notes.
 
 Revision ID: 0013
-Revises: 0012
+Revises: 0014
 Create Date: 2026-10-29 15:14:54.685799
 """
 
@@ -19,7 +19,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0013"
-down_revision: str | Sequence[str] | None = "0012"
+down_revision: str | Sequence[str] | None = "0014"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
