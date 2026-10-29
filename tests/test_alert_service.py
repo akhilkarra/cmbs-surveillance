@@ -38,6 +38,7 @@ from cmbs.audit.tables import AuditEntry
 from cmbs.book.service import NoteRef, PositionLine, link_whole_loan, load_positions
 from cmbs.deals.service import by_name
 from cmbs.distribution.service import load_report
+from cmbs.distribution.tables import ReportComment
 from cmbs.domain import Period, money
 from cmbs.panel.service import UnknownDeal
 from cmbs.runs.service import start_run
@@ -118,7 +119,13 @@ def load_month(
 
 
 def load_10d(
-    db: Session, deal: str, period: Period, comments: dict[str, str], *, on: dt.date | None = None
+    db: Session,
+    deal: str,
+    period: Period,
+    comments: dict[str, str],
+    *,
+    on: dt.date | None = None,
+    form: int = 2,
 ) -> str:
     rows = "\n".join(
         f"<tr><td>{loan}</td><td>3{loan}</td><td>{escape(text)}</td></tr>"
@@ -130,7 +137,7 @@ def load_10d(
         determination_date=f"{period.month:02d}/11/{period.year % 100:02d}",
         rows=rows,
     )
-    number = accession(deal, period, 2)
+    number = accession(deal, period, form)
     load_report(
         db,
         user="quinn",
@@ -478,6 +485,43 @@ def test_a_10d_filed_after_the_tape_moves_the_publication_day_and_adds_comments(
         dt.date(2026, 10, 2),
         accession(F1, SEPTEMBER, 2),
     )
+
+
+@needs_db
+def test_the_latest_10d_of_the_month_is_the_one_compared(seeded):
+    load_month(seeded, F1, AUGUST)
+    load_10d(seeded, F1, AUGUST, {"2": "First."})
+    load_month(seeded, F1, SEPTEMBER)
+    load_10d(seeded, F1, SEPTEMBER, {"2": "First. Later report."}, form=3)
+    load_10d(seeded, F1, SEPTEMBER, {"2": "First. Earlier report."}, on=dt.date(2026, 9, 28))
+    clock.set_now(SEP_30)
+    (alert,) = build(seeded).alerts
+    assert (alert.added, alert.accessions) == (("Later report.",), (accession(F1, SEPTEMBER, 3),))
+
+
+@needs_db
+def test_a_loans_comments_from_several_tables_are_read_as_one_in_table_order(seeded):
+    load_month(seeded, F1, AUGUST)
+    load_10d(seeded, F1, AUGUST, {"2": "First."})
+    load_month(seeded, F1, SEPTEMBER)
+    report = load_10d(seeded, F1, SEPTEMBER, {"2": "First."})
+    seeded.add(
+        ReportComment(
+            accession=report,
+            loan_id="2",
+            source_table="A watchlist table",
+            deal_id=deal_id(seeded),
+            period=SEPTEMBER.first_day,
+            comment="Watchlisted.",
+        )
+    )
+    seeded.flush()
+    clock.set_now(SEP_30)
+    (alert,) = build(seeded).alerts
+    assert alert.added == ("Watchlisted.",)
+    month = service.read_month(seeded, deal_id(seeded), SEPTEMBER, dt.date(2026, 9, 29))
+    assert month is not None and month.comments is not None
+    assert month.comments.by_loan == {"2": "Watchlisted. First."}
 
 
 @needs_db

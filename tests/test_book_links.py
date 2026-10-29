@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select
 
 from cmbs import clock
-from cmbs.access.service import PermissionRefused, UnknownUser
+from cmbs.access.service import PermissionRefused, UnknownUser, ensure_user
 from cmbs.audit.tables import AuditEntry
 from cmbs.book.service import (
     NOTHING_HELD,
@@ -180,6 +180,15 @@ def test_only_a_quant_links_whole_loans_and_refusals_are_audited(seeded):
         ("bob", "link whole loan", "refused", "no user named 'bob'"),
     ]
     assert seeded.scalars(select(WholeLoan)).all() == []
+
+
+@needs_db
+def test_a_user_without_roles_may_not_link(seeded):
+    ensure_user(seeded, "nobody", set())
+    with pytest.raises(PermissionRefused, match="^a user without roles may not link whole loans$"):
+        link_whole_loan(seeded, user="nobody", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
+    with pytest.raises(PermissionRefused, match="^analyst may not link whole loans$"):
+        link_whole_loan(seeded, user="alex", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
 
 
 @needs_db
