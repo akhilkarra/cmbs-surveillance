@@ -24,9 +24,14 @@ def the_log(
     by: str | None = None,
     start: dt.date | None = None,
     end: dt.date | None = None,
+    deal: str | None = None,
+    loan: str | None = None,
+    run: int | None = None,
 ) -> list[dict[str, Any]]:
-    """The log, optionally by one user and between two dates (inclusive), newest first."""
-    return [entry_view(entry) for entry in read_log(db, user, user=by, start=start, end=end)]
+    """The log, optionally by one user, one loan of a deal, one run and between two dates
+    (inclusive), newest first. Risk and operators only."""
+    found = read_log(db, user, user=by, start=start, end=end, deal=deal, loan=loan, run=run)
+    return [entry_view(entry) for entry in found]
 
 
 @router.delete("/{entry_id}")

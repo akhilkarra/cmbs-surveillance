@@ -17,6 +17,7 @@ from cmbs.access.roles import PERMISSIONS, Action, Role, parse_roles
 from cmbs.access.service import authorize, ensure_user, grant_role, roles_of
 from cmbs.audit import service as audit
 from cmbs.audit.tables import AuditEntry
+from cmbs.deals.service import get_or_create
 from cmbs.domain import Period
 from cmbs.settings import service as ledger
 from cmbs.settings.tables import REJECTED, SettingsProposal, SettingsVersion
@@ -42,6 +43,14 @@ def _midnight(day: dt.date) -> dt.datetime:
 
 def _deal(context) -> str:
     return getattr(context, "deal", None) or FIXTURE_DEAL
+
+
+def _registered_deal(context) -> str:
+    """The scenario's deal, registered: reading a loan's log looks its deal up, and refuses one
+    that is not registered. Entries about a loan come from features that register its deal."""
+    name = _deal(context)
+    in_session(lambda db: get_or_create(db, name))
+    return name
 
 
 def _window(context, action):
@@ -384,6 +393,7 @@ def step_audit_log_holds_entries(context, first, second, one, other, month):
     plan.append(((first, one), start - dt.timedelta(microseconds=1)))
     plan.append(((first, one), end))
     context.audit_seeded = []
+    _registered_deal(context)
     for (loan, user), moment in plan:
         entry_id = _record_at(
             moment,
@@ -476,7 +486,7 @@ def step_attempt_recorded(context):
 @when(r'"(?P<user>[^"]+)" opens loan "(?P<loan>[^"]+)"')
 def step_opens_loan(context, user, loan):
     # The loan view arrives with the dashboard; its change history is read the same way.
-    deal = _deal(context)
+    deal = _registered_deal(context)
     context.history = attempt(
         context,
         lambda: in_session(lambda db: audit.loan_history(db, user, deal=deal, loan=loan)),

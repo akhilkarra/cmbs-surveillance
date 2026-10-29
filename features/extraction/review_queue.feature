@@ -16,7 +16,7 @@ Feature: The review queue
 
   Scenario: Items waiting more than five business days are overdue
     When "alex" opens the review queue on 2026-10-06
-    Then item C is marked "overdue, waiting 8 days"
+    Then item C is marked "overdue, waiting 7 business days"
     And items A and B are not overdue
 
   Scenario: An analyst declines an item the comment cannot settle
