@@ -130,6 +130,15 @@ input:focus-visible {
   border: 1px solid var(--rule);
 }
 
+/* A wrapped cell reads as a short paragraph: a text line height rather than the row's, so a row
+   grows by the lines it needs, and padding that puts its first line where a one-line cell's is. */
+.grid .ag-cell-wrap-text {
+  line-height: 1.45;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
 /* Severity is the one loud thing: a bar in the alert's colour, on the book and the loan. */
 .severity {
   display: inline-block;
