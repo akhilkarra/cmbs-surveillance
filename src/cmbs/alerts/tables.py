@@ -1,9 +1,12 @@
 """Alerts and the record of each month's build, in `app`: they carry shared workflow state.
 
-app.alert_build  one row per deal and month built: what was compared, under which settings
-app.alert        one alert per loan (or linked whole loan), month and rule, with its state
+app.alert_build  every build of a deal's month that read something new: a vintage, with what
+                 it compared and under which settings. Never changed once written.
+app.alert        one alert per loan (or linked whole loan), month and rule, with its state; an
+                 alert a later vintage no longer supports is marked superseded, never deleted
 app.alert_loan   each deal's loan an alert covers, the filing that showed the change and the
-                 loan's balance on it; a linked whole loan has one row per deal
+                 loan's balance on it; a linked whole loan has one row per deal, each of which a
+                 later vintage of its own deal can supersede
 """
 
 from collections.abc import Iterable
@@ -20,7 +23,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
-    UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -37,35 +40,54 @@ def _one_of(column: str, values: Iterable[str]) -> str:
 
 
 class AlertBuild(Base):
-    """A deal's month, compared with the month before. `compared_with` is None when there was
-    no earlier tape to compare with."""
+    """One vintage of a deal's month: the month compared with the month before, as published on
+    `as_of`. `compared_with` and `compared_report` are None when the month before had no tape or
+    no 10-D. A build that would read exactly what the latest vintage read writes nothing."""
 
     __tablename__ = "alert_build"
     __table_args__ = (
         CheckConstraint("extract(day FROM period) = 1", name="period_is_first_of_month"),
+        Index("ix_app_alert_build_deal_period", "deal_id", "period", "id"),
         {"schema": APP_SCHEMA},
     )
 
-    deal_id: Mapped[int] = mapped_column(ForeignKey("silver.deal.id"), primary_key=True)
-    period: Mapped[date] = mapped_column(Date, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("silver.deal.id"))
+    period: Mapped[date] = mapped_column(Date)
     as_of: Mapped[date] = mapped_column(Date)
     accession: Mapped[str] = mapped_column(ForeignKey("raw.filing.accession"))
-    compared_with: Mapped[str | None] = mapped_column(ForeignKey("raw.filing.accession"))
     report_accession: Mapped[str | None] = mapped_column(ForeignKey("raw.filing.accession"))
+    compared_with: Mapped[str | None] = mapped_column(ForeignKey("raw.filing.accession"))
+    compared_report: Mapped[str | None] = mapped_column(ForeignKey("raw.filing.accession"))
     settings_version: Mapped[int] = mapped_column(Integer)
-    first_built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    built_by: Mapped[str | None] = mapped_column(ForeignKey(_USER))
+    run_id: Mapped[int | None] = mapped_column(ForeignKey(f"{APP_SCHEMA}.run.id"))
 
 
 class Alert(Base):
-    """One change worth a PM's attention. Stored once per subject, month and rule.
+    """One change worth a PM's attention. One alert not superseded per subject, month and rule.
 
     `subject` is "<deal id>/<loan>" for a loan, or "whole loan <id>" for a linked whole loan,
-    so the same whole loan held through two deals raises one alert.
+    so the same whole loan held through two deals raises one alert. `raised_in` is the vintage
+    that raised it; `superseded_by` the vintage that no longer supports it, with the reason.
     """
 
     __tablename__ = "alert"
     __table_args__ = (
-        UniqueConstraint("subject", "period", "rule", name="uq_alert_subject_period_rule"),
+        Index(
+            "uq_app_alert_open_subject_period_rule",
+            "subject",
+            "period",
+            "rule",
+            unique=True,
+            postgresql_where=text("superseded_by IS NULL"),
+        ),
+        CheckConstraint(
+            "(superseded_by IS NULL) = (superseded_at IS NULL) "
+            "AND (superseded_by IS NULL) = (superseded_reason IS NULL)",
+            name="superseded_with_a_reason",
+        ),
         CheckConstraint("extract(day FROM period) = 1", name="period_is_first_of_month"),
         CheckConstraint(_one_of("severity", Severity), name="known_severity"),
         CheckConstraint(_one_of("state", State), name="known_state"),
@@ -97,6 +119,10 @@ class Alert(Base):
     as_of: Mapped[date] = mapped_column(Date)
     raised_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     run_id: Mapped[int | None] = mapped_column(ForeignKey(f"{APP_SCHEMA}.run.id"))
+    raised_in: Mapped[int] = mapped_column(ForeignKey(f"{APP_SCHEMA}.alert_build.id"))
+    superseded_by: Mapped[int | None] = mapped_column(ForeignKey(f"{APP_SCHEMA}.alert_build.id"))
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_reason: Mapped[str | None] = mapped_column(Text)
     state: Mapped[str] = mapped_column(String(16), default=State.NEW.value)
     acknowledged_by: Mapped[str | None] = mapped_column(ForeignKey(_USER))
     acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -128,3 +154,5 @@ class AlertLoan(Base):
     accession: Mapped[str] = mapped_column(ForeignKey("raw.filing.accession"))
     # The loan's ending balance on the month's tape; None when not reported or not on the tape.
     balance: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    # The vintage of this deal's month that no longer supports the alert for this loan.
+    superseded_by: Mapped[int | None] = mapped_column(ForeignKey(f"{APP_SCHEMA}.alert_build.id"))

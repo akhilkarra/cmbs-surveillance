@@ -6,11 +6,18 @@ in time, as of the day the newer month was published (the filing date of its cur
 of its 10-D when that came later), so later amendments of the earlier month do not change what
 the newer month is compared with. A loan's findings come from `cmbs.alerts.rules`.
 
-Every alert is stored once per subject, month and rule (`INSERT ... ON CONFLICT DO NOTHING`),
-so building a month again changes nothing, and two builds at once store each alert once. The
-subject is the deal's loan, or the whole loan when a quant has linked it across deals, so the
-same whole loan held through two deals raises one alert that lists both. An alert records the
-settings version in force when it was built and the filing that showed the change.
+Each build that reads something new is a vintage (`app.alert_build`), kept for good; a build
+that would read exactly what the latest vintage read writes nothing, so building a month again
+changes nothing. Builds of one deal take turns on an advisory lock. A new vintage keeps every
+alert it still supports, raises the ones it finds new, and marks superseded (never deletes or
+rewrites) the ones it no longer supports, say after an amendment of the month: the month's list
+shows the current vintage's alerts and, apart, the superseded ones with the vintage and reason.
+
+There is one alert not superseded per subject, month and rule. The subject is the deal's loan,
+or the whole loan when a quant has linked it across deals; an alert already raised on any note
+of a whole loan, before or after the link, is that whole loan's alert, so it is raised once and
+lists every deal. An alert records the settings in force when it was built (not on the month's
+`as_of`: backfills of months before the first approval need that) and the filing behind it.
 
 Exposure is read, not stored: the book on the last day of the alert's month (positions are
 point in time), summed over every deal the alert covers. A deal the book does not hold still
@@ -23,7 +30,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import NoReturn
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -44,7 +51,7 @@ from cmbs.alerts.rules import (
 )
 from cmbs.alerts.tables import Alert, AlertBuild, AlertLoan
 from cmbs.audit.service import record, refuse
-from cmbs.book.service import Book, book_as_of, holding, whole_loans_of
+from cmbs.book.service import Book, book_as_of, holding, whole_loan_notes, whole_loans_of
 from cmbs.deals.tables import Deal
 from cmbs.distribution.tables import DistributionReport, ReportComment
 from cmbs.domain import Period
@@ -60,6 +67,9 @@ RAISE = "raise alert"
 ACKNOWLEDGE = "acknowledge alert"
 ASSIGN = "assign alert"
 CLOSE = "close alert"
+SUPERSEDE = "supersede alert"
+# The advisory-lock space for builds of one deal; the deal's id is the key within it.
+BUILD_LOCK_SPACE = 0x0A1E
 
 
 class NoTape(Refused):
@@ -72,6 +82,10 @@ class UnknownAlert(Refused):
 
 class CannotTakeAlerts(Refused):
     """An alert is assigned only to someone who may close it."""
+
+
+class BackInTime(Refused):
+    """A build may not read a month as of a day before its latest vintage read it."""
 
 
 # ---------------------------------------------------------------------------- views
@@ -87,6 +101,17 @@ class CoveredLoan:
     balance: Decimal | None
     exposure: Decimal
     classes: tuple[str, ...]
+    # A later vintage of this deal's month no longer supports the alert for this loan.
+    superseded: bool = False
+
+
+@dataclass(frozen=True)
+class Supersession:
+    """The vintage that no longer supports an alert, when and why."""
+
+    vintage: int
+    at: dt.datetime
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -105,11 +130,14 @@ class AlertView:
     note: str | None
     assigned_to: str | None
     loans: tuple[CoveredLoan, ...]
+    superseded: Supersession | None = None
 
     @property
     def exposure(self) -> Decimal:
-        """Total face the book holds in every deal the alert covers."""
-        return sum((loan.exposure for loan in self.loans), Decimal("0.00"))
+        """Total face the book holds in every deal whose month still supports the alert (every
+        deal it covers, once the alert is superseded)."""
+        active = [loan for loan in self.loans if not loan.superseded] or self.loans
+        return sum((loan.exposure for loan in active), Decimal("0.00"))
 
     @property
     def classes(self) -> tuple[str, ...]:
@@ -132,22 +160,25 @@ class AlertView:
 
     @property
     def is_open(self) -> bool:
-        return self.state in OPEN_STATES
+        return self.state in OPEN_STATES and self.superseded is None
 
 
 @dataclass(frozen=True)
 class AlertList:
-    """A deal's alerts for one month. `note` explains an empty list."""
+    """A deal's alerts for one month: the current vintage's, and apart those an earlier vintage
+    raised that a later one superseded. `note` explains an empty list."""
 
     deal: str
     period: Period
     alerts: tuple[AlertView, ...]
     note: str | None
+    superseded_alerts: tuple[AlertView, ...] = ()
 
 
 @dataclass(frozen=True)
 class AlertSummary:
-    """What one build did: how many alerts it raised, and the month's alerts afterwards."""
+    """What one build did: how many alerts it raised and superseded, and the month's alerts
+    afterwards. `as_of` and `settings_version` are the current vintage's."""
 
     deal: str
     period: Period
@@ -156,6 +187,9 @@ class AlertSummary:
     raised: int
     alerts: tuple[AlertView, ...]
     note: str | None
+    superseded: int = 0
+    superseded_alerts: tuple[AlertView, ...] = ()
+    vintage: int | None = None
 
     def text(self) -> str:
         noun = "alert" if self.raised == 1 else "alerts"
@@ -163,6 +197,8 @@ class AlertSummary:
             f"{self.deal} {self.period.label} as of {self.as_of.isoformat()} "
             f"(settings version {self.settings_version}): {self.raised} new {noun}"
         )
+        if self.superseded:
+            line += f", {self.superseded} superseded"
         return f"{line}; {self.note}" if self.note else line
 
 
@@ -231,7 +267,15 @@ def _views(db: Session, alerts: Sequence[Alert]) -> list[AlertView]:
             books[day] = book_as_of(db, day)
         held = holding(books[day], loan.deal_id)
         covered.setdefault(loan.alert_id, []).append(
-            CoveredLoan(deal, loan.loan, loan.accession, loan.balance, held.face, held.classes)
+            CoveredLoan(
+                deal,
+                loan.loan,
+                loan.accession,
+                loan.balance,
+                held.face,
+                held.classes,
+                superseded=loan.superseded_by is not None,
+            )
         )
     return [
         AlertView(
@@ -249,16 +293,28 @@ def _views(db: Session, alerts: Sequence[Alert]) -> list[AlertView]:
             note=_note(alert),
             assigned_to=alert.assigned_to,
             loans=tuple(covered.get(alert.id, [])),
+            superseded=_supersession(alert),
         )
         for alert in alerts
     ]
 
 
-def _deal_month_alerts(db: Session, deal_id: int, period: Period) -> list[AlertView]:
+def _supersession(alert: Alert) -> Supersession | None:
+    if alert.superseded_by is None or alert.superseded_at is None:
+        return None
+    return Supersession(alert.superseded_by, alert.superseded_at, alert.superseded_reason or "")
+
+
+def _deal_month_alerts(
+    db: Session, deal_id: int, period: Period, *, superseded: bool = False
+) -> list[AlertView]:
+    """The deal's alerts for the month that its latest vintage supports, or (`superseded`) those
+    a later vintage of its month no longer supports."""
+    row = AlertLoan.superseded_by.is_not(None) if superseded else AlertLoan.superseded_by.is_(None)
     alerts = db.scalars(
         select(Alert)
         .join(AlertLoan, AlertLoan.alert_id == Alert.id)
-        .where(AlertLoan.deal_id == deal_id, Alert.period == period.first_day)
+        .where(AlertLoan.deal_id == deal_id, Alert.period == period.first_day, row)
     ).all()
     return sorted(_views(db, alerts), key=order_key)
 
@@ -350,6 +406,76 @@ def subject_of(deal_id: int, loan: str, whole_loan_id: int | None) -> str:
     return f"whole loan {whole_loan_id}" if whole_loan_id is not None else f"{deal_id}/{loan}"
 
 
+@dataclass(frozen=True)
+class Reading:
+    """What a build read: the filings of both months and the settings version. Two builds that
+    read the same thing are one vintage."""
+
+    accession: str
+    report_accession: str | None
+    compared_with: str | None
+    compared_report: str | None
+    settings_version: int
+
+
+def reading_of(build: AlertBuild) -> Reading:
+    return Reading(
+        accession=build.accession,
+        report_accession=build.report_accession,
+        compared_with=build.compared_with,
+        compared_report=build.compared_report,
+        settings_version=build.settings_version,
+    )
+
+
+def month_reading(after: Month, before: Month | None, settings_version: int) -> Reading:
+    return Reading(
+        accession=after.accession,
+        report_accession=after.comments.accession if after.comments is not None else None,
+        compared_with=before.accession if before is not None else None,
+        compared_report=(
+            before.comments.accession
+            if before is not None and before.comments is not None
+            else None
+        ),
+        settings_version=settings_version,
+    )
+
+
+def vintage_problem(
+    latest: AlertBuild | None, day: dt.date, deal: str, period: Period
+) -> BackInTime | None:
+    """A new vintage reads the month as of the latest vintage's day or later. Pure."""
+    if latest is None or day >= latest.as_of:
+        return None
+    return BackInTime(
+        f"the {period.label} alerts of {deal} were last built as of {latest.as_of.isoformat()}; "
+        f"a build as of {day.isoformat()} would go back in time"
+    )
+
+
+def supersede_reason(period: Period, day: dt.date, accession: str) -> str:
+    """'no longer shown by September 2026 as published on 2026-10-10 (tape 0009...)'."""
+    return f"no longer shown by {period.label} as published on {day.isoformat()} (tape {accession})"
+
+
+def latest_vintage(db: Session, deal_id: int, period: Period) -> AlertBuild | None:
+    return db.scalars(
+        select(AlertBuild)
+        .where(AlertBuild.deal_id == deal_id, AlertBuild.period == period.first_day)
+        .order_by(AlertBuild.id.desc())
+        .limit(1)
+    ).one_or_none()
+
+
+def _lock_builds(db: Session, deal_id: int) -> None:
+    """Builds of one deal take turns until the transaction ends."""
+    db.execute(
+        text("SELECT pg_advisory_xact_lock(CAST(:space AS integer), CAST(:deal AS integer))"),
+        {"space": BUILD_LOCK_SPACE, "deal": deal_id},
+    )
+
+
 def build_alerts(
     db: Session,
     *,
@@ -359,11 +485,14 @@ def build_alerts(
     run_id: int | None = None,
     as_of: dt.date | None = None,
 ) -> AlertSummary:
-    """Compare the deal's month with the month before and store every new alert once.
+    """Compare the deal's month with the month before; when that reads something the latest
+    vintage did not, store a new vintage, raise its new alerts and supersede the ones it no
+    longer supports.
 
-    `as_of` defaults to the day the month was published (`publication_day`). With an actor
-    (who must be one allowed to run refreshes), every alert raised is audited, under the run
-    when one is given, and a refusal is recorded before it is raised.
+    `as_of` defaults to the day the month was published (`publication_day`) and may not go back
+    before the latest vintage's. With an actor (who must be one allowed to run refreshes), every
+    alert raised or superseded is audited, under the run when one is given, and a refusal is
+    recorded before it is raised. The settings are those in force when the build runs.
     """
     if run_id is not None and actor is None:
         raise ValueError("a run's writes are audited, so a run id needs an actor")
@@ -372,12 +501,21 @@ def build_alerts(
     deal = db.get(Deal, deal_id)
     if deal is None:
         raise ValueError(f"no deal with id {deal_id}")
+    _lock_builds(db, deal_id)
     try:
         day = as_of or publication_day(db, deal, period, clock.today())
         after = read_month(db, deal_id, period, day)
         if after is None:
             raise NoTape(f"no {period.label} loan tape of {deal.name} had been filed by {day}")
         settings = in_force(db)
+        before = read_month(db, deal_id, period.shift(-1), day)
+        latest = latest_vintage(db, deal_id, period)
+        reading = month_reading(after, before, settings.version)
+        if latest is not None and reading_of(latest) == reading:
+            return _summary(db, deal, period, latest, raised=0, superseded=0)
+        problem = vintage_problem(latest, day, deal.name, period)
+        if problem is not None:
+            raise problem
     except Refused as refusal:
         if actor is None:
             raise
@@ -390,7 +528,21 @@ def build_alerts(
             subject="deal",
             subject_key=deal.name,
         )
-    before = read_month(db, deal_id, period.shift(-1), day)
+    vintage = AlertBuild(
+        deal_id=deal_id,
+        period=period.first_day,
+        as_of=day,
+        accession=reading.accession,
+        report_accession=reading.report_accession,
+        compared_with=reading.compared_with,
+        compared_report=reading.compared_report,
+        settings_version=settings.version,
+        built_at=clock.now(),
+        built_by=actor.user if actor is not None else None,
+        run_id=run_id,
+    )
+    db.add(vintage)
+    db.flush()
     findings = (
         compare(before, after, Context(period, settings.values.dscr_alert_threshold))
         if before is not None
@@ -398,57 +550,43 @@ def build_alerts(
     )
     linked = whole_loans_of(db, deal_id)
     raised = 0
+    supported: set[int] = set()
     for finding in findings:
         alert_id, new = _store(
             db,
             finding,
             deal=deal,
-            period=period,
+            vintage=vintage,
             whole_loan_id=linked.get(finding.loan),
             balance=_balance(after, finding.loan),
-            settings_version=settings.version,
-            day=day,
-            run_id=run_id,
         )
+        supported.add(alert_id)
         if new:
             raised += 1
             if actor is not None:
                 _audit_raised(db, actor, run_id, alert_id, finding, deal.name, period)
-    db.execute(
-        insert(AlertBuild)
-        .values(
-            deal_id=deal_id,
-            period=period.first_day,
-            as_of=day,
-            accession=after.accession,
-            compared_with=before.accession if before is not None else None,
-            report_accession=after.comments.accession if after.comments is not None else None,
-            settings_version=settings.version,
-            first_built_at=clock.now(),
-        )
-        .on_conflict_do_update(
-            index_elements=[AlertBuild.deal_id, AlertBuild.period],
-            set_={
-                "as_of": day,
-                "accession": after.accession,
-                "compared_with": before.accession if before is not None else None,
-                "report_accession": (
-                    after.comments.accession if after.comments is not None else None
-                ),
-                "settings_version": settings.version,
-            },
-        )
-    )
+    superseded = _supersede(db, deal, vintage, supported, actor, run_id)
+    return _summary(db, deal, period, vintage, raised=raised, superseded=superseded)
+
+
+def _summary(
+    db: Session, deal: Deal, period: Period, vintage: AlertBuild, *, raised: int, superseded: int
+) -> AlertSummary:
     db.flush()
-    alerts = _deal_month_alerts(db, deal_id, period)
+    alerts = _deal_month_alerts(db, deal.id, period)
     return AlertSummary(
         deal=deal.name,
         period=period,
-        as_of=day,
-        settings_version=settings.version,
+        as_of=vintage.as_of,
+        settings_version=vintage.settings_version,
         raised=raised,
         alerts=tuple(alerts),
-        note=list_note(period, built=True, compared=before is not None, empty=not alerts),
+        note=list_note(
+            period, built=True, compared=vintage.compared_with is not None, empty=not alerts
+        ),
+        superseded=superseded,
+        superseded_alerts=tuple(_deal_month_alerts(db, deal.id, period, superseded=True)),
+        vintage=vintage.id,
     )
 
 
@@ -457,50 +595,76 @@ def _balance(month: Month, loan: str) -> Decimal | None:
     return row.ending_balance if row is not None else None
 
 
+def _open_alert(db: Session, subjects: Sequence[str], period: dt.date, rule: str) -> Alert | None:
+    """The alert not superseded on any of the subjects for the month and rule, locked."""
+    return db.scalars(
+        select(Alert)
+        .where(
+            Alert.subject.in_(subjects),
+            Alert.period == period,
+            Alert.rule == rule,
+            Alert.superseded_by.is_(None),
+        )
+        .order_by(Alert.id)
+        .limit(1)
+        .with_for_update()
+    ).first()
+
+
 def _store(
     db: Session,
     finding: Finding,
     *,
     deal: Deal,
-    period: Period,
+    vintage: AlertBuild,
     whole_loan_id: int | None,
     balance: Decimal | None,
-    settings_version: int,
-    day: dt.date,
-    run_id: int | None,
 ) -> tuple[int, bool]:
-    """Store the finding's alert unless its subject already has one for the month and rule, and
-    add the deal's loan to it. Returns the alert's id and whether it is new."""
+    """The finding's alert, stored unless one not superseded already covers its subject for the
+    month and rule, with the deal's loan added to it. Returns its id and whether it is new.
+
+    For a note of a whole loan the subject is the whole loan, and an alert raised on any of its
+    notes before they were linked is the same alert.
+    """
     subject = subject_of(deal.id, finding.loan, whole_loan_id)
-    new_id = db.scalar(
-        insert(Alert)
-        .values(
-            subject=subject,
-            period=period.first_day,
-            rule=finding.rule.value,
-            severity=finding.severity.value,
-            title=finding.title,
-            message=finding.message,
-            added=list(finding.added),
-            whole_loan_id=whole_loan_id,
-            settings_version=settings_version,
-            as_of=day,
-            raised_at=clock.now(),
-            run_id=run_id,
-            state=State.NEW.value,
-        )
-        .on_conflict_do_nothing(constraint="uq_alert_subject_period_rule")
-        .returning(Alert.id)
-    )
-    alert_id = new_id
-    if alert_id is None:
-        alert_id = db.scalars(
-            select(Alert.id).where(
-                Alert.subject == subject,
-                Alert.period == period.first_day,
-                Alert.rule == finding.rule.value,
+    subjects = [subject]
+    if whole_loan_id is not None:
+        subjects += [subject_of(d, loan, None) for d, loan in whole_loan_notes(db, whole_loan_id)]
+    existing = _open_alert(db, subjects, vintage.period, finding.rule.value)
+    new_id = None
+    if existing is None:
+        new_id = db.scalar(
+            insert(Alert)
+            .values(
+                subject=subject,
+                period=vintage.period,
+                rule=finding.rule.value,
+                severity=finding.severity.value,
+                title=finding.title,
+                message=finding.message,
+                added=list(finding.added),
+                whole_loan_id=whole_loan_id,
+                settings_version=vintage.settings_version,
+                as_of=vintage.as_of,
+                raised_at=clock.now(),
+                run_id=vintage.run_id,
+                raised_in=vintage.id,
+                state=State.NEW.value,
             )
-        ).one()
+            .on_conflict_do_nothing(
+                index_elements=[Alert.subject, Alert.period, Alert.rule],
+                index_where=Alert.superseded_by.is_(None),
+            )
+            .returning(Alert.id)
+        )
+        if new_id is None:  # a concurrent build of another deal stored it first
+            existing = _open_alert(db, [subject], vintage.period, finding.rule.value)
+    if new_id is not None:
+        alert_id = new_id
+    elif existing is not None:
+        alert_id = existing.id
+    else:  # pragma: no cover - the conflict above means the row exists
+        raise RuntimeError(f"alert on {subject} for {vintage.period} vanished")
     db.execute(
         insert(AlertLoan)
         .values(
@@ -513,6 +677,67 @@ def _store(
         .on_conflict_do_nothing(index_elements=[AlertLoan.alert_id, AlertLoan.deal_id])
     )
     return alert_id, new_id is not None
+
+
+def _supersede(
+    db: Session,
+    deal: Deal,
+    vintage: AlertBuild,
+    supported: set[int],
+    actor: Actor | None,
+    run_id: int | None,
+) -> int:
+    """Mark the deal's loans on alerts of the month that the vintage no longer supports; an
+    alert none of whose deals supports it any more is superseded. Returns how many were marked.
+
+    Nothing is deleted or rewritten: the mark names the vintage, and the alert keeps its state.
+    """
+    rows = db.scalars(
+        select(AlertLoan)
+        .join(Alert, Alert.id == AlertLoan.alert_id)
+        .where(
+            AlertLoan.deal_id == deal.id,
+            Alert.period == vintage.period,
+            AlertLoan.superseded_by.is_(None),
+            AlertLoan.alert_id.not_in(supported),
+        )
+        .order_by(AlertLoan.alert_id)
+    ).all()
+    period = Period.of(vintage.period)
+    reason = supersede_reason(period, vintage.as_of, vintage.accession)
+    for row in rows:
+        alert = db.get_one(Alert, row.alert_id, with_for_update=True, populate_existing=True)
+        row.superseded_by = vintage.id
+        db.flush()
+        still = db.scalar(
+            select(func.count())
+            .select_from(AlertLoan)
+            .where(AlertLoan.alert_id == alert.id, AlertLoan.superseded_by.is_(None))
+        )
+        if not still:
+            alert.superseded_by = vintage.id
+            alert.superseded_at = clock.now()
+            alert.superseded_reason = reason
+        if actor is not None:
+            record(
+                db,
+                user=actor.user,
+                role=actor.role.value,
+                run_id=run_id,
+                action=SUPERSEDE,
+                subject=ALERT,
+                subject_key=str(alert.id),
+                field="superseded",
+                after=reason,
+                detail={
+                    "deal": deal.name,
+                    "loan": row.loan,
+                    "period": period.label,
+                    "vintage": vintage.id,
+                    "alert superseded": not still,
+                },
+            )
+    return len(rows)
 
 
 def _audit_raised(
@@ -558,11 +783,12 @@ def build_for(
 
 
 def month_alerts(db: Session, *, reader: str, deal: str, period: Period) -> AlertList:
-    """A deal's alerts for a month, most severe first; an empty list says why it is empty."""
+    """A deal's alerts for a month as its latest vintage supports them, most severe first, and
+    apart those a later vintage superseded; an empty list says why it is empty."""
     authorize(db, reader, Action.READ_PANEL)
     deal_row = deal_named(db, deal)
     alerts = _deal_month_alerts(db, deal_row.id, period)
-    build = db.get(AlertBuild, (deal_row.id, period.first_day))
+    build = latest_vintage(db, deal_row.id, period)
     return AlertList(
         deal=deal_row.name,
         period=period,
@@ -573,6 +799,7 @@ def month_alerts(db: Session, *, reader: str, deal: str, period: Period) -> Aler
             compared=build is not None and build.compared_with is not None,
             empty=not alerts,
         ),
+        superseded_alerts=tuple(_deal_month_alerts(db, deal_row.id, period, superseded=True)),
     )
 
 
@@ -593,18 +820,24 @@ def _listed(db: Session, alerts: Iterable[Alert]) -> list[AlertView]:
 
 
 def open_alerts(db: Session, *, reader: str, period: Period | None = None) -> list[AlertView]:
-    """Every alert not yet closed, optionally for one month."""
+    """Every alert neither closed nor superseded, optionally for one month."""
     authorize(db, reader, Action.READ_PANEL)
-    query = select(Alert).where(Alert.state.in_([state.value for state in OPEN_STATES]))
+    query = select(Alert).where(
+        Alert.state.in_([state.value for state in OPEN_STATES]), Alert.superseded_by.is_(None)
+    )
     if period is not None:
         query = query.where(Alert.period == period.first_day)
     return _listed(db, db.scalars(query))
 
 
 def work_list(db: Session, *, user: str) -> list[AlertView]:
-    """The open alerts assigned to the user."""
+    """The open alerts assigned to the user that no later vintage superseded."""
     authorize(db, user, Action.READ_PANEL)
-    query = select(Alert).where(Alert.assigned_to == user, Alert.state == State.ASSIGNED.value)
+    query = select(Alert).where(
+        Alert.assigned_to == user,
+        Alert.state == State.ASSIGNED.value,
+        Alert.superseded_by.is_(None),
+    )
     return _listed(db, db.scalars(query))
 
 

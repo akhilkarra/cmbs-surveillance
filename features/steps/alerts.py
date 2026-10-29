@@ -11,8 +11,8 @@ there, as a refresh run that morning would.
 The book: unless a scenario loads its own positions, exposure is read from the positions file
 the features README describes (dated 2026-09-30: Class E $20,000,000.00 and Class F
 $5,000,000.00 of "Fixture Trust 2026-F1", Class D $40,000,000.00 of "Fixture Trust 2026-F2").
-Steps that only load positions or link whole loans live in book.py; they share state with
-these steps through `context.positions_loaded` and `context.linked`.
+Steps that only load positions live in book.py; they tell these steps through
+`context.positions_loaded`.
 """
 
 import datetime as dt
@@ -29,9 +29,8 @@ from cmbs import clock
 from cmbs.absee.schedule_al import NAMESPACE
 from cmbs.alerts import service as alerts
 from cmbs.alerts.codes import WORKOUT_STRATEGY
-from cmbs.alerts.service import AlertView
-from cmbs.alerts.tables import AlertBuild
-from cmbs.book.service import PositionLine, book_as_of, load_positions
+from cmbs.alerts.service import AlertView, latest_vintage
+from cmbs.book.service import NoteRef, PositionLine, book_as_of, link_whole_loan, load_positions
 from cmbs.deals.service import by_name
 from cmbs.distribution.service import load_report
 from cmbs.domain import Period, money
@@ -689,9 +688,9 @@ def step_left_out(context):
 def _built(deal: str, period: Period) -> bool:
     def find(db):
         deal_row = by_name(db, deal)
-        return deal_row is not None and db.get(AlertBuild, (deal_row.id, period.first_day))
+        return deal_row is not None and latest_vintage(db, deal_row.id, period) is not None
 
-    return bool(in_session(find))
+    return in_session(find)
 
 
 # Loan 4 falls one payment status further behind each month from July 2026, so every month
@@ -739,6 +738,20 @@ def step_they_show(context, amount):
     views = context.listed.alerts
     assert views, f"no alerts: {context.listed.note}"
     assert {view.exposure for view in views} == {amount}, [view.exposure for view in views]
+
+
+@given(
+    '"{user:AlertName}" has linked loan "{first:AlertName}" of "{first_deal:AlertName}" and '
+    'loan "{second:AlertName}" of "{second_deal:AlertName}" as the same whole loan'
+)
+def step_linked(context, user, first, first_deal, second, second_deal):
+    """A link names loans on loaded tapes, so each deal's August 2026 is loaded first."""
+    context.linked = [(first_deal, first), (second_deal, second)]
+    for deal, _ in context.linked:
+        month(context, deal, TAPE_PERIOD.shift(-1))
+    load_months(context)
+    notes = [NoteRef(deal, loan) for deal, loan in context.linked]
+    in_session(lambda db: link_whole_loan(db, user=user, notes=notes))
 
 
 @given(

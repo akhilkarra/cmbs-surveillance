@@ -1,12 +1,14 @@
 """Alerts, alert builds and whole loans
 
-Monthly alerts with their shared lifecycle state, the loans each alert covers, and a record of
-every deal-month built (Q25, Q44). Whole loans link the pari passu notes of one loan held
-through several deals, so a linked loan raises one alert (Q48). All application state in `app`.
+Monthly alerts with their shared lifecycle state, the loans each alert covers, and every vintage
+of a deal-month built, never overwritten; an alert a later vintage no longer supports is marked
+superseded, so only one alert per subject, month and rule is not superseded (Q25, Q44). Whole
+loans link the pari passu notes of one loan held through several deals, so a linked loan
+raises one alert (Q48). All application state in `app`.
 
 Revision ID: 0008
 Revises: 0003
-Create Date: 2026-10-28 19:42:01.033827
+Create Date: 2026-10-28 21:00:17.311077
 """
 
 from collections.abc import Sequence
@@ -34,6 +36,77 @@ def upgrade() -> None:
         schema="app",
     )
     op.create_table(
+        "alert_build",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("deal_id", sa.Integer(), nullable=False),
+        sa.Column("period", sa.Date(), nullable=False),
+        sa.Column("as_of", sa.Date(), nullable=False),
+        sa.Column("accession", sa.String(length=20), nullable=False),
+        sa.Column("report_accession", sa.String(length=20), nullable=True),
+        sa.Column("compared_with", sa.String(length=20), nullable=True),
+        sa.Column("compared_report", sa.String(length=20), nullable=True),
+        sa.Column("settings_version", sa.Integer(), nullable=False),
+        sa.Column("built_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("built_by", sa.String(length=64), nullable=True),
+        sa.Column("run_id", sa.Integer(), nullable=True),
+        sa.CheckConstraint(
+            "extract(day FROM period) = 1", name=op.f("ck_alert_build_period_is_first_of_month")
+        ),
+        sa.ForeignKeyConstraint(
+            ["accession"], ["raw.filing.accession"], name=op.f("fk_alert_build_accession_filing")
+        ),
+        sa.ForeignKeyConstraint(
+            ["built_by"], ["app.user.name"], name=op.f("fk_alert_build_built_by_user")
+        ),
+        sa.ForeignKeyConstraint(
+            ["compared_report"],
+            ["raw.filing.accession"],
+            name=op.f("fk_alert_build_compared_report_filing"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["compared_with"],
+            ["raw.filing.accession"],
+            name=op.f("fk_alert_build_compared_with_filing"),
+        ),
+        sa.ForeignKeyConstraint(
+            ["deal_id"], ["silver.deal.id"], name=op.f("fk_alert_build_deal_id_deal")
+        ),
+        sa.ForeignKeyConstraint(
+            ["report_accession"],
+            ["raw.filing.accession"],
+            name=op.f("fk_alert_build_report_accession_filing"),
+        ),
+        sa.ForeignKeyConstraint(["run_id"], ["app.run.id"], name=op.f("fk_alert_build_run_id_run")),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_alert_build")),
+        schema="app",
+    )
+    op.create_index(
+        "ix_app_alert_build_deal_period",
+        "alert_build",
+        ["deal_id", "period", "id"],
+        unique=False,
+        schema="app",
+    )
+    op.create_table(
+        "whole_loan_note",
+        sa.Column("deal_id", sa.Integer(), nullable=False),
+        sa.Column("loan", sa.Text(), nullable=False),
+        sa.Column("whole_loan_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["deal_id"], ["silver.deal.id"], name=op.f("fk_whole_loan_note_deal_id_deal")
+        ),
+        sa.ForeignKeyConstraint(
+            ["whole_loan_id"],
+            ["app.whole_loan.id"],
+            name=op.f("fk_whole_loan_note_whole_loan_id_whole_loan"),
+        ),
+        sa.PrimaryKeyConstraint("deal_id", "loan", name=op.f("pk_whole_loan_note")),
+        sa.UniqueConstraint(
+            "whole_loan_id", "deal_id", name=op.f("uq_whole_loan_note_whole_loan_id")
+        ),
+        schema="app",
+    )
+    op.create_table(
         "alert",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("subject", sa.String(length=64), nullable=False),
@@ -48,6 +121,10 @@ def upgrade() -> None:
         sa.Column("as_of", sa.Date(), nullable=False),
         sa.Column("raised_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("run_id", sa.Integer(), nullable=True),
+        sa.Column("raised_in", sa.Integer(), nullable=False),
+        sa.Column("superseded_by", sa.Integer(), nullable=True),
+        sa.Column("superseded_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("superseded_reason", sa.Text(), nullable=True),
         sa.Column("state", sa.String(length=16), nullable=False),
         sa.Column("acknowledged_by", sa.String(length=64), nullable=True),
         sa.Column("acknowledged_at", sa.DateTime(timezone=True), nullable=True),
@@ -78,6 +155,11 @@ def upgrade() -> None:
             name=op.f("ck_alert_known_state"),
         ),
         sa.CheckConstraint(
+            "(superseded_by IS NULL) = (superseded_at IS NULL) "
+            "AND (superseded_by IS NULL) = (superseded_reason IS NULL)",
+            name=op.f("ck_alert_superseded_with_a_reason"),
+        ),
+        sa.CheckConstraint(
             "extract(day FROM period) = 1", name=op.f("ck_alert_period_is_first_of_month")
         ),
         sa.ForeignKeyConstraint(
@@ -92,12 +174,19 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["closed_by"], ["app.user.name"], name=op.f("fk_alert_closed_by_user")
         ),
+        sa.ForeignKeyConstraint(
+            ["raised_in"], ["app.alert_build.id"], name=op.f("fk_alert_raised_in_alert_build")
+        ),
         sa.ForeignKeyConstraint(["run_id"], ["app.run.id"], name=op.f("fk_alert_run_id_run")),
+        sa.ForeignKeyConstraint(
+            ["superseded_by"],
+            ["app.alert_build.id"],
+            name=op.f("fk_alert_superseded_by_alert_build"),
+        ),
         sa.ForeignKeyConstraint(
             ["whole_loan_id"], ["app.whole_loan.id"], name=op.f("fk_alert_whole_loan_id_whole_loan")
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_alert")),
-        sa.UniqueConstraint("subject", "period", "rule", name="uq_alert_subject_period_rule"),
         schema="app",
     )
     op.create_index(
@@ -106,56 +195,13 @@ def upgrade() -> None:
     op.create_index(
         "ix_app_alert_period_state", "alert", ["period", "state"], unique=False, schema="app"
     )
-    op.create_table(
-        "alert_build",
-        sa.Column("deal_id", sa.Integer(), nullable=False),
-        sa.Column("period", sa.Date(), nullable=False),
-        sa.Column("as_of", sa.Date(), nullable=False),
-        sa.Column("accession", sa.String(length=20), nullable=False),
-        sa.Column("compared_with", sa.String(length=20), nullable=True),
-        sa.Column("report_accession", sa.String(length=20), nullable=True),
-        sa.Column("settings_version", sa.Integer(), nullable=False),
-        sa.Column("first_built_at", sa.DateTime(timezone=True), nullable=False),
-        sa.CheckConstraint(
-            "extract(day FROM period) = 1", name=op.f("ck_alert_build_period_is_first_of_month")
-        ),
-        sa.ForeignKeyConstraint(
-            ["accession"], ["raw.filing.accession"], name=op.f("fk_alert_build_accession_filing")
-        ),
-        sa.ForeignKeyConstraint(
-            ["compared_with"],
-            ["raw.filing.accession"],
-            name=op.f("fk_alert_build_compared_with_filing"),
-        ),
-        sa.ForeignKeyConstraint(
-            ["deal_id"], ["silver.deal.id"], name=op.f("fk_alert_build_deal_id_deal")
-        ),
-        sa.ForeignKeyConstraint(
-            ["report_accession"],
-            ["raw.filing.accession"],
-            name=op.f("fk_alert_build_report_accession_filing"),
-        ),
-        sa.PrimaryKeyConstraint("deal_id", "period", name=op.f("pk_alert_build")),
+    op.create_index(
+        "uq_app_alert_open_subject_period_rule",
+        "alert",
+        ["subject", "period", "rule"],
+        unique=True,
         schema="app",
-    )
-    op.create_table(
-        "whole_loan_note",
-        sa.Column("deal_id", sa.Integer(), nullable=False),
-        sa.Column("loan", sa.Text(), nullable=False),
-        sa.Column("whole_loan_id", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["deal_id"], ["silver.deal.id"], name=op.f("fk_whole_loan_note_deal_id_deal")
-        ),
-        sa.ForeignKeyConstraint(
-            ["whole_loan_id"],
-            ["app.whole_loan.id"],
-            name=op.f("fk_whole_loan_note_whole_loan_id_whole_loan"),
-        ),
-        sa.PrimaryKeyConstraint("deal_id", "loan", name=op.f("pk_whole_loan_note")),
-        sa.UniqueConstraint(
-            "whole_loan_id", "deal_id", name=op.f("uq_whole_loan_note_whole_loan_id")
-        ),
-        schema="app",
+        postgresql_where=sa.text("superseded_by IS NULL"),
     )
     op.create_table(
         "alert_loan",
@@ -164,6 +210,7 @@ def upgrade() -> None:
         sa.Column("loan", sa.Text(), nullable=False),
         sa.Column("accession", sa.String(length=20), nullable=False),
         sa.Column("balance", sa.Numeric(precision=18, scale=2), nullable=True),
+        sa.Column("superseded_by", sa.Integer(), nullable=True),
         sa.CheckConstraint("balance >= 0", name=op.f("ck_alert_loan_balance_not_negative")),
         sa.ForeignKeyConstraint(
             ["accession"], ["raw.filing.accession"], name=op.f("fk_alert_loan_accession_filing")
@@ -177,6 +224,11 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["deal_id"], ["silver.deal.id"], name=op.f("fk_alert_loan_deal_id_deal")
         ),
+        sa.ForeignKeyConstraint(
+            ["superseded_by"],
+            ["app.alert_build.id"],
+            name=op.f("fk_alert_loan_superseded_by_alert_build"),
+        ),
         sa.PrimaryKeyConstraint("alert_id", "deal_id", name=op.f("pk_alert_loan")),
         schema="app",
     )
@@ -188,9 +240,16 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_app_alert_loan_deal_loan", table_name="alert_loan", schema="app")
     op.drop_table("alert_loan", schema="app")
-    op.drop_table("whole_loan_note", schema="app")
-    op.drop_table("alert_build", schema="app")
+    op.drop_index(
+        "uq_app_alert_open_subject_period_rule",
+        table_name="alert",
+        schema="app",
+        postgresql_where=sa.text("superseded_by IS NULL"),
+    )
     op.drop_index("ix_app_alert_period_state", table_name="alert", schema="app")
     op.drop_index(op.f("ix_app_alert_assigned_to"), table_name="alert", schema="app")
     op.drop_table("alert", schema="app")
+    op.drop_table("whole_loan_note", schema="app")
+    op.drop_index("ix_app_alert_build_deal_period", table_name="alert_build", schema="app")
+    op.drop_table("alert_build", schema="app")
     op.drop_table("whole_loan", schema="app")

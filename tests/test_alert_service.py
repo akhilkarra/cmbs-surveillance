@@ -24,9 +24,11 @@ from cmbs.alerts.rules import Severity
 from cmbs.alerts.service import (
     AlertSummary,
     AlertView,
+    BackInTime,
     CannotTakeAlerts,
     CoveredLoan,
     NoTape,
+    Supersession,
     UnknownAlert,
     list_note,
     order_key,
@@ -42,7 +44,8 @@ from cmbs.distribution.tables import ReportComment
 from cmbs.domain import Period, money
 from cmbs.panel.service import UnknownDeal
 from cmbs.runs.service import start_run
-from cmbs.settings.service import NoSettings
+from cmbs.settings.service import NoSettings, store_version
+from cmbs.settings.values import Settings
 from cmbs.tape.service import AMENDMENT, load_tape
 from tests.conftest import FIXTURES, needs_db
 
@@ -160,6 +163,16 @@ def deal_id(db: Session, name: str = F1) -> int:
 
 def build(db: Session, period: Period = SEPTEMBER, deal: str = F1, **kw) -> AlertSummary:
     return service.build_alerts(db, deal_id=deal_id(db, deal), period=period, **kw)
+
+
+def vintages(db: Session, deal: str = F1, period: Period = SEPTEMBER) -> list[AlertBuild]:
+    return list(
+        db.scalars(
+            select(AlertBuild)
+            .where(AlertBuild.deal_id == deal_id(db, deal), AlertBuild.period == period.first_day)
+            .order_by(AlertBuild.id)
+        )
+    )
 
 
 def messages(summary: AlertSummary) -> list[tuple[str, str, tuple[str, ...]]]:
@@ -314,22 +327,39 @@ def test_a_month_is_built_once_with_its_settings_and_filing(two_months):
         None,
         None,
     )
-    built = db.get_one(AlertBuild, (deal_id(db), SEPTEMBER.first_day))
-    assert (built.as_of, built.accession, built.compared_with, built.report_accession) == (
+    (built,) = vintages(db)
+    assert (summary.vintage, stored.raised_in) == (built.id, built.id)
+    assert (built.deal_id, built.period, built.as_of) == (
+        deal_id(db),
+        SEPTEMBER.first_day,
         dt.date(2026, 9, 29),
+    )
+    assert (
+        built.accession,
+        built.report_accession,
+        built.compared_with,
+        built.compared_report,
+    ) == (
         accession(F1, SEPTEMBER, 1),
+        None,
         accession(F1, AUGUST, 1),
         None,
     )
-    assert (built.settings_version, built.first_built_at) == (7, SEP_30)
+    assert (built.settings_version, built.built_at, built.built_by, built.run_id) == (
+        7,
+        SEP_30,
+        None,
+        None,
+    )
 
     clock.set_now(SEP_30 + dt.timedelta(days=3))
     again = build(db)
     db.commit()
-    assert (again.raised, [v.id for v in again.alerts]) == (0, [alert.id])
+    assert (again.raised, again.superseded, again.vintage) == (0, 0, built.id)
+    assert [v.id for v in again.alerts] == [alert.id]
     assert db.scalar(select(func.count()).select_from(Alert)) == 1
     assert db.scalar(select(func.count()).select_from(AlertLoan)) == 1
-    assert db.get_one(AlertBuild, (deal_id(db), SEPTEMBER.first_day)).first_built_at == SEP_30
+    assert [(b.id, b.built_at) for b in vintages(db)] == [(built.id, SEP_30)]
     # Without an actor nothing is audited.
     assert db.scalars(select(AuditEntry).where(AuditEntry.action == "raise alert")).all() == []
 
@@ -480,11 +510,38 @@ def test_a_10d_filed_after_the_tape_moves_the_publication_day_and_adds_comments(
     (alert,) = after_report.alerts
     assert alert.added == ("The borrower has requested an extension.",)
     assert alert.accessions == (accession(F1, SEPTEMBER, 2),)
-    built = seeded.get_one(AlertBuild, (deal_id(seeded), SEPTEMBER.first_day))
-    assert (built.as_of, built.report_accession) == (
-        dt.date(2026, 10, 2),
-        accession(F1, SEPTEMBER, 2),
+    # Two vintages: the first, without the report, is kept as it was.
+    assert [(b.as_of, b.report_accession, b.compared_report) for b in vintages(seeded)] == [
+        (dt.date(2026, 9, 29), None, accession(F1, AUGUST, 2)),
+        (dt.date(2026, 10, 2), accession(F1, SEPTEMBER, 2), accession(F1, AUGUST, 2)),
+    ]
+    # Reading the same tapes and reports again is the same vintage.
+    clock.set_now(dt.datetime(2026, 10, 9, tzinfo=dt.UTC))
+    assert build(seeded).vintage == after_report.vintage
+    assert len(vintages(seeded)) == 2
+
+
+@needs_db
+def test_new_settings_make_a_new_vintage_even_on_the_same_day(two_months):
+    db = two_months
+    first = build(db)
+    store_version(
+        db,
+        version=8,
+        values=Settings(dscr_alert_threshold=Decimal("1.05")),
+        proposed_by="quinn",
+        approved_by="rae",
+        approved_at=SEP_30,
     )
+    second = build(db)
+    assert (second.as_of, second.settings_version) == (first.as_of, 8)
+    assert second.vintage != first.vintage
+    assert (second.raised, second.superseded, [v.id for v in second.alerts]) == (
+        0,
+        0,
+        [first.alerts[0].id],
+    )
+    assert [b.settings_version for b in vintages(db)] == [7, 8]
 
 
 @needs_db
@@ -561,10 +618,10 @@ def test_exposure_is_the_book_at_the_end_of_the_alerts_month(two_months):
 
 @needs_db
 def test_a_linked_whole_loan_raises_one_alert_listing_every_deal(seeded):
-    link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
     for deal, loan in ((F1, "1"), (F2, "3")):
         load_month(seeded, deal, AUGUST)
         load_month(seeded, deal, SEPTEMBER, {(loan, TRANSFER): "09-02-2026"})
+    link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
     load_positions(
         seeded,
         user="quinn",
@@ -619,6 +676,249 @@ def test_the_book_view_holds_open_alerts_on_held_deals_in_order(seeded):
     assert len(service.open_alerts(seeded, reader="pat", period=SEPTEMBER)) == 5
     assert service.open_alerts(seeded, reader="pat", period=OCTOBER) == []
     assert len(service.open_alerts(seeded, reader="pat")) == 5
+
+
+# ---------------------------------------------------------------------------- vintages
+
+
+OCT_11 = dt.datetime(2026, 10, 11, 12, tzinfo=dt.UTC)
+
+
+def amend_september(db: Session, changes, *, on: dt.date, number: int, amends: str) -> str:
+    """Load an ABS-EE/A of the fixture deal's September tape; returns its accession."""
+    amendment = accession(F1, SEPTEMBER, number)
+    load_tape(
+        db,
+        deal=F1,
+        content=month_tape(SEPTEMBER, changes),
+        file_name=f"2026-09-amendment-{number}.xml",
+        accession=amendment,
+        filing_date=on,
+        form=AMENDMENT,
+        amends=amends,
+        cik=CIKS[F1],
+    )
+    return amendment
+
+
+@needs_db
+def test_an_amendment_makes_a_new_vintage_that_supersedes_what_it_no_longer_shows(seeded):
+    load_month(seeded, F1, AUGUST, {("4", STATUS): "0"})
+    original = load_month(seeded, F1, SEPTEMBER, {("4", STATUS): "1"})
+    run = start_run(seeded, kind="refresh", started_by="quinn")
+    clock.set_now(SEP_30)
+    first = build(seeded, actor=QUANT, run_id=run.id)
+    assert messages(first) == [("medium", "payment status worsened: current to 30 days", ("4",))]
+    loan_4 = first.alerts[0].id
+    service.acknowledge(seeded, user="pat", alert_id=loan_4)
+    # The amendment puts loan 4 back to current and transfers loan 7.
+    amendment = amend_september(
+        seeded,
+        {("4", STATUS): "0", ("7", TRANSFER): "09-02-2026"},
+        on=dt.date(2026, 10, 10),
+        number=3,
+        amends=original,
+    )
+    clock.set_now(OCT_11)
+    second = build(seeded, actor=QUANT, run_id=run.id)
+    assert (second.raised, second.superseded, second.as_of) == (1, 1, dt.date(2026, 10, 10))
+    assert second.text().endswith(": 1 new alert, 1 superseded")
+    assert messages(second) == [("high", "transferred to special servicing on 2026-09-02", ("7",))]
+    assert second.alerts[0].accessions == (amendment,)
+    reason = f"no longer shown by September 2026 as published on 2026-10-10 (tape {amendment})"
+    (gone,) = second.superseded_alerts
+    assert gone.id == loan_4
+    assert gone.superseded == Supersession(second.vintage or 0, OCT_11, reason)
+    # Never rewritten: the message, the state and the filing it came from stay as they were.
+    assert (gone.message, gone.state_text, gone.accessions, gone.is_open) == (
+        "payment status worsened: current to 30 days",
+        "acknowledged by pat on 2026-09-30",
+        (original,),
+        False,
+    )
+    first_vintage, second_vintage = vintages(seeded)
+    assert (first_vintage.id, first_vintage.as_of, first_vintage.accession) == (
+        first.vintage,
+        dt.date(2026, 9, 29),
+        original,
+    )
+    assert (first_vintage.built_at, first_vintage.built_by, first_vintage.run_id) == (
+        SEP_30,
+        "quinn",
+        run.id,
+    )
+    assert (second_vintage.id, second_vintage.as_of, second_vintage.accession) == (
+        second.vintage,
+        dt.date(2026, 10, 10),
+        amendment,
+    )
+    stored = seeded.get_one(Alert, loan_4)
+    assert (stored.raised_in, stored.superseded_by, stored.superseded_reason) == (
+        first_vintage.id,
+        second_vintage.id,
+        reason,
+    )
+    listed = service.month_alerts(seeded, reader="pat", deal=F1, period=SEPTEMBER)
+    assert [v.id for v in listed.alerts] == [v.id for v in second.alerts]
+    assert [v.id for v in listed.superseded_alerts] == [loan_4]
+    assert loan_4 not in [v.id for v in service.open_alerts(seeded, reader="pat")]
+    assert service.read_alert(seeded, reader="rae", alert_id=loan_4).superseded is not None
+    entry = seeded.scalars(select(AuditEntry).where(AuditEntry.action == "supersede alert")).one()
+    assert (entry.user_name, entry.role, entry.run_id, entry.subject_key, entry.field) == (
+        "quinn",
+        "quant",
+        run.id,
+        str(loan_4),
+        "superseded",
+    )
+    assert (entry.after, entry.detail) == (
+        reason,
+        {
+            "deal": F1,
+            "loan": "4",
+            "period": "September 2026",
+            "vintage": second_vintage.id,
+            "alert superseded": True,
+        },
+    )
+
+    # Building again reads nothing new: no vintage, nothing raised or superseded.
+    clock.set_now(OCT_11 + dt.timedelta(days=1))
+    again = build(seeded, actor=QUANT)
+    assert (again.raised, again.superseded, again.vintage) == (0, 0, second_vintage.id)
+    assert len(vintages(seeded)) == 2
+
+    # A build may not read the month as it stood before the latest vintage.
+    message = (
+        f"the September 2026 alerts of {F1} were last built as of 2026-10-10; a build as of "
+        "2026-09-29 would go back in time"
+    )
+    with pytest.raises(BackInTime, match=f"^{message}$"):
+        build(seeded, actor=QUANT, as_of=dt.date(2026, 9, 29))
+    seeded.rollback()
+    refused = seeded.scalars(select(AuditEntry).where(AuditEntry.outcome == "refused")).one()
+    assert refused.reason == message
+
+
+@needs_db
+def test_a_change_shown_again_after_being_superseded_is_a_new_alert(seeded):
+    load_month(seeded, F1, AUGUST, {("4", STATUS): "0"})
+    original = load_month(seeded, F1, SEPTEMBER, {("4", STATUS): "1"})
+    clock.set_now(SEP_30)
+    first = build(seeded).alerts[0].id
+    corrected = amend_september(
+        seeded, {("4", STATUS): "0"}, on=dt.date(2026, 10, 10), number=3, amends=original
+    )
+    clock.set_now(OCT_11)
+    assert build(seeded).superseded == 1
+    amend_september(
+        seeded, {("4", STATUS): "1"}, on=dt.date(2026, 10, 20), number=4, amends=corrected
+    )
+    clock.set_now(dt.datetime(2026, 10, 21, tzinfo=dt.UTC))
+    third = build(seeded)
+    assert (third.raised, third.superseded) == (1, 0)
+    (back,) = third.alerts
+    assert back.id != first and back.message == "payment status worsened: current to 30 days"
+    assert [v.id for v in third.superseded_alerts] == [first]
+    assert len(vintages(seeded)) == 3
+
+
+@needs_db
+def test_a_new_vintage_keeps_the_alerts_it_still_shows(seeded):
+    load_month(seeded, F1, AUGUST, {("4", STATUS): "0"})
+    original = load_month(seeded, F1, SEPTEMBER, {("4", STATUS): "1"})
+    clock.set_now(SEP_30)
+    first = build(seeded)
+    amend_september(
+        seeded,
+        {("4", STATUS): "1", ("7", TRANSFER): "09-02-2026"},
+        on=dt.date(2026, 10, 10),
+        number=3,
+        amends=original,
+    )
+    clock.set_now(OCT_11)
+    second = build(seeded)
+    assert (second.raised, second.superseded, second.superseded_alerts) == (1, 0, ())
+    kept = next(v for v in second.alerts if v.loans[0].loan == "4")
+    assert kept.id == first.alerts[0].id
+    # The kept alert still names the filing that first showed it.
+    assert kept.accessions == (original,)
+    assert seeded.scalar(select(func.count()).select_from(Alert)) == 2
+
+
+@needs_db
+def test_a_link_made_after_a_month_was_built_still_gives_one_alert(seeded):
+    for deal, loan in ((F1, "1"), (F2, "3")):
+        load_month(seeded, deal, AUGUST)
+        load_month(seeded, deal, SEPTEMBER, {(loan, TRANSFER): "09-02-2026"})
+    clock.set_now(SEP_30)
+    (before_link,) = build(seeded, deal=F1).alerts
+    link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
+    second = build(seeded, deal=F2)
+    assert second.raised == 0
+    (alert,) = second.alerts
+    assert alert.id == before_link.id
+    assert [(c.deal, c.loan) for c in alert.loans] == [(F1, "1"), (F2, "3")]
+    assert seeded.scalar(select(func.count()).select_from(Alert)) == 1
+
+
+@needs_db
+def test_a_whole_loan_alert_lasts_while_any_deal_still_shows_it(seeded):
+    for deal, loan in ((F1, "1"), (F2, "3")):
+        load_month(seeded, deal, AUGUST)
+        load_month(seeded, deal, SEPTEMBER, {(loan, TRANSFER): "09-02-2026"})
+    link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
+    load_positions(
+        seeded,
+        user="quinn",
+        as_of=dt.date(2026, 9, 30),
+        lines=[PositionLine(F1, "E", money("25")), PositionLine(F2, "D", money("40"))],
+    )
+    clock.set_now(SEP_30)
+    (alert,) = build(seeded, deal=F1).alerts
+    build(seeded, deal=F2)
+    # F1's September is amended: its note never transferred. F2's still did.
+    amend_september(
+        seeded, {}, on=dt.date(2026, 10, 10), number=3, amends=accession(F1, SEPTEMBER, 1)
+    )
+    clock.set_now(OCT_11)
+    f1 = build(seeded, deal=F1)
+    assert (f1.superseded, f1.alerts) == (1, ())
+    (shown,) = f1.superseded_alerts
+    assert (shown.id, shown.superseded, shown.is_open) == (alert.id, None, True)
+    assert [(c.deal, c.superseded) for c in shown.loans] == [(F1, True), (F2, False)]
+    assert shown.exposure == Decimal("40.00")
+    f2 = service.month_alerts(seeded, reader="pat", deal=F2, period=SEPTEMBER)
+    assert [v.id for v in f2.alerts] == [alert.id]
+    assert [v.id for v in service.book_view(seeded, reader="pat", period=SEPTEMBER)] == [alert.id]
+    entry = seeded.scalars(select(AuditEntry).where(AuditEntry.action == "supersede alert")).all()
+    assert entry == []  # built without an actor: nothing audited
+
+
+@needs_db
+def test_an_alert_stored_by_another_build_meanwhile_is_reused_not_duplicated(seeded, monkeypatch):
+    """The lookup misses an alert another transaction committed just before the insert: the
+    insert's conflict is caught and the stored alert reused."""
+    load_month(seeded, F1, AUGUST, {("4", STATUS): "0"})
+    original = load_month(seeded, F1, SEPTEMBER, {("4", STATUS): "1"})
+    clock.set_now(SEP_30)
+    (first,) = build(seeded).alerts
+    amend_september(
+        seeded, {("4", STATUS): "1"}, on=dt.date(2026, 10, 10), number=3, amends=original
+    )
+    lookup = service._open_alert
+    calls = []
+
+    def first_lookup_misses(*args):
+        calls.append(args)
+        return None if len(calls) == 1 else lookup(*args)
+
+    monkeypatch.setattr(service, "_open_alert", first_lookup_misses)
+    clock.set_now(OCT_11)
+    second = build(seeded)
+    assert (second.raised, second.superseded, [v.id for v in second.alerts]) == (0, 0, [first.id])
+    assert len(calls) == 2
+    assert seeded.scalar(select(func.count()).select_from(Alert)) == 1
 
 
 # ---------------------------------------------------------------------------- lifecycle

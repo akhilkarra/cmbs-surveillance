@@ -1,19 +1,17 @@
-"""Steps for features/surveillance/book.feature that load positions or link whole loans.
+"""Steps for features/surveillance/book.feature that load positions.
 
 Steps that build or read alerts, and the book the features README describes, are in
 alerts.py, which also registers the step types used here (AlertDay, AlertName, AlertMoney).
-These steps tell them a scenario loaded its own positions (`context.positions_loaded`) and
-which loans a quant linked (`context.linked`).
+These steps tell them a scenario loaded its own positions (`context.positions_loaded`).
+Linking whole loans is in alerts.py too: a link names loans already on loaded tapes.
 """
 
 from behave import given, then, when  # pyright: ignore[reportAttributeAccessIssue]
 
 from cmbs.book.service import (
-    NoteRef,
     PositionLine,
     book_as_of,
     exposure_by_deal,
-    link_whole_loan,
     load_positions,
 )
 from cmbs.domain import money
@@ -58,13 +56,3 @@ def step_positions_with(context, day, amount, deal):
     line = PositionLine(deal, "E", amount)
     in_session(lambda db: load_positions(db, user=LOADER, as_of=day, lines=[line]))
     context.positions_loaded = True
-
-
-@given(
-    '"{user:AlertName}" has linked loan "{first:AlertName}" of "{first_deal:AlertName}" and '
-    'loan "{second:AlertName}" of "{second_deal:AlertName}" as the same whole loan'
-)
-def step_linked(context, user, first, first_deal, second, second_deal):
-    context.linked = [(first_deal, first), (second_deal, second)]
-    notes = [NoteRef(deal, loan) for deal, loan in context.linked]
-    in_session(lambda db: link_whole_loan(db, user=user, notes=notes))

@@ -35,6 +35,7 @@ class CoveredLoanOut(BaseModel):
     balance: str | None
     exposure: str
     classes: list[str]
+    superseded: bool
 
     @classmethod
     def of(cls, loan: CoveredLoan) -> "CoveredLoanOut":
@@ -45,7 +46,14 @@ class CoveredLoanOut(BaseModel):
             balance=_money(loan.balance),
             exposure=f"{loan.exposure:.2f}",
             classes=list(loan.classes),
+            superseded=loan.superseded,
         )
+
+
+class SupersessionOut(BaseModel):
+    vintage: int
+    at: dt.datetime
+    reason: str
 
 
 class AlertOut(BaseModel):
@@ -66,9 +74,11 @@ class AlertOut(BaseModel):
     classes: list[str]
     balance: str | None
     loans: list[CoveredLoanOut]
+    superseded: SupersessionOut | None
 
     @classmethod
     def of(cls, view: AlertView) -> "AlertOut":
+        gone = view.superseded
         return cls(
             id=view.id,
             period=view.period.label,
@@ -87,14 +97,22 @@ class AlertOut(BaseModel):
             classes=list(view.classes),
             balance=_money(view.balance),
             loans=[CoveredLoanOut.of(loan) for loan in view.loans],
+            superseded=(
+                SupersessionOut(vintage=gone.vintage, at=gone.at, reason=gone.reason)
+                if gone is not None
+                else None
+            ),
         )
 
 
 class AlertListOut(BaseModel):
+    """The current vintage's alerts, and apart those a later vintage superseded."""
+
     deal: str
     period: str
     note: str | None
     alerts: list[AlertOut]
+    superseded_alerts: list[AlertOut]
 
     @classmethod
     def of(cls, listed: AlertList) -> "AlertListOut":
@@ -103,6 +121,7 @@ class AlertListOut(BaseModel):
             period=listed.period.label,
             note=listed.note,
             alerts=[AlertOut.of(view) for view in listed.alerts],
+            superseded_alerts=[AlertOut.of(view) for view in listed.superseded_alerts],
         )
 
 
@@ -115,7 +134,9 @@ class BuildIn(BaseModel):
 class BuildOut(AlertListOut):
     as_of: dt.date
     settings_version: int
+    vintage: int | None
     raised: int
+    superseded: int
 
     @classmethod
     def of_summary(cls, summary: AlertSummary) -> "BuildOut":
@@ -124,9 +145,12 @@ class BuildOut(AlertListOut):
             period=summary.period.label,
             note=summary.note,
             alerts=[AlertOut.of(view) for view in summary.alerts],
+            superseded_alerts=[AlertOut.of(view) for view in summary.superseded_alerts],
             as_of=summary.as_of,
             settings_version=summary.settings_version,
+            vintage=summary.vintage,
             raised=summary.raised,
+            superseded=summary.superseded,
         )
 
 

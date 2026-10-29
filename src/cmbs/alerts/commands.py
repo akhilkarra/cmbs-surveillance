@@ -59,6 +59,21 @@ def _echo(views: Sequence[AlertView], empty: str | None = None) -> None:
             typer.echo(f"    + {sentence}")
 
 
+def superseded_line(view: AlertView) -> str:
+    """An alert an earlier vintage raised that a later one no longer supports, and why."""
+    why = (
+        view.superseded.reason
+        if view.superseded is not None
+        else "no longer shown by this deal's latest build; another deal still shows it"
+    )
+    return f"superseded {alert_line(view)}: {why}"
+
+
+def _echo_superseded(views: Sequence[AlertView]) -> None:
+    for view in views:
+        typer.echo(superseded_line(view))
+
+
 @app.command("build")
 def build(
     deal: Deal,
@@ -77,6 +92,7 @@ def build(
         )
     typer.echo(summary.text())
     _echo(summary.alerts)
+    _echo_superseded(summary.superseded_alerts)
 
 
 @app.command("list")
@@ -86,6 +102,7 @@ def list_alerts(deal: Deal, period: Month, user: User) -> None:
     with refusals(), engine.session() as db:
         listed = service.month_alerts(db, reader=user, deal=deal, period=month)
     _echo(listed.alerts, listed.note)
+    _echo_superseded(listed.superseded_alerts)
 
 
 @app.command("book")
