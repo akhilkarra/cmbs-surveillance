@@ -48,6 +48,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above except the dev server.
 
 - **Python 3.13** (`.python-version`): `minify-html`, pulled in by behavex, has no 3.15 wheel.
 - **pytest below 9.2**: mutmut 3.8.0 reads `item._nodeid`, which pytest 9.2.0 removed.
+- **mutmut forks from a fork server** (`process_isolation` in `pyproject.toml`): Polars is not fork-safe, so a mutant forked from a process that has run a Polars query hangs on its next one and times out.
 - **TypeScript 6, not 7**: TypeScript 7 drops the JavaScript compiler API that Stryker calls.
 - **Node 24 LTS** in the `web` container and CI; Dependabot skips Node majors, so moving to the next LTS is a deliberate edit to `compose.yaml` and `ci.yml` together.
 - **behavex ignores `default_tags` in `behave.ini`**, so every behavex run passes `-t 'not @draft'`.

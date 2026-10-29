@@ -21,14 +21,12 @@ from cmbs.book.service import (
 )
 from cmbs.coverage.service import configure_vendor_source, vendor_sources_of
 from cmbs.db import engine
-from cmbs.deals.service import ConflictingDeal, get_or_create
+from cmbs.deals.service import ConflictingDeal, SeparateDeals, get_or_create
 from cmbs.deals.tables import Deal, DealAlias
 from cmbs.edgar import search
 from cmbs.edgar.replay import Replay
 from cmbs.edgar.service import (
     DiscoveryInFuture,
-    SeparateDeals,
-    deal_for,
     deal_named,
     discover_deal,
     filings_of,
@@ -210,11 +208,11 @@ def test_an_alias_learns_or_refuses_a_cik(seeded):
     seeded.add_all([DealAlias(name="A 2026-1", deal_id=known.id)])
     seeded.add_all([DealAlias(name="B 2026-1", deal_id=blank.id)])
     seeded.flush()
-    assert deal_for(seeded, "A 2026-1", cik=5) == known
+    assert get_or_create(seeded, "A 2026-1", cik=5) == known
     with pytest.raises(ConflictingDeal, match="^TRUST A 2026-1 already has CIK 5, not 6$"):
-        deal_for(seeded, "A 2026-1", cik=6)
-    assert deal_for(seeded, " B  2026-1", cik=7).cik == 7
-    assert deal_for(seeded, "B 2026-1") == blank
+        get_or_create(seeded, "A 2026-1", cik=6)
+    assert get_or_create(seeded, " B  2026-1", cik=7).cik == 7
+    assert get_or_create(seeded, "B 2026-1") == blank
 
 
 def test_storing_positions_needs_an_actor_who_may_load_them(seeded):
