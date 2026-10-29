@@ -1,0 +1,252 @@
+{
+ "comment": "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers. Borrower entered into an agreement with a cell tower provider without consent in 2024. Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).",
+ "request": {
+  "model": "jev-1.14.0",
+  "state": {
+   "comment": "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers. Borrower entered into an agreement with a cell tower provider without consent in 2024. Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k)."
+  },
+  "questions": {
+   "transfer_reason.value": {
+    "type": "choice",
+    "instructions": "Why was the loan transferred to special servicing?",
+    "criteria": {
+     "imminent monetary default": "The servicer expects the borrower to stop paying soon, but payments have not yet been missed.",
+     "monetary default": "The borrower has missed required payments.",
+     "imminent maturity default": "The borrower is not expected to repay the loan when it matures.",
+     "maturity default": "The loan matured and was not repaid.",
+     "non-monetary default": "The borrower broke a loan term other than paying, such as a cash management or reporting requirement.",
+     "bankruptcy": "The borrower or a guarantor filed for bankruptcy.",
+     "other": "A reason that is none of the above."
+    }
+   },
+   "transfer_reason.support": {
+    "type": "noul",
+    "instructions": "Does a sentence of `comment` say why the loan was transferred to special servicing?",
+    "criteria": {
+     "true": "A sentence names the reason for the transfer, such as a default.",
+     "false": "The comment mentions the transfer or the loan's troubles without saying what caused the transfer."
+    }
+   },
+   "transfer_reason.sentence": {
+    "type": "choice",
+    "instructions": "Which sentence says why the loan was transferred to special servicing?",
+    "criteria": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": null,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": null,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": null
+    }
+   },
+   "borrower_request.value": {
+    "type": "choice",
+    "instructions": "What has the borrower asked the lender or special servicer for?",
+    "criteria": {
+     "maturity extension": "More time to repay the loan after its maturity date.",
+     "forbearance": "A temporary pause in, or reduction of, payments.",
+     "loan modification": "A lasting change to the loan's terms, such as its rate or amortization.",
+     "discounted payoff": "Repaying the loan for less than the amount owed.",
+     "loan assumption": "A new borrower taking over the loan.",
+     "collateral release": "Releasing a property, or part of one, from the loan.",
+     "other": "A request that is none of the above."
+    }
+   },
+   "borrower_request.support": {
+    "type": "noul",
+    "instructions": "Does a sentence of `comment` say the borrower has asked for something?",
+    "criteria": {
+     "true": "A sentence says the borrower requested or proposed something.",
+     "false": "The comment describes the servicer's own plans or actions, not a request from the borrower."
+    }
+   },
+   "borrower_request.sentence": {
+    "type": "choice",
+    "instructions": "Which sentence says what the borrower has asked for?",
+    "criteria": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": null,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": null,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": null
+    }
+   },
+   "request_status.value": {
+    "type": "choice",
+    "instructions": "Where does the borrower's request stand?",
+    "criteria": {
+     "pending": "The request is being reviewed or negotiated; no decision is stated.",
+     "granted": "The lender or servicer approved or agreed to the request.",
+     "denied": "The lender or servicer rejected the request."
+    }
+   },
+   "request_status.support": {
+    "type": "noul",
+    "instructions": "Does a sentence of `comment` say where the borrower's request stands?",
+    "criteria": {
+     "true": "A sentence says the request is being reviewed, was approved or was rejected.",
+     "false": "The comment mentions a request but says nothing about its progress."
+    }
+   },
+   "request_status.sentence": {
+    "type": "choice",
+    "instructions": "Which sentence says where the borrower's request stands?",
+    "criteria": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": null,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": null,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": null
+    }
+   },
+   "workout_strategy.value": {
+    "type": "choice",
+    "instructions": "Which workout strategy is the special servicer pursuing?",
+    "criteria": {
+     "modification": null,
+     "foreclosure": null,
+     "bankruptcy": null,
+     "extension": null,
+     "note sale": null,
+     "discounted payoff": null,
+     "property in REO": "The lender owns the property after foreclosure (real estate owned).",
+     "resolved": null,
+     "pending return to master servicer": "The loan is performing again and will return to the master servicer.",
+     "deed in lieu of foreclosure": null,
+     "full payoff": null,
+     "representations and warranties": "A claim against the loan seller for breaching its representations and warranties.",
+     "other": null
+    }
+   },
+   "workout_strategy.support": {
+    "type": "noul",
+    "instructions": "Does a sentence of `comment` name a workout strategy the special servicer is pursuing?",
+    "criteria": {
+     "true": "A sentence names a strategy the servicer has chosen, such as foreclosure or a modification.",
+     "false": "The comment describes a borrower request, or the servicer reviewing one, without naming a strategy the servicer has chosen."
+    }
+   },
+   "workout_strategy.sentence": {
+    "type": "choice",
+    "instructions": "Which sentence names the workout strategy the special servicer is pursuing?",
+    "criteria": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": null,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": null,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": null
+    }
+   }
+  }
+ },
+ "response": {
+  "model": "jev-1.14.0",
+  "answers": {
+   "transfer_reason.value": {
+    "type": "choice",
+    "choice": "non-monetary default",
+    "confidence": 0.85,
+    "probabilities": {
+     "imminent monetary default": 0.0,
+     "monetary default": 0.1,
+     "imminent maturity default": 0.0,
+     "maturity default": 0.0,
+     "non-monetary default": 0.87,
+     "bankruptcy": 0.0,
+     "other": 0.03
+    }
+   },
+   "transfer_reason.support": {
+    "type": "noul",
+    "noul": 0.18
+   },
+   "transfer_reason.sentence": {
+    "type": "choice",
+    "choice": "Borrower entered into an agreement with a cell tower provider without consent in 2024.",
+    "confidence": 0.79,
+    "probabilities": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": 0.07,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": 0.86,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": 0.07
+    }
+   },
+   "borrower_request.value": {
+    "type": "choice",
+    "choice": "other",
+    "confidence": 0.98,
+    "probabilities": {
+     "maturity extension": 0.0,
+     "forbearance": 0.01,
+     "loan modification": 0.0,
+     "discounted payoff": 0.0,
+     "loan assumption": 0.0,
+     "collateral release": 0.01,
+     "other": 0.98
+    }
+   },
+   "borrower_request.support": {
+    "type": "noul",
+    "noul": 0.05
+   },
+   "borrower_request.sentence": {
+    "type": "choice",
+    "choice": "Borrower entered into an agreement with a cell tower provider without consent in 2024.",
+    "confidence": 0.4,
+    "probabilities": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": 0.09,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": 0.6,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": 0.31
+    }
+   },
+   "request_status.value": {
+    "type": "choice",
+    "choice": "pending",
+    "confidence": 0.46,
+    "probabilities": {
+     "pending": 0.64,
+     "granted": 0.01,
+     "denied": 0.35
+    }
+   },
+   "request_status.support": {
+    "type": "noul",
+    "noul": 0.12
+   },
+   "request_status.sentence": {
+    "type": "choice",
+    "choice": "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.",
+    "confidence": 0.91,
+    "probabilities": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": 0.94,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": 0.05,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": 0.01
+    }
+   },
+   "workout_strategy.value": {
+    "type": "choice",
+    "choice": "foreclosure",
+    "confidence": 0.73,
+    "probabilities": {
+     "modification": 0.03,
+     "foreclosure": 0.75,
+     "bankruptcy": 0.01,
+     "extension": 0.01,
+     "note sale": 0.01,
+     "discounted payoff": 0.01,
+     "property in REO": 0.01,
+     "resolved": 0.01,
+     "pending return to master servicer": 0.0,
+     "deed in lieu of foreclosure": 0.04,
+     "full payoff": 0.02,
+     "representations and warranties": 0.01,
+     "other": 0.09
+    }
+   },
+   "workout_strategy.support": {
+    "type": "noul",
+    "noul": 0.35
+   },
+   "workout_strategy.sentence": {
+    "type": "choice",
+    "choice": "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.",
+    "confidence": 0.97,
+    "probabilities": {
+     "Counsel has cleared conflicts and default/ROR letter was issued to the borrowers.": 0.98,
+     "Borrower entered into an agreement with a cell tower provider without consent in 2024.": 0.01,
+     "Borrower utilized proceeds ($556k) from transaction to fund delinquent taxes ($180k).": 0.01
+    }
+   }
+  }
+ }
+}
