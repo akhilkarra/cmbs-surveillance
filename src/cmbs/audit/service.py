@@ -4,8 +4,9 @@ The trail is append-only. The service refuses every change or deletion (and reco
 attempt); the database trigger on `app.audit_entry` is the backstop for anything that goes
 around the service.
 
-Reading: a loan's own change history is part of the panel (`Action.READ_PANEL`); reading the
-whole log by user or by date needs `Action.READ_AUDIT_LOG`.
+Reading: a loan's own change history is part of the panel (`Action.READ_PANEL`), so anyone who
+may read the panel sees the history of what they can see; reading the whole log, by loan, user,
+run or date, needs `Action.READ_AUDIT_LOG` (risk and operators).
 """
 
 import datetime as dt
@@ -34,6 +35,10 @@ class AppendOnly(Refused):
 
 class BadRange(Refused):
     """A date range that ends before it starts."""
+
+
+class BadFilter(Refused):
+    """A loan named without its deal."""
 
 
 def loan_key(deal: str, loan: str) -> str:
@@ -192,14 +197,30 @@ def read_log(
     user: str | None = None,
     start: dt.date | None = None,
     end: dt.date | None = None,
+    deal: str | None = None,
+    loan: str | None = None,
+    run: int | None = None,
 ) -> Sequence[AuditEntry]:
-    """The whole log, optionally narrowed to one user and to calendar days (UTC, inclusive),
-    newest first. Needs `Action.READ_AUDIT_LOG`."""
+    """The whole log, optionally narrowed to one user, the loans of one deal (or one of its
+    loans), one run and calendar days (UTC, inclusive), newest first. Needs
+    `Action.READ_AUDIT_LOG`."""
     authorize(db, reader, Action.READ_AUDIT_LOG)
+    if loan is not None and deal is None:
+        raise BadFilter(f"name the deal of loan {loan}")
     since, until = day_bounds(start, end)
     query = select(AuditEntry)
     if user is not None:
         query = query.where(AuditEntry.user_name == user)
+    if deal is not None:
+        key = AuditEntry.subject_key
+        query = query.where(
+            AuditEntry.subject == LOAN,
+            key == loan_key(deal, loan)
+            if loan is not None
+            else key.startswith(loan_key(deal, ""), autoescape=True),
+        )
+    if run is not None:
+        query = query.where(AuditEntry.run_id == run)
     if since is not None:
         query = query.where(AuditEntry.at >= since)
     if until is not None:
@@ -249,3 +270,29 @@ def entry_view(entry: AuditEntry) -> dict[str, Any]:
         "outcome": entry.outcome,
         "detail": entry.detail,
     }
+
+
+def render_entry(entry: AuditEntry) -> str:
+    """One entry on one line: when, who (as which role, in which run), what, before and after,
+    and why. A refusal says so."""
+    who = entry.user_name + (f" ({entry.role})" if entry.role else "")
+    if entry.run_id is not None:
+        who += f" in run {entry.run_id}"
+    line = f"{entry.at.isoformat()} {who}: {entry.action}"
+    if entry.subject_key is not None:
+        line += f" {entry.subject_key}"
+    if entry.field is not None:
+        line += f" {entry.field}"
+    if entry.before is not None or entry.after is not None:
+        line += f": {entry.before or '-'} -> {entry.after or '-'}"
+    if entry.outcome == "refused":
+        line += f" REFUSED: {entry.reason}"
+    elif entry.reason is not None:
+        line += f" ({entry.reason})"
+    return line
+
+
+def render_entries(entries: Sequence[AuditEntry]) -> str:
+    if not entries:
+        return "no audit entries\n"
+    return "\n".join(render_entry(entry) for entry in entries) + "\n"
