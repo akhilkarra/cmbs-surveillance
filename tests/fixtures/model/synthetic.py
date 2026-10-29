@@ -5,6 +5,7 @@ as a careful reader would give them, and every file is marked `"synthetic": true
 exactly the format a live run writes (`cmbs extract export-recordings`), so a live recording can
 replace one without any code change.
 
+Tests load them with `load`; `cmbs extract import-recordings` refuses synthetic recordings.
 `tests/test_model_fixtures.py` rebuilds them and fails if a file no longer matches: a change to
 the questions, the sentence splitter or the fixture comment needs a new recording, and a change
 of question wording needs a new prompt version.
@@ -17,7 +18,7 @@ from cmbs.distribution.parse import parse_report
 from cmbs.extraction.questions import PROMPT_VERSION, plan, sentence_name, support_name, value_name
 from cmbs.extraction.sentences import split
 from cmbs.model.policy import Classification
-from cmbs.model.recordings import Recording, make_recording
+from cmbs.model.recordings import Recording, Recordings, make_recording, read_file
 from cmbs.model.scripted import choice_answer
 from cmbs.model.types import Answer, Choice, ModelRequest, ModelResponse, NoulAnswer
 
@@ -85,6 +86,18 @@ FILES = {
         loan_2_september_comment(), LOAN_2_SEPTEMBER
     )
 }
+
+
+def load(recordings: Recordings) -> int:
+    """Put every fixture recording in `recordings`, for tests only.
+
+    `cmbs extract import-recordings` refuses synthetic recordings, so hand-written answers never
+    reach a real panel; tests load them here, and replay them with `allow_synthetic=True`.
+    """
+    files = sorted(HERE.glob("*.json"))
+    for path in files:
+        recordings.put(read_file(path))
+    return len(files)
 
 
 def render(made: Recording) -> str:

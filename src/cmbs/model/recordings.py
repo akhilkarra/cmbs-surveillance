@@ -7,6 +7,7 @@ and the test fixtures in `tests/fixtures/model/` are files of this format.
 """
 
 import datetime as dt
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -50,6 +51,10 @@ class Recording(BaseModel):
 
 class BadRecording(Refused):
     """A recording whose key does not match its content."""
+
+
+class SyntheticRecording(Refused):
+    """Hand-written answers outside tests."""
 
 
 def make_recording(
@@ -204,14 +209,42 @@ def write_file(directory: Path, recording: Recording) -> Path:
     return path
 
 
+def check_not_synthetic(recording: Recording) -> None:
+    if recording.synthetic:
+        raise SyntheticRecording(
+            f"recording {recording.call_id[:12]} holds synthetic answers, which are for tests only"
+        )
+
+
 def import_recordings(recordings: Recordings, directory: Path) -> int:
-    """Store every recording file (`*.json`) in `directory`; returns how many were read."""
-    files = sorted(directory.glob("*.json"))
-    for path in files:
-        recordings.put(read_file(path))
-    return len(files)
+    """Store every recording file (`*.json`) in `directory`; returns how many were read.
+
+    Every file is checked before any is stored. Synthetic recordings are refused: answers
+    written by hand must never reach the panel. Tests load their fixtures themselves.
+    """
+    read = [read_file(path) for path in sorted(directory.glob("*.json"))]
+    for recording in read:
+        check_not_synthetic(recording)
+    for recording in read:
+        recordings.put(recording)
+    return len(read)
 
 
-def export_recordings(db: Session, directory: Path) -> list[Path]:
-    """Write every recording in the database to `directory`, one file each."""
-    return [write_file(directory, recording) for recording in DbRecordings(db).all()]
+@dataclass(frozen=True)
+class Exported:
+    written: list[Path]
+    skipped_restricted: int
+
+
+def export_recordings(db: Session, directory: Path) -> Exported:
+    """Write every recording of public text to `directory`, one file each.
+
+    Recordings of restricted text stay in the database: their requests hold the text itself,
+    which must not be copied to files that can travel.
+    """
+    stored = DbRecordings(db).all()
+    public = [r for r in stored if r.classification is Classification.PUBLIC]
+    return Exported(
+        written=[write_file(directory, recording) for recording in public],
+        skipped_restricted=len(stored) - len(public),
+    )

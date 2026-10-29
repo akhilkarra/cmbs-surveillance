@@ -37,17 +37,17 @@ from cmbs.extraction.service import (
 from cmbs.extraction.tables import Extraction
 from cmbs.model.client import ModelClient
 from cmbs.model.policy import Classification
-from cmbs.model.recordings import DbRecordings, import_recordings
+from cmbs.model.recordings import DbRecordings
 from cmbs.model.scripted import ScriptedProvider, choice_answer, respond
 from cmbs.model.tables import ModelCall
 from cmbs.model.types import Answer, Choice, ModelRequest, NoulAnswer
 from cmbs.settings.service import in_force, store_version
 from cmbs.testing.bdd import attempt, in_session
 from cmbs.testing.world import FIXTURE_CIK, FIXTURE_DEAL
+from tests.fixtures.model.synthetic import load as load_fixtures
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT = ROOT / "tests" / "fixtures" / "distribution" / "fixture-trust-2026-f1_10d_2026-09.htm"
-RECORDINGS = ROOT / "tests" / "fixtures" / "model"
 SEPTEMBER = Period(2026, 9)
 OCTOBER = Period(2026, 10)
 LOADER = "quinn"  # a quant loads reports and runs extraction
@@ -108,7 +108,7 @@ def _stored_comment(period: Period) -> str:
 
 
 def _import(context) -> None:
-    context.imported = in_session(lambda db: import_recordings(DbRecordings(db), RECORDINGS))
+    context.imported = in_session(lambda db: load_fixtures(DbRecordings(db)))
 
 
 def _provider(context) -> ScriptedProvider:
@@ -122,7 +122,9 @@ def _extract(context, *, replay_only: bool, period: Period = SEPTEMBER) -> None:
     provider = _provider(context)
 
     def run(db):
-        client = ModelClient(DbRecordings(db), provider=provider, replay_only=replay_only)
+        client = ModelClient(
+            DbRecordings(db), provider=provider, replay_only=replay_only, allow_synthetic=True
+        )
         return extract_comments(
             db, user=LOADER, deal=FIXTURE_DEAL, period=period, loan="2", client=client
         )

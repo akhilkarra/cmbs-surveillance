@@ -25,6 +25,7 @@ from cmbs.extraction.questions import (
 from cmbs.extraction.sentences import split
 from cmbs.extraction.service import (
     AlreadyDecided,
+    BadDecision,
     ChangedComment,
     EmptyComment,
     NoComment,
@@ -39,6 +40,7 @@ from cmbs.extraction.service import (
     extract_comments,
     extract_text,
     import_recording_files,
+    model_client,
     open_review_items,
     read_text,
     render_summary,
@@ -48,13 +50,20 @@ from cmbs.extraction.service import (
 from cmbs.extraction.tables import ExtractedField, Extraction, ReviewItem
 from cmbs.model.client import ModelClient, NoRecording
 from cmbs.model.policy import Classification, RestrictedText, UnpinnedModel
-from cmbs.model.recordings import BadRecording, DbRecordings, MemoryRecordings
+from cmbs.model.providers import ProviderFailed
+from cmbs.model.recordings import (
+    BadRecording,
+    DbRecordings,
+    MemoryRecordings,
+    SyntheticRecording,
+)
 from cmbs.model.scripted import ScriptedProvider, choice_answer, respond
 from cmbs.model.tables import ModelCall
 from cmbs.model.types import Choice, ModelRequest, NoulAnswer
 from cmbs.settings.service import InForce, in_force, store_version
 from cmbs.testing.world import FIXTURE_CIK, FIXTURE_DEAL
 from tests.conftest import FIXTURES, needs_db
+from tests.fixtures.model.synthetic import load as load_fixtures
 
 pytestmark = needs_db
 
@@ -86,7 +95,7 @@ def loaded(seeded):
 
 @pytest.fixture
 def recorded(loaded):
-    import_recording_files(loaded, "quinn", RECORDINGS)
+    load_fixtures(DbRecordings(loaded))
     loaded.commit()
     return loaded
 
@@ -96,7 +105,9 @@ def _comment(db) -> str:
 
 
 def _extract(db, *, user="quinn", provider=None, replay_only=True, **options):
-    client = ModelClient(DbRecordings(db), provider=provider, replay_only=replay_only)
+    client = ModelClient(
+        DbRecordings(db), provider=provider, replay_only=replay_only, allow_synthetic=True
+    )
     options.setdefault("loan", "2")
     return extract_comments(
         db, user=user, deal=FIXTURE_DEAL, period=SEPTEMBER, client=client, **options
@@ -544,7 +555,8 @@ def test_recording_files_need_the_right_roles(recorded, tmp_path):
     with pytest.raises(PermissionRefused) as refused:
         export_recording_files(recorded, "olly", tmp_path)
     assert str(refused.value) == "operator may not export"
-    [path] = export_recording_files(recorded, "quinn", tmp_path)
+    exported = export_recording_files(recorded, "quinn", tmp_path)
+    [path] = exported.written
     assert json.loads(path.read_text())["synthetic"] is True
 
 
@@ -568,7 +580,8 @@ def test_a_reading_stored_by_another_run_first_is_reused(recorded):
     comment = recorded.scalars(select(ReportComment).where(ReportComment.loan_id == "2")).one()
     settings = in_force(recorded)
     source = SourceText(comment.comment, Classification.PUBLIC, "loan 2")
-    reading = read_text(source, ModelClient(DbRecordings(recorded)), settings, now=TODAY)
+    client = ModelClient(DbRecordings(recorded), allow_synthetic=True)
+    reading = read_text(source, client, settings, now=TODAY)
     again = _store(
         recorded,
         actor=Actor("quinn", Role.QUANT),
@@ -585,3 +598,120 @@ def test_a_reading_stored_by_another_run_first_is_reused(recorded):
 def test_reading_a_comment_view_of_an_unknown_deal_is_refused(seeded):
     with pytest.raises(UnknownDeal):
         comment_view(seeded, "pat", deal="No Such Trust", loan="2", period=SEPTEMBER)
+
+
+def test_synthetic_recordings_are_refused_on_import_and_audited(seeded):
+    with pytest.raises(SyntheticRecording) as refused:
+        import_recording_files(seeded, "quinn", RECORDINGS)
+    assert str(refused.value).endswith("holds synthetic answers, which are for tests only")
+    seeded.rollback()
+    assert _count(seeded, ModelCall) == 0
+    [entry] = _refusals(seeded)
+    assert (entry.user_name, entry.action) == ("quinn", "import model recordings")
+
+
+def test_synthetic_answers_never_reach_the_panel_outside_tests(recorded):
+    client = ModelClient(DbRecordings(recorded))
+    with pytest.raises(SyntheticRecording):
+        extract_comments(recorded, user="quinn", deal=FIXTURE_DEAL, period=SEPTEMBER, client=client)
+    recorded.rollback()
+    assert _count(recorded, Extraction) == 0
+
+
+def test_a_view_as_of_a_day_sees_only_what_was_extracted_by_then(recorded):
+    clock.set_now(dt.datetime(2026, 10, 20, 15, tzinfo=dt.UTC))
+    _extract(recorded)
+
+    def seen(day):
+        return comment_view(
+            recorded, "pat", deal=FIXTURE_DEAL, loan="2", period=SEPTEMBER, as_of=day
+        )
+
+    assert seen(dt.date(2026, 10, 1)) is None
+    assert seen(dt.date(2026, 10, 19)) is None
+    assert seen(dt.date(2026, 10, 20)) is not None
+
+
+def test_restricted_text_is_never_exported(seeded, tmp_path):
+    clock.set_now(TODAY)
+    _store_settings(seeded, 9, zero_data_retention=True)
+    client = ModelClient(DbRecordings(seeded), provider=ScriptedProvider(), replay_only=False)
+    secret = "The sponsor plans to sell the asset in March."
+    source = SourceText(secret, Classification.RESTRICTED, "portal note")
+    extract_text(seeded, user="quinn", source=source, client=client)
+    exported = export_recording_files(seeded, "quinn", tmp_path)
+    assert (exported.written, exported.skipped_restricted) == ([], 1)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_sentence_is_checked_against_the_stored_sentences(waiting, loaded):
+    extraction = loaded.scalars(select(Extraction)).one()
+    extraction.comment = "One sentence only."
+    loaded.flush()
+    decided = decide_review(loaded, "alex", waiting.id, value="forbearance", sentence=4)
+    assert (decided.sentence, decided.evidence) == (
+        4,
+        "The special servicer is evaluating the request.",
+    )
+
+
+def test_a_reviewer_may_decide_the_comment_does_not_state_the_field(waiting, loaded):
+    clock.set_now(REVIEWED)
+    decided = decide_review(loaded, "alex", waiting.id, value="not stated", sentence=None)
+    loaded.commit()
+    assert (decided.status, decided.value, decided.sentence, decided.display) == (
+        "not stated",
+        None,
+        None,
+        None,
+    )
+    assert (decided.decided_by, decided.decided_at) == ("alex", REVIEWED)
+    item = review_item(loaded, "alex", waiting.id)
+    assert (item.status, item.decision, item.decision_sentence) == ("decided", "not stated", None)
+    [entry] = loaded.scalars(select(AuditEntry).where(AuditEntry.action == "decide review item"))
+    assert (entry.field, entry.before, entry.after, entry.reason) == (
+        "borrower request",
+        "",
+        "not stated",
+        "not stated in the comment",
+    )
+    view = comment_view(loaded, "pat", deal=FIXTURE_DEAL, loan="2", period=SEPTEMBER)
+    assert view is not None
+    assert "borrower request: - (not stated by alex)" in render_view(view)
+
+
+@pytest.mark.parametrize(
+    ("value", "sentence", "message"),
+    [
+        ("not stated", 3, "a field decided as not stated cites no sentence"),
+        ("forbearance", None, "a borrower request needs the sentence that supports it"),
+    ],
+)
+def test_a_decision_must_match_its_sentence(waiting, loaded, value, sentence, message):
+    with pytest.raises(BadDecision) as refused:
+        decide_review(loaded, "alex", waiting.id, value=value, sentence=sentence)
+    assert str(refused.value) == message
+
+
+def test_a_live_client_authorizes_before_choosing_a_provider(seeded):
+    clock.set_now(TODAY)
+    _store_settings(seeded, 8, model="clef-0.1.0")
+    seeded.commit()
+    with pytest.raises(PermissionRefused):
+        model_client(seeded, "pat", live=True)
+    with pytest.raises(ProviderFailed) as refused:
+        model_client(seeded, "quinn", live=True)
+    assert str(refused.value) == "no provider is configured for model clef-0.1.0"
+    seeded.rollback()
+    entries = _refusals(seeded)
+    assert [(e.user_name, e.action, e.reason) for e in entries] == [
+        ("pat", "run refreshes and backfills", "pm may not run refreshes and backfills"),
+        ("quinn", "extract comment", "no provider is configured for model clef-0.1.0"),
+    ]
+
+
+def test_a_replay_client_needs_no_provider(seeded):
+    client = model_client(seeded, "quinn", live=False)
+    assert (client.provider, client.replay_only, client.allow_synthetic) == (None, True, False)
+    live = model_client(seeded, "quinn", live=True)
+    assert live.provider is not None and not live.replay_only

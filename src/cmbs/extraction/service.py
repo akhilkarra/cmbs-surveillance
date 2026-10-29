@@ -39,7 +39,7 @@ from cmbs.extraction import fields as typed_fields
 from cmbs.extraction.decision import UNSETTLED_ANSWER, Outcome
 from cmbs.extraction.judgments import FieldResult, Judgment, decide_fields, read
 from cmbs.extraction.questions import check_prompt_version, plan
-from cmbs.extraction.sentences import Sentence, numbered, split
+from cmbs.extraction.sentences import Sentence, split
 from cmbs.extraction.tables import (
     AUTO_ACCEPTED,
     DECIDED,
@@ -54,13 +54,20 @@ from cmbs.extraction.tables import (
 from cmbs.filings.tables import Filing
 from cmbs.model.client import Answered, Ask, ModelClient
 from cmbs.model.policy import Classification, check_pinned, key_for
-from cmbs.model.recordings import DbRecordings, export_recordings, import_recordings
+from cmbs.model.providers import provider_for
+from cmbs.model.recordings import (
+    DbRecordings,
+    Exported,
+    export_recordings,
+    import_recordings,
+)
 from cmbs.model.types import ModelRequest
 from cmbs.settings.service import InForce, in_force
 
 EXTRACT = "extract comment"
 DECIDE = "decide review item"
 IMPORT_RECORDINGS = "import model recordings"
+NOT_STATED_DECISION = "not stated"
 DEAL = "deal"
 REVIEW_ITEM = "review item"
 STATUS_OF = {
@@ -96,6 +103,10 @@ class AlreadyDecided(Refused):
 
 class NoSuchSentence(Refused):
     pass
+
+
+class BadDecision(Refused):
+    """A value without a sentence, or "not stated" with one."""
 
 
 @dataclass(frozen=True)
@@ -184,7 +195,7 @@ def read_text(
 
 
 def _refuse(
-    db: Session, error: Refused, actor: Actor, action: str, subject: str, key: str
+    db: Session, error: Refused, actor: Actor, action: str, subject: str, key: str | None
 ) -> NoReturn:
     refuse(
         db,
@@ -378,6 +389,22 @@ def _extracted(db: Session, extraction: Extraction, *, replayed: bool) -> Extrac
     )
 
 
+def model_client(db: Session, user: str, *, live: bool) -> ModelClient:
+    """The client a run uses: replay only, or live with the provider for the model in force.
+
+    The user is authorized first, so a model no provider serves is an audited refusal.
+    """
+    actor = authorize(db, user, Action.RUN_REFRESH)
+    provider = None
+    if live:
+        try:
+            model = in_force(db).values.model
+            provider = provider_for(model)
+        except Refused as error:
+            _refuse(db, error, actor, EXTRACT, "model provider", None)
+    return ModelClient(DbRecordings(db), provider=provider, replay_only=not live)
+
+
 def extract_comments(
     db: Session,
     *,
@@ -483,7 +510,11 @@ class CommentView:
 def field_view(row: ExtractedField, sentences: list[str], as_of: dt.date | None) -> FieldView:
     """A field as the panel shows it. A decision taken after `as_of` is not yet visible."""
     spec = typed_fields.spec(row.field)
-    hidden = as_of is not None and row.decided_at is not None and row.decided_at.date() > as_of
+    hidden = (
+        as_of is not None
+        and row.decided_at is not None
+        and row.decided_at.astimezone(dt.UTC).date() > as_of
+    )
     status, value, sentence = (
         (NEEDS_REVIEW, None, None) if hidden else (row.status, row.value, row.sentence)
     )
@@ -513,7 +544,8 @@ def comment_view(
     period: Period,
     as_of: dt.date | None = None,
 ) -> CommentView | None:
-    """The latest extraction of a loan's comment for a period, as known on `as_of` (today)."""
+    """The latest extraction of a loan's comment for a period, as known on `as_of` (today):
+    from a filing public by that day, extracted by the end of it (UTC)."""
     authorize(db, reader, Action.READ_PANEL)
     deal_row = deals.by_name(db, deal)
     if deal_row is None:
@@ -527,6 +559,7 @@ def comment_view(
             Extraction.loan_id == canonical_loan(loan),
             Extraction.period == period.first_day,
             Filing.filing_date <= day,
+            Extraction.extracted_at < _end_of(day),
         )
         .order_by(Extraction.id.desc())
         .limit(1)
@@ -642,8 +675,35 @@ def _refuse_item(db: Session, error: Refused, actor: Actor, item_id: int) -> NoR
     )
 
 
-def decide_review(db: Session, user: str, item_id: int, *, value: str, sentence: int) -> FieldView:
-    """A reviewer's value for the field, backed by a sentence of the comment."""
+def _decision(
+    spec: typed_fields.FieldSpec, value: str, sentence: int | None, sentences: list[str]
+) -> str | None:
+    """The canonical value decided, or None for "not stated"; refuses an impossible decision.
+
+    The sentence is checked against the sentences stored with the extraction, the ones the
+    model and the reviewer saw.
+    """
+    if " ".join(value.split()) == NOT_STATED_DECISION:
+        if sentence is not None:
+            raise BadDecision("a field decided as not stated cites no sentence")
+        return None
+    chosen = typed_fields.canonical(spec, value)
+    if sentence is None:
+        raise BadDecision(f"a {spec.label} needs the sentence that supports it")
+    if not 1 <= sentence <= len(sentences):
+        raise NoSuchSentence(f"sentence {sentence} does not exist in this comment")
+    return chosen
+
+
+def _end_of(day: dt.date) -> dt.datetime:
+    return dt.datetime.combine(day + dt.timedelta(days=1), dt.time(), dt.UTC)
+
+
+def decide_review(
+    db: Session, user: str, item_id: int, *, value: str, sentence: int | None
+) -> FieldView:
+    """A reviewer's decision: a value backed by a sentence of the comment, or "not stated"
+    (which cites no sentence)."""
     actor = authorize(db, user, Action.DECIDE_REVIEW)
     # Locked and re-read, so two reviewers cannot both decide the item.
     item = db.get(ReviewItem, item_id, with_for_update=True, populate_existing=True)
@@ -659,15 +719,12 @@ def decide_review(db: Session, user: str, item_id: int, *, value: str, sentence:
         raise RuntimeError(f"review item {item_id} lost its field")
     spec = typed_fields.spec(item.field)
     try:
-        chosen = typed_fields.canonical(spec, value)
+        chosen = _decision(spec, value, sentence, extraction.sentences)
     except Refused as invalid:
         _refuse_item(db, invalid, actor, item_id)
-    if numbered(split(extraction.comment), sentence) is None:
-        error = NoSuchSentence(f"sentence {sentence} does not exist in this comment")
-        _refuse_item(db, error, actor, item_id)
     now = clock.now()
     before = typed_fields.display(spec, row.value) if row.value is not None else ""
-    row.status = HUMAN_REVIEWED
+    row.status = NOT_STATED if chosen is None else HUMAN_REVIEWED
     row.value = chosen
     row.sentence = sentence
     row.decided_by = actor.user
@@ -675,7 +732,7 @@ def decide_review(db: Session, user: str, item_id: int, *, value: str, sentence:
     item.status = DECIDED
     item.decided_by = actor.user
     item.decided_at = now
-    item.decision = chosen
+    item.decision = NOT_STATED_DECISION if chosen is None else chosen
     item.decision_sentence = sentence
     db.flush()
     record(
@@ -687,8 +744,8 @@ def decide_review(db: Session, user: str, item_id: int, *, value: str, sentence:
         subject_key=loan_key(deal.name, item.loan_id),
         field=spec.label,
         before=before,
-        after=typed_fields.display(spec, chosen),
-        reason=f"sentence {sentence}",
+        after=NOT_STATED_DECISION if chosen is None else typed_fields.display(spec, chosen),
+        reason="not stated in the comment" if sentence is None else f"sentence {sentence}",
         detail={
             "review_item": item.id,
             "accession": extraction.accession,
@@ -711,8 +768,9 @@ def import_recording_files(db: Session, user: str, directory: Path) -> int:
         _refuse(db, error, actor, IMPORT_RECORDINGS, "recordings", str(directory))
 
 
-def export_recording_files(db: Session, user: str, directory: Path) -> list[Path]:
-    """Write every recorded call to `directory`, one file each, in the fixture format."""
+def export_recording_files(db: Session, user: str, directory: Path) -> Exported:
+    """Write every recorded call of public text to `directory`, one file each, in the fixture
+    format. Recordings of restricted text are skipped and counted."""
     authorize(db, user, Action.EXPORT)
     return export_recordings(db, directory)
 

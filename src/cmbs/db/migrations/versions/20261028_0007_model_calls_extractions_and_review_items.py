@@ -3,8 +3,9 @@
 Recorded model calls (`app.model_call`, the replay cache), comment extractions with a model
 answer and a panel value per field (`silver.extraction`, `silver.extracted_field`), and the
 fields waiting for a reviewer (`app.review_item`). The check constraints back up the service:
-an accepted field has a value, a human-reviewed one names who decided and when, a decided
-review item is complete, and a recording was answered by the model it asked.
+an accepted field has a value; a field a reviewer decided (a value, or "not stated") names who
+decided it and when; a decided review item is complete; a recording was answered by the model
+it asked.
 
 Chained onto 0005, the head of main when this branch started (grill log Q71).
 
@@ -124,8 +125,16 @@ def upgrade() -> None:
         sa.Column("decided_by", sa.String(length=64), nullable=True),
         sa.Column("decided_at", sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint(
-            "(status = 'human-reviewed') = (decided_by IS NOT NULL AND decided_at IS NOT NULL)",
+            "status <> 'human-reviewed' OR decided_by IS NOT NULL",
             name=op.f("ck_extracted_field_reviewed_is_attributed"),
+        ),
+        sa.CheckConstraint(
+            "decided_by IS NULL OR status IN ('human-reviewed', 'not stated')",
+            name=op.f("ck_extracted_field_decided_by_a_reviewer"),
+        ),
+        sa.CheckConstraint(
+            "(decided_by IS NULL) = (decided_at IS NULL)",
+            name=op.f("ck_extracted_field_decided_when"),
         ),
         sa.CheckConstraint(
             "(status IN ('auto-accepted', 'human-reviewed')) = (value IS NOT NULL)",

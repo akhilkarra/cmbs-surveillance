@@ -21,7 +21,13 @@ from cmbs.model.policy import (
     key_for,
 )
 from cmbs.model.providers import Provider
-from cmbs.model.recordings import Recording, Recordings, check_recording, make_recording
+from cmbs.model.recordings import (
+    Recording,
+    Recordings,
+    check_not_synthetic,
+    check_recording,
+    make_recording,
+)
 from cmbs.model.types import ModelRequest, Question
 from cmbs.settings.service import InForce
 
@@ -49,11 +55,13 @@ class Answered:
 
 @dataclass
 class ModelClient:
-    """`replay_only` never calls the provider; tests always run that way."""
+    """`replay_only` never calls the provider; tests always run that way. Only tests set
+    `allow_synthetic`, to replay the hand-written answers in their fixtures."""
 
     recordings: Recordings
     provider: Provider | None = None
     replay_only: bool = True
+    allow_synthetic: bool = False
 
     def ask(self, ask: Ask, settings: InForce, *, now: dt.datetime) -> Answered:
         model = settings.values.model
@@ -64,6 +72,8 @@ class ModelClient:
         recorded = self.recordings.get(key)
         if recorded is not None:
             check_recording(recorded)
+            if not self.allow_synthetic:
+                check_not_synthetic(recorded)
             return Answered(recording=recorded, replayed=True)
         if self.replay_only or self.provider is None:
             raise NoRecording(

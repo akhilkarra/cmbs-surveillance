@@ -16,7 +16,7 @@ from enum import StrEnum
 from typing import Any
 
 from cmbs.errors import Refused
-from cmbs.model.types import ModelRequest, ModelResponse
+from cmbs.model.types import Answer, ModelRequest, ModelResponse, NoulAnswer
 
 # A model family, a dash and a three-part version: "jev-1.14.0".
 _PINNED = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*-\d+\.\d+\.\d+$")
@@ -75,6 +75,19 @@ def check_answers(request: ModelRequest, response: ModelResponse) -> None:
             unknown = sorted(set(answer.probabilities) - set(question.criteria))
             if answer.choice not in question.criteria or unknown:
                 raise MalformedAnswer(f"{name!r} was answered with an option it does not offer")
+        if not all(_is_probability(value) for value in _probabilities(answer)):
+            raise MalformedAnswer(f"{name!r} was answered with a probability outside 0 to 1")
+
+
+def _probabilities(answer: Answer) -> list[float]:
+    if isinstance(answer, NoulAnswer):
+        return [answer.noul]
+    return [answer.confidence, *answer.probabilities.values()]
+
+
+def _is_probability(value: float) -> bool:
+    """A finite number from 0 to 1 (NaN fails both comparisons)."""
+    return 0.0 <= value <= 1.0
 
 
 def canonical(value: Any) -> str:

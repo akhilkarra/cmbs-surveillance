@@ -159,3 +159,27 @@ def test_key_for_is_the_key_of_the_request_hashes():
 def test_probabilities_become_decimals_by_their_shortest_form():
     assert str(probability(0.55)) == "0.55"
     assert str(probability(1)) == "1.0"
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        NoulAnswer(noul=1.01),
+        NoulAnswer(noul=-0.01),
+        NoulAnswer(noul=float("nan")),
+        ChoiceAnswer(choice="current", confidence=1.5, probabilities={"current": 1.0}),
+        ChoiceAnswer(
+            choice="current", confidence=0.9, probabilities={"current": 0.9, "late": float("inf")}
+        ),
+    ],
+)
+def test_probabilities_outside_0_to_1_are_malformed(answer):
+    name = "late" if isinstance(answer, NoulAnswer) else "status"
+    with pytest.raises(MalformedAnswer) as refused:
+        check_answers(REQUEST, _response(**{name: answer}))
+    assert str(refused.value) == f"{name!r} was answered with a probability outside 0 to 1"
+
+
+def test_probabilities_at_0_and_1_are_allowed():
+    check_answers(REQUEST, _response(late=NoulAnswer(noul=0.0)))
+    check_answers(REQUEST, _response(late=NoulAnswer(noul=1.0)))

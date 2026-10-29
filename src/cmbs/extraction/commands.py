@@ -20,14 +20,11 @@ from cmbs.extraction.service import (
     export_recording_files,
     extract_comments,
     import_recording_files,
+    model_client,
     render_summary,
     render_view,
     review_item,
 )
-from cmbs.model.client import ModelClient
-from cmbs.model.providers import provider_for
-from cmbs.model.recordings import DbRecordings
-from cmbs.settings.service import in_force
 
 NAME = "extract"
 app = typer.Typer(help="Read special-servicing comments into typed fields.", no_args_is_help=True)
@@ -67,8 +64,7 @@ def extract(
     """Extract a month's special-servicing comments into the panel."""
     month = _period(period)
     with refusals(), engine.session() as db:
-        provider = provider_for(in_force(db).values.model) if live else None
-        client = ModelClient(DbRecordings(db), provider=provider, replay_only=not live)
+        client = model_client(db, user, live=live)
         summary = extract_comments(db, user=user, deal=deal, period=month, loan=loan, client=client)
     typer.echo(render_summary(summary), nl=False)
 
@@ -103,13 +99,16 @@ def review(item: Annotated[int, typer.Argument(help="Review item number.")], use
 def decide(
     item: Annotated[int, typer.Argument(help="Review item number.")],
     value: Annotated[str, typer.Argument(help="The field's value.")],
-    sentence: Annotated[int, typer.Option(help="The sentence that supports it.")],
     user: User,
+    sentence: Annotated[
+        int | None, typer.Option(help="The sentence that supports it; none for 'not stated'.")
+    ] = None,
 ) -> None:
-    """Decide a review item: the value and the sentence that supports it."""
+    """Decide a review item: a value and the sentence that supports it, or "not stated"."""
     with refusals(), engine.session() as db:
         decided = decide_review(db, user, item, value=value, sentence=sentence)
-    typer.echo(f"{decided.label}: {decided.display} (human-reviewed by {decided.decided_by})")
+    shown = decided.display if decided.display is not None else "-"
+    typer.echo(f"{decided.label}: {shown} ({decided.status} by {decided.decided_by})")
 
 
 @app.command("import-recordings")
@@ -126,5 +125,8 @@ def import_files(
 def export_files(directory: Annotated[Path, typer.Argument(file_okay=False)], user: User) -> None:
     """Write every recorded model call to a folder, one JSON file each."""
     with refusals(), engine.session() as db:
-        written = export_recording_files(db, user, directory)
-    typer.echo(f"wrote {len(written)} recordings to {directory}")
+        exported = export_recording_files(db, user, directory)
+    typer.echo(
+        f"wrote {len(exported.written)} recordings to {directory}; skipped "
+        f"{exported.skipped_restricted} of restricted text"
+    )

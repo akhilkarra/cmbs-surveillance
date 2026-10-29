@@ -15,13 +15,10 @@ from cmbs.extraction.service import (
     comment_view,
     decide_review,
     extract_comments,
+    model_client,
     open_review_items,
     review_item,
 )
-from cmbs.model.client import ModelClient
-from cmbs.model.providers import provider_for
-from cmbs.model.recordings import DbRecordings
-from cmbs.settings.service import in_force
 
 router = APIRouter(prefix="/extraction", tags=["extraction"])
 
@@ -34,8 +31,10 @@ class RunIn(BaseModel):
 
 
 class DecisionIn(BaseModel):
+    """A value and the sentence that supports it, or "not stated" with no sentence."""
+
     value: str
-    sentence: int
+    sentence: int | None = None
 
 
 def _text(value: object | None) -> str | None:
@@ -121,8 +120,7 @@ def read_comment(
 def run_extraction(body: RunIn, user: User, db: DB) -> dict[str, Any]:
     """Extract a month's comments; replays recorded answers unless `live` is set."""
     month = _period(body.period)
-    provider = provider_for(in_force(db).values.model) if body.live else None
-    client = ModelClient(DbRecordings(db), provider=provider, replay_only=not body.live)
+    client = model_client(db, user, live=body.live)
     summary = extract_comments(
         db, user=user, deal=body.deal, period=month, loan=body.loan, client=client
     )

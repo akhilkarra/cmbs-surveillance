@@ -79,9 +79,15 @@ class ExtractedField(Base):
             name="value_when_accepted",
         ),
         CheckConstraint(
-            "(status = 'human-reviewed') = (decided_by IS NOT NULL AND decided_at IS NOT NULL)",
+            "status <> 'human-reviewed' OR decided_by IS NOT NULL",
             name="reviewed_is_attributed",
         ),
+        # A reviewer decides a value (human-reviewed) or that the comment does not state it.
+        CheckConstraint(
+            "decided_by IS NULL OR status IN ('human-reviewed', 'not stated')",
+            name="decided_by_a_reviewer",
+        ),
+        CheckConstraint("(decided_by IS NULL) = (decided_at IS NULL)", name="decided_when"),
         {"schema": "silver"},
     )
 

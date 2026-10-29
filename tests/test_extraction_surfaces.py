@@ -13,11 +13,12 @@ from cmbs.distribution.service import load_report
 from cmbs.domain import Period
 from cmbs.extraction.service import extract_comments, open_review_items
 from cmbs.model.client import ModelClient
-from cmbs.model.recordings import DbRecordings
+from cmbs.model.recordings import DbRecordings, MemoryRecordings
 from cmbs.model.scripted import ScriptedProvider, choice_answer, respond
 from cmbs.model.types import Choice, NoulAnswer
 from cmbs.testing.world import FIXTURE_CIK, FIXTURE_DEAL
 from tests.conftest import FIXTURES, needs_db
+from tests.fixtures.model.synthetic import load as load_fixtures
 
 pytestmark = needs_db
 runner = CliRunner()
@@ -48,9 +49,25 @@ def _cli(*args: str):
     return runner.invoke(cli, ["extract", *args])
 
 
-def test_cli_imports_extracts_and_shows(loaded, tmp_path):
+def _recorded_live(db) -> None:
+    """The fixture's answers stored as if a model had given them, so the real CLI and API
+    (which refuse synthetic answers) replay them."""
+    memory = MemoryRecordings()
+    load_fixtures(memory)
+    cache = DbRecordings(db)
+    for recording in memory.stored.values():
+        cache.put(recording.model_copy(update={"synthetic": False}))
+    db.commit()
+
+
+def test_cli_refuses_to_import_synthetic_answers(loaded):
     imported = _cli("import-recordings", str(RECORDINGS), "--user", "quinn")
-    assert imported.output == f"imported 1 recordings from {RECORDINGS}\n"
+    assert imported.exit_code == 1
+    assert imported.output.endswith("holds synthetic answers, which are for tests only\n")
+
+
+def test_cli_extracts_shows_exports_and_imports(loaded, tmp_path):
+    _recorded_live(loaded)
     result = _cli("comments", FIXTURE_DEAL, "September 2026", "--loan", "2", "--user", "quinn")
     assert result.exit_code == 0, result.output
     assert result.output.startswith(
@@ -60,7 +77,9 @@ def test_cli_imports_extracts_and_shows(loaded, tmp_path):
     assert shown.exit_code == 0, shown.output
     assert "borrower request: maturity extension (auto-accepted, sentence 3)\n" in shown.output
     exported = _cli("export-recordings", str(tmp_path), "--user", "quinn")
-    assert exported.output == f"wrote 1 recordings to {tmp_path}\n"
+    assert exported.output == f"wrote 1 recordings to {tmp_path}; skipped 0 of restricted text\n"
+    imported = _cli("import-recordings", str(tmp_path), "--user", "quinn")
+    assert imported.output == f"imported 1 recordings from {tmp_path}\n"
 
 
 def test_cli_replay_without_a_recording_stops_with_the_reason(loaded):
@@ -130,10 +149,7 @@ def test_cli_shows_and_decides_a_review_item(waiting):
 
 def test_api_runs_extraction_and_reads_fields(loaded):
     client = TestClient(create_app())
-    imported = runner.invoke(
-        cli, ["extract", "import-recordings", str(RECORDINGS), "--user", "quinn"]
-    )
-    assert imported.exit_code == 0
+    _recorded_live(loaded)
     run = client.post(
         "/extraction/runs", json={"deal": FIXTURE_DEAL, "period": "September 2026"}, headers=USER
     )
@@ -209,3 +225,50 @@ def test_api_lists_and_decides_review_items(waiting):
     assert decided.status_code == 200, decided.text
     assert (decided.json()["status"], decided.json()["decided_by"]) == ("human-reviewed", "alex")
     assert client.get("/extraction/review-items", headers=alex).json() == []
+
+
+def test_cli_decides_that_a_comment_does_not_state_a_field(waiting):
+    decided = _cli("decide", str(waiting.id), "not stated", "--user", "alex")
+    assert (decided.exit_code, decided.output) == (
+        0,
+        "borrower request: - (not stated by alex)\n",
+    )
+
+
+def test_cli_live_with_a_model_no_provider_serves_is_an_audited_refusal(loaded):
+    from sqlalchemy import select
+
+    from cmbs.audit.tables import AuditEntry
+    from cmbs.settings.service import in_force, store_version
+
+    store_version(
+        loaded,
+        version=8,
+        values=in_force(loaded).values.model_copy(update={"model": "clef-0.1.0"}),
+        proposed_by="quinn",
+        approved_by="rae",
+        approved_at=dt.datetime(2026, 9, 30, tzinfo=dt.UTC),
+    )
+    loaded.commit()
+    result = _cli("comments", FIXTURE_DEAL, "September 2026", "--live", "--user", "quinn")
+    assert (result.exit_code, result.output) == (
+        1,
+        "no provider is configured for model clef-0.1.0\n",
+    )
+    refused = loaded.scalars(select(AuditEntry).where(AuditEntry.outcome == "refused")).all()
+    assert [(e.user_name, e.reason) for e in refused] == [
+        ("quinn", "no provider is configured for model clef-0.1.0")
+    ]
+
+
+def test_api_live_by_a_pm_is_refused_before_any_provider(loaded):
+    client = TestClient(create_app())
+    response = client.post(
+        "/extraction/runs",
+        json={"deal": FIXTURE_DEAL, "period": "September 2026", "live": True},
+        headers={"X-CMBS-User": "pat"},
+    )
+    assert (response.status_code, response.json()["detail"]) == (
+        403,
+        "pm may not run refreshes and backfills",
+    )

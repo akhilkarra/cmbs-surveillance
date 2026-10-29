@@ -14,7 +14,12 @@ from cmbs.model.policy import (
     UnpinnedModel,
     key_for,
 )
-from cmbs.model.recordings import BadRecording, MemoryRecordings, make_recording
+from cmbs.model.recordings import (
+    BadRecording,
+    MemoryRecordings,
+    SyntheticRecording,
+    make_recording,
+)
 from cmbs.model.scripted import ScriptedProvider, respond
 from cmbs.model.types import ModelRequest, ModelResponse, Noul, NoulAnswer
 from cmbs.settings.service import InForce
@@ -187,3 +192,19 @@ def test_settings_default_band_is_the_baseline():
         Decimal("0.30"),
         Decimal("0.70"),
     )
+
+
+def test_synthetic_answers_replay_only_where_tests_allow_them():
+    recordings = _recorded(synthetic=True)
+    with pytest.raises(SyntheticRecording):
+        ModelClient(recordings).ask(ASK, SETTINGS, now=NOW)
+    assert ModelClient(recordings, allow_synthetic=True).ask(ASK, SETTINGS, now=NOW).replayed
+
+
+def test_an_impossible_probability_from_the_provider_is_refused_and_not_recorded():
+    recordings = MemoryRecordings()
+    provider = ScriptedProvider(lambda request: respond(request, {"late": NoulAnswer(noul=1.2)}))
+    with pytest.raises(MalformedAnswer) as refused:
+        ModelClient(recordings, provider=provider, replay_only=False).ask(ASK, SETTINGS, now=NOW)
+    assert str(refused.value) == "'late' was answered with a probability outside 0 to 1"
+    assert recordings.stored == {}
