@@ -39,13 +39,12 @@ from cmbs.runs import service as runs
 from cmbs.runs.tables import Run
 from cmbs.tape.tables import LoanPeriod, LoanTape
 from cmbs.testing.bdd import attempt, changed_tables, data_snapshot, in_session
-from cmbs.testing.world import FIXTURE_CIK, FIXTURE_DEAL, set_next_run_number
+from cmbs.testing.world import FIXTURE_CIKS, FIXTURE_DEAL, set_next_run_number
 
 FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 EDGAR = (FIXTURES / "refresh" / "edgar", FIXTURES / "edgar")
 ARCHIVE = FIXTURES / "refresh" / "archive"
 SECOND_DEAL = "Fixture Trust 2026-F2"
-SECOND_CIK = 9_900_002
 BOOK_DATE = dt.date(2026, 9, 30)
 # Classes and faces from features/README.md; the private deal as in the coverage report.
 BOOK = {
@@ -119,7 +118,7 @@ def _sources(context) -> Sources:
 
 
 def _cik(deal: str) -> int:
-    return {FIXTURE_DEAL: FIXTURE_CIK, SECOND_DEAL: SECOND_CIK}[deal]
+    return FIXTURE_CIKS[deal]
 
 
 def _exhibit_url(deal: str, period: Period, form: str) -> str:

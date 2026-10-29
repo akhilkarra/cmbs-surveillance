@@ -15,6 +15,7 @@ from cmbs.cli import app as cli
 from cmbs.deals.service import get_or_create
 from cmbs.domain import money
 from cmbs.refresh.sources import ARCHIVE_REPLAY_ENV, EDGAR_REPLAY_ENV
+from cmbs.testing.world import FIXTURE_CIKS
 from tests.conftest import needs_db
 from tests.fixtures.refresh.offline import offline_fixture  # noqa: F401
 
@@ -91,7 +92,7 @@ def test_the_cli_refreshes_and_reads_runs(book):
 
 
 def test_the_cli_backfills_and_a_failed_run_exits_1(seeded):
-    for name, cik in ((F2, 9_900_002), ("Unrecorded Trust 2026-X", None)):
+    for name, cik in ((F2, FIXTURE_CIKS[F2]), ("Unrecorded Trust 2026-X", None)):
         get_or_create(seeded, name, cik=cik)
     seeded.commit()
     clock.set_now(dt.datetime(2026, 10, 28, 9, 0, tzinfo=dt.UTC))

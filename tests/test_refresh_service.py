@@ -52,6 +52,7 @@ from cmbs.runs.service import NotLoaded
 from cmbs.runs.tables import Run
 from cmbs.tape.service import load_tape
 from cmbs.tape.tables import LoanPeriod, LoanTape
+from cmbs.testing.world import FIXTURE_CIKS
 from tests.conftest import needs_db
 from tests.fixtures.refresh.offline import offline_fixture  # noqa: F401
 
@@ -61,7 +62,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 EDGAR = (FIXTURES / "refresh" / "edgar", FIXTURES / "edgar")
 ARCHIVE = FIXTURES / "refresh" / "archive"
 F1, F2, HYT = "Fixture Trust 2026-F1", "Fixture Trust 2026-F2", "HYT 2024-RGCY"
-CIKS = {F1: 9_900_001, F2: 9_900_002}
+CIKS = {deal: FIXTURE_CIKS[deal] for deal in (F1, F2)}
 AUG, SEP, OCT = Period(2026, 8), Period(2026, 9), Period(2026, 10)
 TODAY = dt.datetime(2026, 10, 28, 9, 0, tzinfo=dt.UTC)
 NOT_A_REPORT = b"<html><body>not a report</body></html>"
