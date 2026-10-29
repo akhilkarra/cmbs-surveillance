@@ -1,6 +1,7 @@
 """The checks service on a real database: point-in-time reads, flags with both sides, audit."""
 
 import datetime as dt
+from dataclasses import replace
 from decimal import Decimal
 from html import escape
 from pathlib import Path
@@ -15,6 +16,7 @@ from cmbs.audit.tables import AuditEntry
 from cmbs.checks.tables import CheckFlag
 from cmbs.crosscheck import rollforward as rf
 from cmbs.crosscheck import rules
+from cmbs.crosscheck import service as crosscheck_service
 from cmbs.crosscheck.service import (
     NoTape,
     UnknownDeal,
@@ -400,7 +402,9 @@ def test_a_value_awaiting_review_is_not_compared_until_decided(seeded):
     load_comment(seeded, SEPTEMBER, COMMENT, answer_p=0.55)
     day = dt.date(2026, 10, 1)
     clock.set_now(at(day))
-    (result,) = text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day)
+    (result,) = text_vs_tape(
+        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
+    )
     assert [f.check for f in result.findings] == [rules.NEWER_FINANCIALS]
 
     (item,) = [i for i in open_review_items(seeded, "alex") if i.field == "transfer_date"]
@@ -408,10 +412,12 @@ def test_a_value_awaiting_review_is_not_compared_until_decided(seeded):
     decide_review(seeded, "alex", item.id, value="11/15/2024", sentence=1)
     seeded.commit()
     # Point in time: the decision is visible from the day it was made.
-    (before,) = text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day)
+    (before,) = text_vs_tape(
+        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
+    )
     assert [f.check for f in before.findings] == [rules.NEWER_FINANCIALS]
     (after,) = text_vs_tape(
-        seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=dt.date(2026, 10, 2)
+        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=dt.date(2026, 10, 2)
     )
     assert [(f.check, f.status) for f in after.findings] == [
         (rules.TRANSFER_DATE, rules.Status.FLAG),
@@ -423,7 +429,9 @@ def test_a_comment_for_a_loan_not_on_the_tape_is_skipped(seeded):
     load_month(seeded, SEPTEMBER, loan("1", SEPTEMBER))
     load_comment(seeded, SEPTEMBER, COMMENT)
     day = dt.date(2026, 10, 1)
-    (result,) = text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day)
+    (result,) = text_vs_tape(
+        seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
+    )
     assert result.findings == []
     assert result.skipped == "loan 2 is not on the September 2026 tape as of 2026-10-01"
 
@@ -433,7 +441,12 @@ def test_comments_are_not_read_before_their_10d_was_filed(seeded):
     load_comment(seeded, SEPTEMBER, COMMENT)
     on_filing = filed(SEPTEMBER)
     # Extracted the day after filing: on the filing day itself nothing was extracted yet.
-    assert text_vs_tape(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=on_filing) == []
+    assert (
+        text_vs_tape(
+            seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=on_filing
+        )
+        == []
+    )
 
 
 def test_flags_need_a_known_deal_and_the_right_to_read(seeded):
@@ -470,3 +483,62 @@ def test_decimal_gap_is_exact_to_the_cent(seeded):
         seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=filed(SEPTEMBER)
     )
     assert (result.roll.status, result.roll.gap) == (rf.Status.BREAK, Decimal("-0.01"))
+
+
+def _with_transfer(status: str, value: str):
+    """A stand-in for the panel's read that lays a decision on loan 2's transfer date, as the
+    review queue's overrides and declines do inside `comment_view`."""
+    real = crosscheck_service.comment_view
+
+    def read(*args, **kwargs):
+        view = real(*args, **kwargs)
+        if view is None:
+            return None
+        shown = replace(view.fields["transfer_date"], status=status, value=value, sentence=1)
+        return replace(view, fields={**view.fields, "transfer_date": shown})
+
+    return read
+
+
+def test_the_value_compared_is_the_one_the_panel_shows(seeded, monkeypatch):
+    load_month(
+        seeded,
+        SEPTEMBER,
+        loan("2", SEPTEMBER, mostRecentSpecialServicerTransferDate="03-06-2025"),
+    )
+    load_comment(seeded, SEPTEMBER, COMMENT)
+    day = dt.date(2026, 10, 1)
+
+    def read() -> list[rules.Finding]:
+        (result,) = text_vs_tape(
+            seeded, reader="pat", deal_id=deal_id(seeded), period=SEPTEMBER, as_of=day
+        )
+        return result.findings
+
+    assert read()[0].status is rules.Status.FLAG  # 2024-11-15 against 2025-03-06
+
+    # An override to the tape's date is what gets compared: they agree.
+    monkeypatch.setattr(
+        crosscheck_service, "comment_view", _with_transfer("overridden", "2025-03-06")
+    )
+    transfer = read()[0]
+    assert (transfer.check, transfer.status) == (rules.TRANSFER_DATE, rules.Status.AGREE)
+    assert transfer.sides["text"]["transfer_date"] == "2025-03-06"
+
+    # A status that does not settle the value (a declined field, say) is not compared.
+    monkeypatch.setattr(
+        crosscheck_service, "comment_view", _with_transfer("declined", "2020-01-01")
+    )
+    assert [f.check for f in read()] == [rules.NEWER_FINANCIALS]
+
+
+def test_compared_statuses():
+    assert frozenset({"auto-accepted", "human-reviewed", "overridden"}) == (
+        crosscheck_service.COMPARED
+    )
+
+
+def test_reading_text_versus_tape_needs_the_right_to_read_the_panel(seeded):
+    two_months(seeded)
+    with pytest.raises(PermissionRefused, match="^operator may not read the panel$"):
+        text_vs_tape(seeded, reader="olly", deal_id=deal_id(seeded), period=SEPTEMBER)

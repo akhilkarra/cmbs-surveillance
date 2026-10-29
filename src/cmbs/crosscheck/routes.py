@@ -57,10 +57,13 @@ def rollforward(
 def text_vs_tape(
     user: User, db: DB, deal: str, period: str, as_of: Day = None
 ) -> list[dict[str, Any]]:
-    authorize(db, user, Action.READ_PANEL)
     month = _period(period)
     results = service.text_vs_tape(
-        db, deal_id=service.deal_id(db, deal), period=month, as_of=as_of or clock.today()
+        db,
+        reader=user,
+        deal_id=service.deal_id(db, deal),
+        period=month,
+        as_of=as_of or clock.today(),
     )
     return [report.loan_findings_json(loan) for loan in results]
 

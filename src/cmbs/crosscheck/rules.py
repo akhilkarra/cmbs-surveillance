@@ -3,13 +3,14 @@
 Each side is read point in time by the service; these rules only compare. Neither side is ever
 changed: a disagreement becomes a check flag that keeps both values and their dates.
 
-- **Transfer date.** The comment's transfer date (an accepted or human-decided value, never one
-  awaiting review) against the tape's most recent special-servicer transfer date for the same
-  loan and month. Dates whose monthly periods are at most the tolerance in force apart (two in
-  settings version 7) agree: 2025-01-20 and 2025-03-06 are two periods apart (January to
-  March), 2024-11-15 and 2025-03-06 four. Periods are calendar months, the unit the tape
-  reports in, so the day of the month never matters. A transfer the comment gives and the tape
-  does not report is flagged "transfer in text, not in tape".
+- **Transfer date.** The comment's transfer date (a value the panel shows as accepted,
+  human-reviewed or overridden, never one awaiting review) against the tape's most recent
+  special-servicer transfer date for the same loan and month. The tape reports by distribution
+  month (its reporting period may end on any day of the month), so the tolerance in force (two
+  in settings version 7) counts distribution months: dates whose months are at most that many
+  apart agree, whatever their days. 2025-01-20 and 2025-03-06 are two months apart (January to
+  March), 2024-11-15 and 2025-03-06 four. A transfer the comment gives and the tape does not
+  report is flagged "transfer in text, not in tape".
 - **Newer financials.** When the comment dates its DSCR or occupancy later than the tape's
   most recent financials, the loan gets a note (not a disagreement: servicers see operating
   statements before the tape is updated). The tape's figures stay as filed.
@@ -88,7 +89,7 @@ class Finding:
 
 
 def periods_apart(first: dt.date, second: dt.date) -> int:
-    """Calendar months between the two dates' periods, whichever comes first."""
+    """Distribution months between the months the two dates fall in, whichever comes first."""
     return abs(Period.of(first).months_until(Period.of(second)))
 
 
