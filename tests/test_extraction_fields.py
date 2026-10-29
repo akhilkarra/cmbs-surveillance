@@ -67,6 +67,17 @@ def test_no_candidates_when_the_kind_is_not_printed():
         ("dscr", "0.71x", "0.71"),
         ("dscr", "1.10 X", "1.10"),
         ("dscr", "1.25", "1.25"),
+        ("dscr", "-0.15x", "-0.15"),
+        ("dscr", "(0.15x)", "-0.15"),
+        ("dscr", "( 0.15 X )", "-0.15"),
+        ("dscr", "0.710x", "0.71"),
+        ("dscr", "1.1x", "1.10"),
+        ("dscr", "1.125x", "1.125"),
+        ("dscr", "2x", "2.00"),
+        ("dscr", "-0x", "0.00"),
+        ("occupancy", "61.40%", "61.4"),
+        ("occupancy", "100%", "100"),
+        ("occupancy", "0.0%", "0"),
         ("occupancy", "61.4%", "61.4"),
         ("occupancy", "88 %", "88"),
         ("borrower_request", " maturity  extension ", "maturity extension"),
@@ -82,7 +93,12 @@ def test_canonical_values(field, text, expected):
         ("transfer_date", "13/45/2025", "'13/45/2025' is not a transfer date"),
         ("transfer_date", "soon", "'soon' is not a transfer date"),
         ("dscr", "high", "'high' is not a DSCR"),
-        ("dscr", "-0.5x", "'-0.5x' is not a DSCR"),
+        ("dscr", "1e3x", "'1e3x' is not a DSCR"),
+        ("dscr", "1,000x", "'1,000x' is not a DSCR"),
+        ("dscr", "-(0.15x)", "'-(0.15x)' is not a DSCR"),
+        ("occupancy", "100.5%", "'100.5%' is not a occupancy: it must be from 0% to 100%"),
+        ("occupancy", "-5%", "'-5%' is not a occupancy"),
+        ("occupancy", "1e2%", "'1e2%' is not a occupancy"),
         ("occupancy", "NaN", "'NaN' is not a occupancy"),
         (
             "request_status",
@@ -109,3 +125,8 @@ def test_display_values():
     assert display(spec("occupancy"), "61.4") == "61.4%"
     assert display(spec("transfer_date"), "2025-03-06") == "2025-03-06"
     assert display(spec("borrower_request"), "forbearance") == "forbearance"
+
+
+def test_negative_ratios_are_candidates_in_both_forms():
+    text = "DSCR fell to -0.15x, then (0.20x); it was 1.10 X (1.10 X at closing)."
+    assert candidates(spec("dscr"), text) == ("-0.15x", "(0.20x)", "1.10 X")

@@ -12,7 +12,7 @@ read back typed with `typed`.
 import datetime as dt
 import re
 from dataclasses import dataclass, field
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from enum import StrEnum
 
 from cmbs.errors import Refused
@@ -91,9 +91,18 @@ BY_LABEL = {spec.label: spec for spec in FIELDS}
 # that is not a real value (such as 13/45/2025), so it never becomes a candidate.
 _PATTERNS = {
     Kind.DATE: re.compile(r"(?<![\d/])\d{1,2}/\d{1,2}/(?:\d{4}|\d{2})(?![\d/])"),
-    Kind.RATIO: re.compile(r"(?<![\d.])\d+(?:\.\d+)?\s?x\b", re.IGNORECASE),
+    # A negative DSCR prints as "-0.15x" or, accounting style, "(0.15x)".
+    Kind.RATIO: re.compile(
+        r"\(\s*\d+(?:\.\d+)?\s?x\s*\)|(?<![\d.])-?\d+(?:\.\d+)?\s?x\b", re.IGNORECASE
+    ),
     Kind.PERCENT: re.compile(r"(?<![\d.])\d+(?:\.\d+)?\s?%"),
 }
+# A plain decimal number: no exponent ("1e3"), no grouping, at most one leading minus.
+_NUMBER = re.compile(r"^-?\d+(?:\.\d+)?$")
+_HUNDRED = Decimal(100)
+_CENTS = Decimal("0.01")
+# Each as-of date and the figure it dates: both must come from the same sentence.
+AS_OF = {"dscr_as_of": "dscr", "occupancy_as_of": "occupancy"}
 
 
 def spec(name: str) -> FieldSpec:
@@ -126,16 +135,44 @@ def canonical(spec: FieldSpec, text: str) -> str:
                 f"{value!r} is not a {spec.label}; choose one of: {', '.join(spec.options)}"
             )
         return value
-    try:
-        if spec.kind is Kind.DATE:
+    if spec.kind is Kind.DATE:
+        try:
             day = dt.date.fromisoformat(value) if "-" in value else _us_date(value)
-            return day.isoformat()
-        number = Decimal(value.rstrip("xX%").strip())
-    except (ValueError, InvalidOperation):
-        raise InvalidValue(f"{value!r} is not a {spec.label}") from None
-    if not number.is_finite() or number < 0:
+        except ValueError:
+            raise InvalidValue(f"{value!r} is not a {spec.label}") from None
+        return day.isoformat()
+    number = _number(spec, value)
+    if number is None:
         raise InvalidValue(f"{value!r} is not a {spec.label}")
-    return str(number)
+    if spec.kind is Kind.PERCENT and not 0 <= number <= _HUNDRED:
+        raise InvalidValue(f"{value!r} is not a {spec.label}: it must be from 0% to 100%")
+    return _plain(number, at_least_cents=spec.kind is Kind.RATIO)
+
+
+def _number(spec: FieldSpec, value: str) -> Decimal | None:
+    """The number in '0.71x', '-0.15x', '(0.15x)' or '61.4%'; None if there is none.
+
+    Only a ratio may be negative: a DSCR below zero means the property loses money.
+    """
+    negative = spec.kind is Kind.RATIO and value.startswith("(") and value.endswith(")")
+    inner = value[1:-1] if negative else value
+    inner = inner.strip().removesuffix("%" if spec.kind is Kind.PERCENT else "x")
+    inner = inner.removesuffix("X").strip() if spec.kind is Kind.RATIO else inner.strip()
+    if not _NUMBER.match(inner) or (
+        inner.startswith("-") and (negative or spec.kind is not Kind.RATIO)
+    ):
+        return None
+    number = Decimal(inner)
+    return -number if negative else number
+
+
+def _plain(number: Decimal, *, at_least_cents: bool) -> str:
+    """Trailing zeros dropped ('0.710' -> '0.71', '88.0' -> '88'); a ratio keeps two places."""
+    reduced = Decimal(0) if number == 0 else number.normalize()  # never "-0" or "0.0"
+    exponent = reduced.as_tuple().exponent
+    if at_least_cents and isinstance(exponent, int) and exponent > -2:
+        reduced = reduced.quantize(_CENTS)
+    return format(reduced, "f")
 
 
 def candidates(spec: FieldSpec, text: str) -> tuple[str, ...]:
