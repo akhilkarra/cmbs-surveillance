@@ -12,6 +12,7 @@ from cmbs.ask.answer import (
     compose,
     is_write_request,
     loan_in,
+    outside_in,
     topics_in,
 )
 
@@ -105,7 +106,8 @@ def test_topics_a_question_names():
     assert topics_in("What is the workout strategy for loan 2?") == ["workout strategy"]
     assert topics_in("How much equity does the sponsor have in the property?") == []
     assert topics_in("What's the DSCR and occupancy?") == ["DSCR", "occupancy"]
-    assert topics_in("Is it late?") == ["payment status"]
+    assert topics_in("Is it past due?") == ["payment status"]
+    assert topics_in("Is it delinquent?") == ["payment status"]
     assert topics_in("Was it translated later?") == []
     assert topics_in("What is the balance?") == ["balance"]
     assert topics_in("When are the financials from? NOI?") == ["financials"]
@@ -148,13 +150,24 @@ def test_a_topic_awaiting_review_states_no_value_from_any_source():
 
 def test_a_question_no_fact_covers_is_not_in_the_data():
     answer = compose("How much equity does the sponsor have?", deal="F1", loan="2", facts=FACTS)
-    assert answer == Answer("How much equity does the sponsor have?", "F1", "2", Kind.NOT_IN_DATA)
+    assert answer == Answer(
+        "How much equity does the sponsor have?",
+        "F1",
+        "2",
+        Kind.NOT_IN_DATA,
+        not_in_data=["equity", "sponsor"],
+    )
     assert answer.text() == (
+        "not in the data: the panel does not contain that information (equity, sponsor) for "
+        "loan 2 of F1, and nothing is estimated."
+    )
+    occupancy = compose("What is the occupancy?", deal="F1", loan="2", facts=FACTS)
+    assert (occupancy.kind, occupancy.not_in_data) == (Kind.NOT_IN_DATA, ["occupancy"])
+    plain = compose("Tell me a story", deal="F1", loan="2", facts=FACTS)
+    assert plain.text() == (
         "not in the data: the panel does not contain that information for loan 2 of F1, and "
         "nothing is estimated."
     )
-    occupancy = compose("What is the occupancy?", deal="F1", loan="2", facts=FACTS)
-    assert occupancy.kind is Kind.NOT_IN_DATA
 
 
 def test_a_request_to_change_data_is_refused():
@@ -164,3 +177,75 @@ def test_a_request_to_change_data_is_refused():
         "asking is read-only: questions can read the panel but never change it. Make changes "
         "through the review queue, overrides or a refresh."
     )
+
+
+def test_no_part_of_a_question_is_answered_by_substituting_another():
+    """A concept the panel does not hold is "not in the data", even when another word of the
+    question names a topic it does hold."""
+    sponsor = compose("What does the sponsor want for loan 2?", deal="F1", loan="2", facts=FACTS)
+    assert (sponsor.kind, sponsor.stated, sponsor.not_in_data) == (
+        Kind.NOT_IN_DATA,
+        [],
+        ["sponsor"],
+    )
+    insured = compose(
+        "What is the insurance coverage and the current LTV on loan 2?",
+        deal="F1",
+        loan="2",
+        facts=FACTS,
+    )
+    assert (insured.kind, insured.stated, insured.not_in_data) == (
+        Kind.NOT_IN_DATA,
+        [],
+        ["LTV", "insurance"],
+    )
+    both = compose(
+        "What is the balance of loan 2 and what is the property worth?",
+        deal="F1",
+        loan="2",
+        facts=FACTS,
+    )
+    assert both.kind is Kind.ANSWERED
+    assert [f.name for f in both.stated] == ["tape.ending_balance"]
+    assert both.not_in_data == ["valuation"]
+    assert both.text().splitlines()[-1] == (
+        "- valuation: not in the data; the panel does not contain it, and nothing is estimated"
+    )
+    partly = compose("What is the balance and occupancy?", deal="F1", loan="2", facts=FACTS)
+    assert ([f.name for f in partly.stated], partly.not_in_data) == (
+        ["tape.ending_balance"],
+        ["occupancy"],
+    )
+
+
+def test_concepts_outside_the_panel():
+    assert outside_in("What is the LTV, cap rate and appraised value?") == [
+        "appraisal",
+        "LTV",
+        "cap rate",
+    ]
+    assert outside_in("Who is the guarantor? Any tenants or reserves?") == [
+        "guarantor",
+        "tenants and leases",
+        "reserves",
+    ]
+    assert outside_in("When does it mature, and at what interest rate?") == [
+        "interest rate",
+        "maturity date",
+    ]
+    assert outside_in("Why is loan 2 in special servicing?") == []
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "I want you to mark loan 2 as resolved",
+        "I'd like you to close the alert on loan 7",
+        "Show me loan 2's balance, then delete the review item",
+        "What is the balance? Also override the borrower request.",
+        "Tell me the DSCR and set it to 1.2x",
+    ],
+)
+def test_a_request_to_change_anywhere_in_the_question_is_refused(question):
+    assert is_write_request(question)
+    assert compose(question, deal="F1", loan="2", facts=FACTS).kind is Kind.READ_ONLY

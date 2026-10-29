@@ -6,14 +6,19 @@ tape reports (cited by its ABS-EE accession and the Schedule AL field). A commen
 for human review is a fact with no value. Nothing here estimates or derives a figure: every
 value is one the panel stores, formatted for reading.
 
-`compose` answers a question from the facts, conservatively:
-- a request to change something ("Mark loan 2 as resolved") is refused: asking is read-only;
+`compose` answers a question from the facts, conservatively, and never substitutes one question
+for another:
+- a request to change something, anywhere in the question ("I want you to mark loan 2 as
+  resolved"), is refused: asking is read-only;
 - the facts whose topic the question names are stated, each with its citation;
 - a topic with a value awaiting review states no value from any source, only that it awaits
   review: an answer must not present as settled what a reviewer has not settled;
-- a question no fact covers gets "not in the data".
-Recognising topics by their words is deliberately narrow; the `/cmbs-ask` skill reads the same
-facts (`cmbs ask facts`) and composes fuller answers under the same rules.
+- every other part of the question is "not in the data": a concept the panel does not hold
+  (equity, the sponsor, an appraisal, LTV, ...), and a topic it holds but has no value of for
+  the loan. A question with no part the panel covers is "not in the data" as a whole.
+Recognising topics by their words is deliberately narrow, and a word that could belong to
+another subject ("coverage", "current", "strategy") names no topic on its own; the `/cmbs-ask`
+skill reads the same facts (`cmbs ask facts`) and composes fuller answers under the same rules.
 """
 
 import datetime as dt
@@ -79,15 +84,33 @@ class Fact:
 # in lower case; `\b` at the end asks for the whole word.
 TOPIC_WORDS: dict[str, tuple[str, ...]] = {
     "special servicing transfer": (r"special servic", r"transfer"),
-    "borrower request": (r"borrower", r"request", r"extension\b", r"forbearance", r"want"),
-    "workout strategy": (r"workout", r"strateg", r"resolution plan"),
-    "DSCR": (r"dscr", r"debt service", r"coverage"),
+    "borrower request": (r"borrower", r"forbearance", r"extension\b"),
+    "workout strategy": (r"workout", r"resolution plan"),
+    "DSCR": (r"dscr", r"debt service coverage"),
     "occupancy": (r"occupan", r"vacan", r"occupied"),
-    "balance": (r"balance", r"outstanding", r"owed\b"),
-    "payment status": (r"delinquen", r"payment status", r"paid through", r"late\b", r"current\b"),
+    "balance": (r"balance\b", r"principal outstanding", r"outstanding principal", r"owed\b"),
+    "payment status": (r"delinquen", r"payment status", r"paid through", r"past due"),
     "financials": (r"financials", r"noi\b", r"net operating income", r"operating statement"),
     "modification": (r"modif",),
     "property": (r"property type", r"property name", r"kind of property", r"type of property"),
+}
+
+# Concepts a question may ask about that the panel does not hold, by the words that name them.
+# A question naming one gets "not in the data" for it, whatever else it asks.
+OUTSIDE_WORDS: dict[str, tuple[str, ...]] = {
+    "equity": (r"equity",),
+    "sponsor": (r"sponsor",),
+    "appraisal": (r"apprais",),
+    "LTV": (r"ltv\b", r"loan.to.value"),
+    "cap rate": (r"cap rate", r"capitali[sz]ation rate"),
+    "valuation": (r"valuation", r"value of the property", r"property value", r"worth\b"),
+    "guarantor": (r"guarant",),
+    "insurance": (r"insur",),
+    "tenants and leases": (r"tenant", r"lease", r"rents?\b", r"rent roll"),
+    "reserves": (r"reserve", r"escrow"),
+    "interest rate": (r"interest rate", r"coupon"),
+    "maturity date": (r"maturity date", r"matures?\b"),
+    "market": (r"market", r"comparable", r"sale price", r"sold for"),
 }
 
 # Verbs that ask the panel to change something, as the first word of a request.
@@ -100,22 +123,37 @@ WRITE_VERBS = frozenset(
         "import", "insert", "propose",
     }
 )  # fmt: skip
-POLITE = ("please", "can you", "could you", "would you", "will you", "kindly", "go ahead and")
+# Words that lead into a request, stripped before reading its first word.
+LEAD_INS = (
+    "please", "can you", "could you", "would you", "will you", "kindly", "go ahead and",
+    "i want you to", "i'd like you to", "i would like you to", "i need you to", "i want to",
+    "i'd like to", "you should", "you must", "you need to", "let's", "lets", "let us",
+    "make sure to", "be sure to", "then", "also", "and", "now",
+)  # fmt: skip
+# A question is read in parts: sentences, and clauses joined by "and" or "then".
+_PARTS = re.compile(r"[.;:!?,]+|\band\b|\bthen\b")
 _LOAN = re.compile(r"\bloan\s+(?:no\.?\s*|number\s+|#\s*)?([0-9][0-9A-Za-z-]*)", re.IGNORECASE)
 
 
-def is_write_request(question: str) -> bool:
-    """An imperative to change data: 'Mark loan 2 as resolved', 'Please close the alert'."""
-    text = question.strip().lower()
+def _requests_change(part: str) -> bool:
+    """One part of a question, read as an imperative: does its first word change data?"""
+    text = part.strip().lower()
     stripped = True
     while stripped:
         stripped = False
-        for phrase in POLITE:
-            if text.startswith(phrase + " ") or text.startswith(phrase + ","):
+        for phrase in LEAD_INS:
+            if text == phrase or text.startswith(phrase + " "):
                 text = text[len(phrase) :].lstrip(" ,")
                 stripped = True
     words = re.findall(r"[a-z]+", text)
     return bool(words) and words[0] in WRITE_VERBS
+
+
+def is_write_request(question: str) -> bool:
+    """A request to change data anywhere in the question: 'Mark loan 2 as resolved', 'I want
+    you to mark loan 2 as resolved', 'Show the balance, then close the alert'. A question about
+    a change ('Was loan 2 marked as resolved?') is not one."""
+    return any(_requests_change(part) for part in _PARTS.split(question))
 
 
 def loan_in(question: str) -> str | None:
@@ -124,14 +162,23 @@ def loan_in(question: str) -> str | None:
     return found.group(1) if found else None
 
 
-def topics_in(question: str) -> list[str]:
-    """The topics the question names, in TOPIC_WORDS order."""
+def _named(question: str, vocabulary: dict[str, tuple[str, ...]]) -> list[str]:
     text = question.lower()
     return [
-        topic
-        for topic, words in TOPIC_WORDS.items()
+        name
+        for name, words in vocabulary.items()
         if any(re.search(r"\b" + word, text) for word in words)
     ]
+
+
+def topics_in(question: str) -> list[str]:
+    """The panel's topics the question names, in TOPIC_WORDS order."""
+    return _named(question, TOPIC_WORDS)
+
+
+def outside_in(question: str) -> list[str]:
+    """The concepts the question names that the panel does not hold, in OUTSIDE_WORDS order."""
+    return _named(question, OUTSIDE_WORDS)
 
 
 class Kind(StrEnum):
@@ -148,6 +195,8 @@ class Answer:
     kind: Kind
     stated: list[Fact] = field(default_factory=list)
     awaiting_review: list[str] = field(default_factory=list)
+    # What the question asks that the panel does not hold for the loan.
+    not_in_data: list[str] = field(default_factory=list)
 
     def text(self) -> str:
         subject = f"loan {self.loan} of {self.deal}"
@@ -157,13 +206,18 @@ class Answer:
                 "through the review queue, overrides or a refresh."
             )
         if self.kind is Kind.NOT_IN_DATA:
+            which = f" ({', '.join(self.not_in_data)})" if self.not_in_data else ""
             return (
-                f"{NOT_IN_DATA}: the panel does not contain that information for {subject}, "
-                "and nothing is estimated."
+                f"{NOT_IN_DATA}: the panel does not contain that information{which} for "
+                f"{subject}, and nothing is estimated."
             )
         lines = [f"From the panel, for {subject}:"]
         lines += [f"- {fact.text()}" for fact in self.stated]
         lines += [f"- the {label} is awaiting human review" for label in self.awaiting_review]
+        lines += [
+            f"- {name}: {NOT_IN_DATA}; the panel does not contain it, and nothing is estimated"
+            for name in self.not_in_data
+        ]
         return "\n".join(lines)
 
 
@@ -173,9 +227,11 @@ def compose(question: str, *, deal: str, loan: str, facts: Sequence[Fact]) -> An
         return Answer(question, deal, loan, Kind.READ_ONLY)
     asked = topics_in(question)
     relevant = [fact for fact in facts if fact.topic in asked]
+    held = {fact.topic for fact in relevant}
+    missing = outside_in(question) + [topic for topic in asked if topic not in held]
     if not relevant:
-        return Answer(question, deal, loan, Kind.NOT_IN_DATA)
+        return Answer(question, deal, loan, Kind.NOT_IN_DATA, not_in_data=missing)
     unsettled = {fact.topic for fact in relevant if fact.awaiting_review}
     stated = [fact for fact in relevant if fact.topic not in unsettled]
     waiting = [fact.label for fact in relevant if fact.awaiting_review]
-    return Answer(question, deal, loan, Kind.ANSWERED, stated, waiting)
+    return Answer(question, deal, loan, Kind.ANSWERED, stated, waiting, missing)
