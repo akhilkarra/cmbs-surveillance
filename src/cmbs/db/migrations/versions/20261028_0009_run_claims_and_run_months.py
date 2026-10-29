@@ -6,7 +6,7 @@ Runs are kept however old they get: a trigger refuses deleting rows of app.run a
 app.run_month, as the audit log's trigger does for its entries.
 
 Revision ID: 0009
-Revises: 0003
+Revises: 0008
 Create Date: 2026-10-28 19:43:14.209731
 """
 
@@ -16,7 +16,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0009"
-down_revision: str | Sequence[str] | None = "0003"
+down_revision: str | Sequence[str] | None = "0008"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
