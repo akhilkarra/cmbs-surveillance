@@ -93,6 +93,27 @@ def test_a_listed_loan_current_on_the_tape_is_flagged():
     }
 
 
+def test_a_listed_loan_with_the_tapes_own_code_agrees_whatever_the_code():
+    # Delinquency tables also list current loans with advances outstanding, and matured
+    # balloons still performing.
+    report = [listed("1", "0"), listed("8", " 4 "), listed("2", "3")]
+    assert messages(report, [tape("1", "0"), tape("8", "4"), tape("2", "3")]) == {}
+
+
+def test_a_listed_loan_whose_code_differs_from_the_tape_is_flagged():
+    report = [listed("1", "3"), listed("2", "0"), listed("3", "4"), listed("4", "0")]
+    rows = [tape("1", "0"), tape("2", "1"), tape("3", "0"), tape("4", None)]
+    assert messages(report, rows) == {
+        "1": "report says delinquent, tape says current",
+        "2": "report says current, tape says 30 to 59 days delinquent",
+        "3": "report says a performing matured balloon, tape says current",
+        "4": "report says current, tape reports no payment status",
+    }
+    assert messages([listed("5", "0")], []) == {
+        "5": "report says current, tape does not list the loan"
+    }
+
+
 def test_a_listed_loan_missing_from_the_tape_is_flagged():
     assert messages([listed("11", "3")], [tape("2", "0")]) == {
         "11": "report says delinquent, tape does not list the loan"

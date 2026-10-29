@@ -3,9 +3,10 @@
 The report lists the loans that are behind on payments (its "Delinquency Loan Detail"); the
 tape gives every loan's payment status (Schedule AL `paymentStatusLoanCode`). They should agree:
 
-- a loan the report lists must be behind on the tape: in its grace period, late, 30 days or
-  more delinquent, or a matured balloon not paid off. When the report states a code the tape
-  uses as well and both are behind, the two codes must be the same.
+- a loan the report lists with a code the tape uses as well must have that same code on the
+  tape, whatever it is (delinquency tables also list current loans with advances outstanding);
+- a loan the report lists without such a code must be behind on the tape: in its grace period,
+  late, 30 days or more delinquent, or a matured balloon not paid off.
 - a loan the tape shows 30 days or more delinquent must be listed by the report, when the report
   has a delinquency table at all.
 
@@ -122,16 +123,27 @@ def status_name(status: str) -> str:
 
 
 def _listed(report: ReportLine, tape: TapeLine | None) -> str | None:
-    """Why a loan the report lists disagrees with the tape; None when they agree."""
-    if tape is None:
-        return "report says delinquent, tape does not list the loan"
-    tape_code = code(tape.status)
-    if tape_code is None:
-        return "report says delinquent, tape reports no payment status"
-    if tape_code not in BEHIND:
-        return f"report says delinquent, tape says {status_name(tape_code)}"
+    """Why a loan the report lists disagrees with the tape; None when they agree.
+
+    A known code the report gives that equals the tape's is agreement, whatever it is: CREFC
+    delinquency tables also list current loans with outstanding advances (0) and performing
+    matured balloons (4). A report without a code, or with a code that means behind, says the
+    loan is delinquent, and the tape must show it behind.
+    """
     report_code = code(report.status)
-    if report_code is not None and report_code in PAYMENT_STATUS and report_code != tape_code:
+    known = report_code is not None and report_code in PAYMENT_STATUS
+    tape_code = code(tape.status) if tape is not None else None
+    if known and report_code == tape_code:
+        return None
+    says_behind = not known or report_code in BEHIND
+    claim = "delinquent" if says_behind or report_code is None else status_name(report_code)
+    if tape is None:
+        return f"report says {claim}, tape does not list the loan"
+    if tape_code is None:
+        return f"report says {claim}, tape reports no payment status"
+    if not says_behind or tape_code not in BEHIND:
+        return f"report says {claim}, tape says {status_name(tape_code)}"
+    if known and report_code is not None:
         return f"report says {status_name(report_code)}, tape says {status_name(tape_code)}"
     return None
 
