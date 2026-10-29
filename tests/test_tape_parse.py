@@ -143,3 +143,28 @@ def test_malformed_files_are_refused_with_the_reason(content, message):
         parse_assets(content)
     assert str(refusal.value) == message
     assert isinstance(refusal.value, Refused)
+
+
+BILLION_LAUGHS = (
+    b'<?xml version="1.0"?>\n'
+    b"<!DOCTYPE assetData [\n"
+    b' <!ENTITY a "aaaaaaaaaa">\n'
+    b' <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">\n'
+    b' <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">\n'
+    b"]>\n"
+    b"<assetData>&c;</assetData>"
+)
+EXTERNAL_ENTITY = (
+    b'<?xml version="1.0"?>\n'
+    b'<!DOCTYPE assetData [<!ENTITY secret SYSTEM "file:///etc/passwd">]>\n'
+    b"<assetData>&secret;</assetData>"
+)
+DTD_ONLY = b'<?xml version="1.0"?>\n<!DOCTYPE assetData>\n<assetData/>'
+
+
+@pytest.mark.parametrize("content", [BILLION_LAUGHS, EXTERNAL_ENTITY, DTD_ONLY])
+def test_a_file_that_declares_a_dtd_is_refused_before_anything_is_expanded(content):
+    """Schedule AL never carries a DTD, and a DTD is how entity-expansion attacks arrive."""
+    with pytest.raises(MalformedTape) as refusal:
+        parse_assets(content)
+    assert str(refusal.value) == "the file declares a DTD, which Schedule AL asset data never does"

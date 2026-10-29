@@ -11,7 +11,13 @@ import typer
 from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
-from cmbs.book.service import exposure_for, parse_positions, store_positions
+from cmbs.book.service import (
+    NoteRef,
+    exposure_for,
+    link_whole_loan,
+    parse_positions,
+    store_positions,
+)
 from cmbs.db import engine
 from cmbs.domain import format_money
 from cmbs.errors import Refused
@@ -70,3 +76,25 @@ def exposure(
         typer.echo(f"the book holds nothing as of {day.isoformat()}")
     for deal, amount in sorted(held.items()):
         typer.echo(f"{deal}: {format_money(amount)}")
+
+
+def note_ref(text: str) -> NoteRef:
+    """'Fixture Trust 2026-F1/1' -> loan 1 of Fixture Trust 2026-F1, as the audit log keys loans."""
+    deal, slash, loan = text.rpartition("/")
+    if not slash or not deal.strip() or not loan.strip():
+        raise typer.BadParameter(f"name a note as DEAL/LOAN, not {text!r}")
+    return NoteRef(deal.strip(), loan.strip())
+
+
+@app.command("link")
+def link(
+    notes: Annotated[
+        list[str], typer.Argument(help="Each note as DEAL/LOAN, e.g. 'Fixture Trust 2026-F1/1'.")
+    ],
+    user: User,
+) -> None:
+    """Record that deals' loans are pari passu notes of one whole loan (a quant's job)."""
+    refs = [note_ref(note) for note in notes]
+    with refusals(), engine.session() as db:
+        whole_loan_id = link_whole_loan(db, user=user, notes=refs)
+    typer.echo(f"whole loan {whole_loan_id}: " + "; ".join(str(ref) for ref in refs))
