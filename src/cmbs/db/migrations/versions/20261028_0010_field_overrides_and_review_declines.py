@@ -5,7 +5,7 @@ answer and any review decision stay in `silver.extracted_field`), and the reason
 was declined as not determinable (Q45, Q47).
 
 Revision ID: 0010
-Revises: 0008
+Revises: 0009
 Create Date: 2026-10-28 23:56:13.360656
 """
 
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0010"
-down_revision: str | Sequence[str] | None = "0008"
+down_revision: str | Sequence[str] | None = "0009"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
