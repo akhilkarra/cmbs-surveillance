@@ -7,6 +7,10 @@ EX-99.1 report of the 10-D. `Archive` is that second kind, with the same two imp
 `LiveArchive` fetches, `ArchiveReplay` serves files recorded under a directory with a manifest of
 URL to file (the layout of `cmbs.edgar.replay`).
 
+A run that extracts comments also asks the model, through `Sources.model`: a function giving the
+model client for a session and a user (`cmbs.extraction.service.model_client`, replay only or
+live). Without one, a run loads filings and leaves comments unread.
+
 Set CMBS_EDGAR_REPLAY and CMBS_ARCHIVE_REPLAY to recording directories to make the CLI and API
 replay instead of calling SEC; each may list several directories separated by the path
 separator (":"), searched in order.
@@ -20,14 +24,17 @@ files is refused rather than guessed at.
 import json
 import os
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from sqlalchemy.orm import Session
+
 from cmbs.edgar import archives, client
 from cmbs.edgar.replay import Live, MissingRecording, Replay, Source
 from cmbs.errors import Refused
+from cmbs.model.client import ModelClient
 
 EDGAR_REPLAY_ENV = "CMBS_EDGAR_REPLAY"
 ARCHIVE_REPLAY_ENV = "CMBS_ARCHIVE_REPLAY"
@@ -38,6 +45,10 @@ LIVE_INTERVAL_S = 0.15
 _EX102 = re.compile(r"(?<!\d)102(?!\d)")
 # "ex99_1.htm", "ex991.htm", "ex99-1.htm", "ex-99.1.htm", "x_ex991-202609.htm"; not "ex9910.htm".
 _EX991 = re.compile(r"ex[-_.]?99[-_.]?1(?!\d)", re.IGNORECASE)
+
+
+# The model client a run extracts comments with, for a session and the user running it.
+type ModelFor = Callable[[Session, str], ModelClient]
 
 
 class Archive(Protocol):
@@ -101,17 +112,19 @@ class FirstRecorded:
 
 @dataclass(frozen=True)
 class Sources:
-    """What a refresh reads: discovery's JSON and the archive's files."""
+    """What a refresh reads: discovery's JSON, the archive's files, and (when the run extracts
+    comments) the model's answers."""
 
     edgar: Source
     archive: Archive
+    model: ModelFor | None = None
 
 
 def _directories(value: str) -> list[Path]:
     return [Path(part) for part in value.split(os.pathsep) if part]
 
 
-def default_sources() -> Sources:
+def default_sources(model: ModelFor | None = None) -> Sources:
     """Replay from the directories in the environment when set, otherwise the live hosts."""
     edgar_dirs = _directories(os.environ.get(EDGAR_REPLAY_ENV, ""))
     archive_dirs = _directories(os.environ.get(ARCHIVE_REPLAY_ENV, ""))
@@ -119,7 +132,7 @@ def default_sources() -> Sources:
     archive: Archive = (
         FirstRecorded(*map(ArchiveReplay, archive_dirs)) if archive_dirs else LiveArchive()
     )
-    return Sources(edgar=edgar, archive=archive)
+    return Sources(edgar=edgar, archive=archive, model=model)
 
 
 def pick_exhibit(names: Sequence[str], exhibit: str) -> str:

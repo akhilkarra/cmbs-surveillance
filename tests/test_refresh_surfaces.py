@@ -116,12 +116,25 @@ def test_the_cli_backfills_and_a_failed_run_exits_1(seeded):
     ]
     failed = cli_run("refresh", "deal", "Unrecorded Trust 2026-X", "--user", "quinn")
     assert failed.exit_code == 1
-    assert failed.output.splitlines()[1] == "refresh deal, failed"
+    lines = failed.output.splitlines()
+    assert lines[0].startswith(
+        "stopped at Unrecorded Trust 2026-X: filing discovery failed: no recording of "
+    )
+    assert lines[1:] == [
+        "1 deal not refreshed",
+        "run 2 (refresh deal, started by quinn): failed",
+        lines[0].replace(
+            "stopped at Unrecorded Trust 2026-X: ", "Unrecorded Trust 2026-X: failed, "
+        ),
+    ]
     unknown = cli_run("refresh", "deal", "Fixture Trust 2026-F9", "--user", "quinn")
     assert (unknown.exit_code, unknown.output) == (1, "no deal named 'Fixture Trust 2026-F9'\n")
     deal = cli_run("refresh", "deal", F2, "--user", "quinn")
     assert deal.exit_code == 0
-    assert deal.output.splitlines()[2] == f"{F2}: refreshed, nothing new to load"
+    assert deal.output.splitlines() == [
+        "run 3 (refresh deal, started by quinn): succeeded",
+        f"{F2}: up to date through September 2026",
+    ]
     refused = cli_run("refresh", "book", "--user", "pat")
     assert (refused.exit_code, refused.output) == (1, "pm may not run refreshes and backfills\n")
     bad = cli_run(

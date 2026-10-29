@@ -12,10 +12,17 @@ A run, in order:
    (`cmbs.refresh.plan`).
 
 A month loads completely or not at all. Its two files are fetched with no transaction open, then
-the loan tape and the distribution report are loaded, the report reconciled with the tape, and
-the month's alerts built, all in one transaction with the month's run record. If any of it
-fails, nothing of the month is stored and the month is recorded as not loaded, saying why in
-the words of `not_loaded`.
+the loan tape and the distribution report are loaded, the report reconciled with the tape, the
+month's alerts built, its special-servicing comments extracted (when the run has a model), and
+the month checked (text versus tape, the balance roll-forward), all in one transaction with the
+month's run record. If
+any of it fails, nothing of the month is stored and the month is recorded as not loaded, saying
+why in the words of `not_loaded`. EDGAR refusing the request (HTTP 403, which www.sec.gov answers
+to a user agent without a contact address) says how to fix it.
+
+The checks are `cmbs.crosscheck.service.run_checks`, which flags each break and disagreement. A
+loan the roll-forward cannot check for want of data (no scheduled balance, a loss month: Q81) is
+not a problem; a loaded month whose checks did not run at all is.
 
 The run's summary is saved as it goes, with the deal and month it is on, so a run that stops
 early still shows what it did and where it was. An unexpected error (a bug, a lost database)
@@ -26,6 +33,7 @@ EDGAR is reached through `cmbs.refresh.sources`; tests replay recorded answers.
 
 import datetime as dt
 import json
+import urllib.error
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -42,6 +50,8 @@ from cmbs.audit.service import record, refuse
 from cmbs.book.service import book_as_of
 from cmbs.coverage.rules import Coverage
 from cmbs.coverage.service import classify_deal
+from cmbs.crosscheck.rules import Status as TextStatus
+from cmbs.crosscheck.service import run_checks
 from cmbs.db import engine
 from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
@@ -54,6 +64,8 @@ from cmbs.edgar.discovery import Discovery, discover
 from cmbs.edgar.replay import MissingRecording
 from cmbs.edgar.service import filings_of, register
 from cmbs.errors import Refused
+from cmbs.extraction.decision import Outcome
+from cmbs.extraction.service import extract_comments
 from cmbs.refresh import plan
 from cmbs.refresh.claims import (
     AlreadyRefreshing,
@@ -70,7 +82,7 @@ from cmbs.refresh.plan import (
     MonthOutcome,
     MonthResult,
 )
-from cmbs.refresh.sources import Fetched, Sources, default_sources, fetch_exhibit
+from cmbs.refresh.sources import Fetched, ModelFor, Sources, default_sources, fetch_exhibit
 from cmbs.refresh.tables import RunMonth
 from cmbs.runs import service as runs
 from cmbs.runs.service import RunView
@@ -124,6 +136,8 @@ class Stage(StrEnum):
     READ_REPORT = "read report"
     LOAD_REPORT = "load report"
     BUILD_ALERTS = "build alerts"
+    EXTRACT = "extract comments"
+    CHECK = "check month"
 
 
 _REASONS = {
@@ -133,11 +147,21 @@ _REASONS = {
     Stage.READ_REPORT: "10-D failed to parse",
     Stage.LOAD_REPORT: "10-D was refused",
     Stage.BUILD_ALERTS: "alerts could not be built",
+    Stage.EXTRACT: "comments could not be extracted",
+    Stage.CHECK: "checks could not be run",
 }
+EDGAR_FORBIDDEN = "HTTP 403 from EDGAR: set SEC_USER_AGENT to a string with a contact address"
+
+
+def edgar_forbidden(error: BaseException) -> bool:
+    """EDGAR refused the request: www.sec.gov answers HTTP 403 to a user agent it rejects."""
+    return isinstance(error, urllib.error.HTTPError) and error.code == 403
 
 
 def not_loaded(stage: Stage, error: Exception) -> MonthNotLoaded:
     """A failure at one stage of a month's load, in the run summary's words."""
+    if edgar_forbidden(error):
+        return MonthNotLoaded(EDGAR_FORBIDDEN, f"fetching {getattr(error, 'filename', None)}")
     if stage is Stage.LOAD_TAPE and isinstance(error, MalformedTape):
         reason = "ABS-EE failed to parse"
     elif stage is Stage.READ_REPORT and isinstance(error, WrongPeriod):
@@ -169,10 +193,12 @@ def load_month(
     tape: Fetched,
     report: Fetched,
     on: dt.date,
+    model: ModelFor | None = None,
 ) -> MonthResult:
     """Load one deal-month in the caller's transaction; raises MonthNotLoaded when it cannot.
 
     The caller rolls the transaction back on MonthNotLoaded, so nothing of the month stays.
+    With a model, the month's comments are extracted last, under the run.
     """
     if month.tape is None or month.report is None:  # pragma: no cover - planned months have both
         raise ValueError(f"{month.period} lacks a filing")
@@ -221,6 +247,12 @@ def load_month(
         )
     except Refused as error:
         raise not_loaded(Stage.BUILD_ALERTS, error) from error
+    comments, review_items = (
+        (None, 0)
+        if model is None
+        else extract_month(db, actor=actor, run_id=run_id, deal=deal, month=month, model=model)
+    )
+    checked = crosscheck_month(db, actor=actor, run_id=run_id, deal=deal, period=month.period)
     return MonthResult(
         period=month.period,
         outcome=MonthOutcome.LOADED,
@@ -229,7 +261,61 @@ def load_month(
         flags=reconciliation.flags_raised,
         alerts=built.raised,
         notes=month.notes(),
+        comments=comments,
+        review_items=review_items,
+        rollforward_breaks=checked.rollforward_breaks,
+        text_flags=checked.text_flags,
+        filings=plan.links(month),
     )
+
+
+def extract_month(
+    db: Session, *, actor: Actor, run_id: int, deal: Deal, month: MonthFilings, model: ModelFor
+) -> tuple[int, int]:
+    """Extract the month's stored comments under the run: how many comments were read, and how
+    many of their fields went to review."""
+    try:
+        extracted = extract_comments(
+            db,
+            user=actor.user,
+            deal=deal.name,
+            period=month.period,
+            client=model(db, actor.user),
+            run_id=run_id,
+        )
+    except Refused as error:
+        raise not_loaded(Stage.EXTRACT, error) from error
+    review = sum(
+        outcome == Outcome.REVIEW.value
+        for comment in extracted.comments
+        for outcome in comment.outcomes.values()
+    )
+    return len(extracted.comments), review
+
+
+@dataclass(frozen=True)
+class Checked:
+    """What the month's checks found: roll-forward breaks, and text-versus-tape flags."""
+
+    rollforward_breaks: int
+    text_flags: int
+
+
+def crosscheck_month(
+    db: Session, *, actor: Actor, run_id: int, deal: Deal, period: Period
+) -> Checked:
+    """Run every check of the month (`cmbs.crosscheck.service.run_checks`) under the run: its
+    roll-forward breaks, and its text-versus-tape flags (not notes)."""
+    try:
+        summary = run_checks(db, user=actor.user, deal=deal.name, period=period, run_id=run_id)
+    except Refused as error:
+        raise not_loaded(Stage.CHECK, error) from error
+    flags = sum(
+        finding.status is TextStatus.FLAG
+        for loan in summary.text_vs_tape
+        for finding in loan.findings
+    )
+    return Checked(rollforward_breaks=summary.rollforward_breaks, text_flags=flags)
 
 
 def run_month_detail(result: MonthResult) -> str | None:
@@ -384,7 +470,13 @@ def _try_month(
     """One month, loaded or not, with its run record written either way."""
     missing = month.missing()
     if missing is not None:
-        result = MonthResult(month.period, MonthOutcome.NOT_LOADED, missing, notes=month.notes())
+        result = MonthResult(
+            month.period,
+            MonthOutcome.NOT_LOADED,
+            missing,
+            notes=month.notes(),
+            filings=plan.links(month),
+        )
     else:
         try:
             tape, report = _fetch(sources, month)
@@ -398,6 +490,7 @@ def _try_month(
                     tape=tape,
                     report=report,
                     on=on,
+                    model=sources.model,
                 )
                 _record_month(db, run_id, deal.id, month, result)
             return result
@@ -409,6 +502,7 @@ def _try_month(
                 error.detail,
                 failed=True,
                 notes=month.notes(),
+                filings=plan.links(month),
             )
     with engine.session() as db:
         _record_month(db, run_id, deal.id, month, result)
@@ -430,7 +524,8 @@ def refresh_one(
     try:
         found = discover(sources.edgar, deal.name, on)
     except FETCH_ERRORS as error:
-        return DealResult(deal.name, DealOutcome.FAILED, f"filing discovery failed: {error}")
+        why = EDGAR_FORBIDDEN if edgar_forbidden(error) else error
+        return DealResult(deal.name, DealOutcome.FAILED, f"filing discovery failed: {why}")
     try:
         with engine.session() as db:
             _register(db, found, actor, run_id)
@@ -459,7 +554,7 @@ def refresh_one(
         if period in loaded and period not in tried
         for note in month.notes()
     ]
-    return plan.deal_outcome(deal.name, results, notes)
+    return plan.deal_outcome(deal.name, results, notes, loaded)
 
 
 # ---------------------------------------------------------------------------- runs

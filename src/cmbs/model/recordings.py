@@ -4,6 +4,10 @@ A `Recording` is the request, the response, and the facts it is keyed and judged
 database (`app.model_call`) is the replay cache a run reads and writes. The same JSON is the
 file format: `export_recordings` writes one file per call, `import_recordings` reads them back,
 and the test fixtures in `tests/fixtures/model/` are files of this format.
+
+A call is stored the moment it is answered, on its own connection, and committed at once: the
+replay cache is not panel data, and a paid answer must survive the rollback of the work that
+asked for it (a month that fails to load after its comments were read), so a retry replays it.
 """
 
 import datetime as dt
@@ -12,9 +16,10 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import select
+from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from cmbs.errors import Refused
 from cmbs.model.policy import (
@@ -150,8 +155,21 @@ def _from_row(row: ModelCall) -> Recording:
     )
 
 
+_cache_engines: dict[str, Engine] = {}
+
+
+def _cache_engine(db: Session) -> Engine:
+    """An engine on the caller's database for committing calls apart from its transaction."""
+    url = db.get_bind().engine.url
+    key = url.render_as_string(hide_password=False)
+    if key not in _cache_engines:
+        _cache_engines[key] = create_engine(url, poolclass=NullPool)
+    return _cache_engines[key]
+
+
 class DbRecordings:
-    """The replay cache in `app.model_call`, inside the caller's transaction."""
+    """The replay cache in `app.model_call`: read in the caller's transaction, written and
+    committed on a connection of its own, so a stored answer outlives the caller's rollback."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -162,26 +180,28 @@ class DbRecordings:
 
     def put(self, recording: Recording) -> Recording:
         # Two runs may record the same request at once; the first stored answer is the one
-        # both use, so they agree.
-        self.db.execute(
-            insert(ModelCall)
-            .values(
-                call_id=recording.call_id,
-                model=recording.model,
-                answered_by=recording.response.model,
-                prompt_version=recording.prompt_version,
-                questions_sha256=recording.questions_sha256,
-                state_sha256=recording.state_sha256,
-                input_sha256=recording.input_sha256,
-                classification=recording.classification.value,
-                settings_version=recording.settings_version,
-                recorded_at=recording.recorded_at,
-                synthetic=recording.synthetic,
-                request=recording.request.model_dump(mode="json"),
-                response=recording.response.model_dump(mode="json"),
+        # both use, so they agree. Committed apart from the caller's transaction (see above).
+        with Session(_cache_engine(self.db)) as separate:
+            separate.execute(
+                insert(ModelCall)
+                .values(
+                    call_id=recording.call_id,
+                    model=recording.model,
+                    answered_by=recording.response.model,
+                    prompt_version=recording.prompt_version,
+                    questions_sha256=recording.questions_sha256,
+                    state_sha256=recording.state_sha256,
+                    input_sha256=recording.input_sha256,
+                    classification=recording.classification.value,
+                    settings_version=recording.settings_version,
+                    recorded_at=recording.recorded_at,
+                    synthetic=recording.synthetic,
+                    request=recording.request.model_dump(mode="json"),
+                    response=recording.response.model_dump(mode="json"),
+                )
+                .on_conflict_do_nothing(index_elements=[ModelCall.call_id])
             )
-            .on_conflict_do_nothing(index_elements=[ModelCall.call_id])
-        )
+            separate.commit()
         stored = self.db.get(ModelCall, recording.call_id, populate_existing=True)
         if stored is None:  # pragma: no cover - the insert above guarantees the row
             raise RuntimeError(f"recording {recording.call_id} vanished after insert")
