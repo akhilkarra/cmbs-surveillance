@@ -79,10 +79,10 @@ def show(
 def extend(user: User) -> None:
     """Propose the panel values a person decided as golden-set candidates."""
     with refusals(), engine.session() as db:
-        proposed = service.extend_golden_set(db, user=user)
-    if not proposed:
-        typer.echo("no new candidates")
-    for candidate in proposed:
+        extended = service.extend_golden_set(db, user=user)
+    noun = "decision" if extended.skipped == 1 else "decisions"
+    typer.echo(f"{len(extended.proposed)} proposed, {extended.skipped} {noun} skipped")
+    for candidate in extended.proposed:
         typer.echo(candidate_text(candidate))
 
 

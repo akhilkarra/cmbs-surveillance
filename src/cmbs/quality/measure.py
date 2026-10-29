@@ -43,16 +43,25 @@ MEASURES = (
 
 @dataclass(frozen=True)
 class GoldenComment:
-    """A golden comment's labels: labeller -> field -> value (None for "not stated")."""
+    """A golden comment's labels: labeller -> field -> value (None for "not stated").
+
+    `independent` is False when the labels are not independent judgments: a comment proposed
+    from a panel decision and confirmed by a second analyst, who saw the first label. Such a
+    comment counts as a reference but not toward labeller agreement.
+    """
 
     key: str
     labels: Mapping[str, Mapping[str, str | None]]
+    independent: bool = True
 
 
 @dataclass(frozen=True)
 class Prediction:
     value: str | None
     automatic: bool
+    # The settings version in force when the prediction was made (its abstention band decided
+    # `automatic`).
+    settings_version: int | None = None
 
 
 class Unlabelled:
@@ -141,8 +150,8 @@ class Agreement:
 
 def agreement(items: Sequence[GoldenComment], fields: Sequence[str]) -> Agreement:
     """A double-labelled comment agrees when both labellers gave the same answer on every field
-    they both labelled."""
-    doubled = [item for item in items if len(item.labels) >= 2]
+    they both labelled. Only independently labelled comments count."""
+    doubled = [item for item in items if item.independent and len(item.labels) >= 2]
     labellers = sorted({name for item in doubled for name in item.labels})
     agreed = 0
     pairs: dict[str, list[tuple[str | None, str | None]]] = {name: [] for name in fields}

@@ -23,7 +23,7 @@ from cmbs.quality.measure import (
     reference,
     worse,
 )
-from cmbs.quality.render import candidate_text, measure_text, report_text
+from cmbs.quality.render import candidate_text, measure_text, report_text, versions_text
 from cmbs.quality.service import CandidateView, ReportView, overall_band, results_of
 from cmbs.quality.stats import Proportion
 
@@ -207,10 +207,11 @@ def test_read_predictions():
     data = {
         "model": "jev-1.14.0",
         "prompt_version": 4,
+        "settings_version": 7,
         "predictions": {
             "G1": {
                 RS: {"value": None, "automatic": False},
-                BR: {"value": "other", "automatic": True},
+                BR: {"value": "other", "automatic": True, "settings_version": 6},
             }
         },
     }
@@ -218,19 +219,27 @@ def test_read_predictions():
     assert found == PredictionSet(
         "jev-1.14.0",
         4,
-        {"G1": {RS: Prediction(None, False), BR: Prediction("other", True)}},
+        {"G1": {RS: Prediction(None, False, 7), BR: Prediction("other", True, 6)}},
     )
     assert found.fields == [BR, RS]
+    assert found.settings_versions == [6, 7]
     assert found.as_json() == {
         "model": "jev-1.14.0",
         "prompt_version": 4,
         "predictions": {
             "G1": {
-                RS: {"value": None, "automatic": False},
-                BR: {"value": "other", "automatic": True},
+                RS: {"value": None, "automatic": False, "settings_version": 7},
+                BR: {"value": "other", "automatic": True, "settings_version": 6},
             }
         },
     }
+
+
+def test_settings_versions_list_a_prediction_that_does_not_say_last():
+    found = PredictionSet(
+        "m", 3, {"1": {BR: Prediction(None, False)}, "2": {BR: Prediction(None, False, 7)}}
+    )
+    assert found.settings_versions == [7, None]
 
 
 @pytest.mark.parametrize(
@@ -241,6 +250,15 @@ def test_read_predictions():
         ({"prompt_version": True}, "the prompt version must be a whole number from 1"),
         ({"prompt_version": 0}, "the prompt version must be a whole number from 1"),
         ({"predictions": []}, "the predictions must be an object"),
+        ({"settings_version": 0}, "the settings version must be a whole number from 1"),
+        ({"settings_version": True}, "the settings version must be a whole number from 1"),
+        (
+            {
+                "settings_version": None,
+                "predictions": {"G1": {BR: {"value": None, "automatic": True}}},
+            },
+            "G1, borrower_request: no settings version says what produced it",
+        ),
         (
             {"predictions": {"G1": {BR: {"value": None}}}},
             "G1, borrower_request: automatic must be true or false",
@@ -253,7 +271,12 @@ def test_read_predictions():
     ],
 )
 def test_read_predictions_refuses(change, message):
-    data = {"model": "jev-1.14.0", "prompt_version": 3, "predictions": {}} | change
+    data = {
+        "model": "jev-1.14.0",
+        "prompt_version": 3,
+        "settings_version": 7,
+        "predictions": {},
+    } | change
     with pytest.raises(BadFile) as refused:
         read_predictions(data)
     assert str(refused.value) == message
@@ -261,6 +284,7 @@ def test_read_predictions_refuses(change, message):
 
 def built(golden, predictions) -> ReportView:
     _, results = results_of(golden, predictions)
+    results["settings_versions"] = [7]
     return ReportView(
         id=2,
         built_by="quinn",
@@ -362,3 +386,17 @@ def test_candidate_text():
         "#101 proposed: Fixture Trust 2026-F1 loan 2, September 2026: borrower request "
         "forbearance (sentence 3) by alex; request status not stated by alex"
     )
+
+
+def test_versions_text():
+    assert versions_text([7]) == "settings version 7"
+    assert versions_text([6, 7]) == "settings versions 6 and 7"
+    assert versions_text([5, 6, 7]) == "settings versions 5, 6 and 7"
+
+
+def test_agreement_leaves_out_comments_not_labelled_independently():
+    confirmed = GoldenComment("p", {"alex": {BR: "other"}, "morgan": {BR: "other"}}, False)
+    independent = item("i", alex={BR: None}, morgan={BR: "other"})
+    found = agreement([confirmed, independent], [BR])
+    assert found.overall == Proportion(0, 1)
+    assert found.kappa[BR] == 0  # only the independent pair: no agreement beyond chance

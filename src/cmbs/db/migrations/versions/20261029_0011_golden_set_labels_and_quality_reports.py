@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column("built_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("model", sa.String(length=64), nullable=False),
         sa.Column("prompt_version", sa.Integer(), nullable=False),
-        sa.Column("settings_version", sa.Integer(), nullable=False),
+        sa.Column("settings_version", sa.Integer(), nullable=True),
         sa.Column("items", sa.Integer(), nullable=False),
         sa.Column("results", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
         sa.Column("flags", postgresql.JSONB(astext_type=sa.Text()), nullable=False),

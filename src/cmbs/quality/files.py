@@ -7,8 +7,11 @@ A golden set (tests/fixtures/quality/golden_set.json is the synthetic one):
 
 A predictions file, one entry per golden comment and measured field:
 
-    {"model": "jev-1.14.0", "prompt_version": 3,
+    {"model": "jev-1.14.0", "prompt_version": 3, "settings_version": 7,
      "predictions": {"G001": {"borrower_request": {"value": "forbearance", "automatic": true}}}}
+
+`settings_version` names the settings in force when the predictions were made (the extraction
+records it); an entry may name its own when the predictions came from several.
 
 A value is a field's category, or null for "not stated"; labels and predictions are checked
 against the field's options, so a typo cannot be measured as a wrong answer.
@@ -16,7 +19,7 @@ against the field's options, so a typo cannot be measured as a wrong answer.
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeGuard
 
 from cmbs.errors import Refused
 from cmbs.extraction.fields import BY_NAME, InvalidValue, canonical
@@ -44,6 +47,15 @@ class PredictionSet:
     predictions: dict[str, dict[str, Prediction]]
 
     @property
+    def settings_versions(self) -> list[int | None]:
+        """Every settings version that produced a prediction; None for a prediction that does
+        not say."""
+        found = {
+            p.settings_version for by_field in self.predictions.values() for p in by_field.values()
+        }
+        return sorted(found, key=lambda v: (v is None, v or 0))
+
+    @property
     def fields(self) -> list[str]:
         """The fields predicted, in the order the extraction defines them."""
         named = {name for by_field in self.predictions.values() for name in by_field}
@@ -55,7 +67,11 @@ class PredictionSet:
             "prompt_version": self.prompt_version,
             "predictions": {
                 key: {
-                    name: {"value": p.value, "automatic": p.automatic}
+                    name: {
+                        "value": p.value,
+                        "automatic": p.automatic,
+                        "settings_version": p.settings_version,
+                    }
                     for name, p in by_field.items()
                 }
                 for key, by_field in self.predictions.items()
@@ -127,6 +143,9 @@ def read_predictions(data: object) -> PredictionSet:
     version = body.get("prompt_version")
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
         raise BadFile("the prompt version must be a whole number from 1")
+    default_version = body.get("settings_version")
+    if default_version is not None and not _version(default_version):
+        raise BadFile("the settings version must be a whole number from 1")
     raw = _object(body.get("predictions"), "the predictions")
     predictions: dict[str, dict[str, Prediction]] = {}
     for key, by_field in raw.items():
@@ -137,5 +156,14 @@ def read_predictions(data: object) -> PredictionSet:
             automatic = fields.get("automatic")
             if not isinstance(automatic, bool):
                 raise BadFile(f"{where}: automatic must be true or false")
-            predictions[key][name] = Prediction(value_of(name, fields.get("value"), key), automatic)
+            produced_by = fields.get("settings_version", default_version)
+            if not _version(produced_by):
+                raise BadFile(f"{where}: no settings version says what produced it")
+            predictions[key][name] = Prediction(
+                value_of(name, fields.get("value"), key), automatic, produced_by
+            )
     return PredictionSet(model, version, predictions)
+
+
+def _version(value: object) -> TypeGuard[int]:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1

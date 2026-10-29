@@ -79,8 +79,12 @@ def one(report_id: int, user: User, db: DB) -> dict[str, Any]:
 
 
 @router.post("/candidates")
-def extend(user: User, db: DB) -> list[dict[str, Any]]:
-    return [_candidate(view) for view in service.extend_golden_set(db, user=user)]
+def extend(user: User, db: DB) -> dict[str, Any]:
+    extended = service.extend_golden_set(db, user=user)
+    return {
+        "proposed": [_candidate(view) for view in extended.proposed],
+        "skipped": extended.skipped,
+    }
 
 
 @router.get("/candidates")

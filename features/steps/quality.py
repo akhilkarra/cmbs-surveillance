@@ -55,6 +55,8 @@ QUANT = "quinn"
 READER = "rae"  # a risk officer reads the report before approving a change
 FIELD = "borrower_request"
 TODAY = dt.datetime(2026, 10, 20, 12, 0, tzinfo=dt.UTC)
+# The settings version the scenarios' predictions were made under: the baseline in force.
+PRODUCED_BY = 7
 
 
 @parse.with_pattern(r"\d\.\d{2,3}")
@@ -117,7 +119,9 @@ def _predictions(
     return PredictionSet(
         model=model,
         prompt_version=version,
-        predictions={key: {FIELD: Prediction(values.get(key), key in settled)} for key in keys},
+        predictions={
+            key: {FIELD: Prediction(values.get(key), key in settled, PRODUCED_BY)} for key in keys
+        },
     )
 
 
@@ -345,6 +349,8 @@ def step_overrode(context, user, loan, label, value, sentence):
     in_session(extract)
     clock.set_now(dt.datetime(2026, 10, 5, 10, tzinfo=dt.UTC))
 
+    # A stand-in for an analyst's override until cmbs.review lands: it is replaced then by
+    # cmbs.review's override service, and candidates come from its label_candidates.
     def override(db):
         row = db.scalars(
             select(ExtractedField)
@@ -378,7 +384,8 @@ def step_overrode(context, user, loan, label, value, sentence):
 
 @when("the golden set is extended")
 def step_extended(context):
-    context.proposed = in_session(lambda db: extend_golden_set(db, user=QUANT))
+    context.extended = in_session(lambda db: extend_golden_set(db, user=QUANT))
+    context.proposed = context.extended.proposed
 
 
 @then('loan "{loan}"\'s comment is proposed as a new golden item with label "{value}"')

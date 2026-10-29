@@ -46,7 +46,7 @@ from cmbs.quality.tables import (
     GoldenLabel,
     QualityReport,
 )
-from cmbs.settings.service import in_force
+from cmbs.settings.tables import SettingsVersion
 
 IMPORT = "import golden set"
 BUILD = "build quality report"
@@ -74,6 +74,10 @@ class EmptyGoldenSet(Refused):
 
 class PredictionsDoNotMatch(Refused):
     """Predictions must cover every golden comment, and only golden comments."""
+
+
+class UnknownSettingsVersion(Refused):
+    pass
 
 
 class UnknownReport(Refused):
@@ -134,7 +138,12 @@ def golden_set(db: Session) -> list[GoldenComment]:
         select(GoldenItem).where(GoldenItem.status == GOLDEN).order_by(GoldenItem.key)
     ).all()
     labels = _labels_of(db, [item.id for item in items])
-    return [GoldenComment(item.key, labels[item.id]) for item in items]
+    # A comment confirmed from the panel was labelled by a second analyst who saw the first
+    # label: a reference, but not an independent pair for labeller agreement.
+    return [
+        GoldenComment(item.key, labels[item.id], independent=item.source == IMPORTED)
+        for item in items
+    ]
 
 
 # Importing labels.
@@ -221,7 +230,7 @@ class ReportView:
     built_at: dt.datetime
     model: str
     prompt_version: int
-    settings_version: int
+    settings_version: int | None
     items: int
     results: dict[str, Any]
     flags: list[str]
@@ -233,6 +242,11 @@ class ReportView:
     @property
     def band(self) -> str:
         return self.results["band"]
+
+    @property
+    def settings_versions(self) -> list[int]:
+        """The settings versions that produced the predictions measured."""
+        return list(self.results["settings_versions"])
 
 
 def _view(row: QualityReport) -> ReportView:
@@ -304,11 +318,26 @@ def _check_coverage(golden: list[GoldenComment], predictions: PredictionSet) -> 
         raise PredictionsDoNotMatch(f"no prediction for {', '.join(missing[:5])}{more}")
 
 
+def _check_versions(db: Session, predictions: PredictionSet) -> list[int]:
+    """The settings versions that produced the predictions; each must say and must exist."""
+    versions = predictions.settings_versions
+    if None in versions:
+        raise PredictionsDoNotMatch(
+            "every prediction must name the settings version that produced it"
+        )
+    known = set(db.scalars(select(SettingsVersion.version)))
+    named = [version for version in versions if version is not None]
+    unknown = [str(version) for version in named if version not in known]
+    if unknown:
+        raise UnknownSettingsVersion(f"there is no settings version {', '.join(unknown)}")
+    return named
+
+
 def build_report(db: Session, *, user: str, predictions: PredictionSet) -> ReportView:
     """Measure the predictions against the golden set and store the report."""
     actor = authorize(db, user, Action.PROPOSE_SETTING)
     try:
-        settings = in_force(db)
+        versions = _check_versions(db, predictions)
         _lock(db)
         golden = golden_set(db)
         _check_coverage(golden, predictions)
@@ -322,6 +351,7 @@ def build_report(db: Session, *, user: str, predictions: PredictionSet) -> Repor
             f"{predictions.model} prompt {predictions.prompt_version}",
         )
     qualities, results = results_of(golden, predictions)
+    results["settings_versions"] = versions
     previous = db.scalars(
         select(QualityReport).order_by(QualityReport.id.desc()).limit(1)
     ).one_or_none()
@@ -331,7 +361,7 @@ def build_report(db: Session, *, user: str, predictions: PredictionSet) -> Repor
         built_at=clock.now(),
         model=predictions.model,
         prompt_version=predictions.prompt_version,
-        settings_version=settings.version,
+        settings_version=versions[0] if len(versions) == 1 else None,
         items=len(golden),
         results=results,
         flags=flags,
@@ -350,7 +380,7 @@ def build_report(db: Session, *, user: str, predictions: PredictionSet) -> Repor
         detail={
             "model": row.model,
             "prompt_version": row.prompt_version,
-            "settings_version": row.settings_version,
+            "settings_versions": versions,
             "items": row.items,
             "flags": flags,
         },
@@ -393,9 +423,12 @@ class CandidateView:
     reason: str | None
 
 
-def candidate_key(deal: str, loan: str, period: Period, accession: str) -> str:
-    """'Fixture Trust 2026-F1/2/2026-09/0009900001-26-000009'."""
-    return f"{deal}/{loan}/{period.first_day:%Y-%m}/{accession}"
+def candidate_key(deal: str, loan: str, period: Period, field: str) -> str:
+    """One candidate per loan, month and field: 'Fixture Trust 2026-F1/2/2026-09/borrower_request'.
+
+    A comment extracted again (another model or prompt version) and decided again is the same
+    candidate, so the latest decision stands for it."""
+    return f"{deal}/{loan}/{period.first_day:%Y-%m}/{field}"
 
 
 def _candidate(db: Session, item: GoldenItem) -> CandidateView:
@@ -427,47 +460,62 @@ def _candidate(db: Session, item: GoldenItem) -> CandidateView:
 
 
 def _decided_fields(db: Session) -> list[tuple[Extraction, ExtractedField, str]]:
-    """Panel fields a person decided, with the extraction they belong to and its deal."""
+    """Panel fields a person decided, with the extraction they belong to and its deal, oldest
+    decision first."""
     rows = db.execute(
         select(Extraction, ExtractedField, Deal.name)
         .join(ExtractedField, ExtractedField.extraction_id == Extraction.id)
         .join(Deal, Deal.id == Extraction.deal_id)
         .where(ExtractedField.decided_by.is_not(None))
-        .order_by(Extraction.id, ExtractedField.id)
+        .order_by(ExtractedField.decided_at, ExtractedField.id)
     ).all()
     return [(extraction, row, deal) for extraction, row, deal in rows]
 
 
-def extend_golden_set(db: Session, *, user: str) -> list[CandidateView]:
-    """Propose each comment with values a person decided that is not yet a golden item."""
+@dataclass(frozen=True)
+class Extended:
+    """The candidates proposed, and how many decisions proposed nothing: already a golden item
+    or candidate (proposed, confirmed or rejected), or superseded by a later decision on the
+    same loan, month and field."""
+
+    proposed: list[CandidateView]
+    skipped: int
+
+
+def extend_golden_set(db: Session, *, user: str) -> Extended:
+    """Propose the latest decision on each loan, month and field that is not yet a golden item.
+
+    The person who decided is the candidate's first labeller; a labeller is never given a
+    second label on the same candidate.
+    """
     actor = authorize(db, user, Action.PROPOSE_SETTING)
     _lock(db)
     now = clock.now()
     known = set(db.scalars(select(GoldenItem.key)))
-    proposed: dict[str, GoldenItem] = {}
-    for extraction, row, deal in _decided_fields(db):
-        period = Period.of(extraction.period)
-        key = candidate_key(deal, extraction.loan_id, period, extraction.accession)
-        if key in known:
+    decided = _decided_fields(db)
+    latest: dict[str, tuple[Extraction, ExtractedField]] = {}
+    for extraction, row, deal in decided:
+        key = candidate_key(deal, extraction.loan_id, Period.of(extraction.period), row.field)
+        latest[key] = (extraction, row)  # oldest first: the last one seen is the latest
+    proposed: list[GoldenItem] = []
+    for key, (extraction, row) in latest.items():
+        if key in known or row.decided_by is None:
             continue
-        item = proposed.get(key)
-        if item is None:
-            item = GoldenItem(
-                key=key,
-                comment=extraction.comment,
-                source=PANEL,
-                status=PROPOSED,
-                deal_id=extraction.deal_id,
-                loan=extraction.loan_id,
-                period=extraction.period,
-                accession=extraction.accession,
-                sentences=list(extraction.sentences),
-                added_by=actor.user,
-                added_at=now,
-            )
-            db.add(item)
-            db.flush()
-            proposed[key] = item
+        item = GoldenItem(
+            key=key,
+            comment=extraction.comment,
+            source=PANEL,
+            status=PROPOSED,
+            deal_id=extraction.deal_id,
+            loan=extraction.loan_id,
+            period=extraction.period,
+            accession=extraction.accession,
+            sentences=list(extraction.sentences),
+            added_by=actor.user,
+            added_at=now,
+        )
+        db.add(item)
+        db.flush()
         db.add(
             GoldenLabel(
                 item_id=item.id,
@@ -478,8 +526,9 @@ def extend_golden_set(db: Session, *, user: str) -> list[CandidateView]:
                 labelled_at=row.decided_at or now,
             )
         )
+        proposed.append(item)
     db.flush()
-    views = [_candidate(db, item) for item in proposed.values()]
+    views = [_candidate(db, item) for item in proposed]
     for view in views:
         record(
             db,
@@ -490,7 +539,7 @@ def extend_golden_set(db: Session, *, user: str) -> list[CandidateView]:
             subject_key=view.key,
             detail={"labels": view.labels},
         )
-    return views
+    return Extended(proposed=views, skipped=len(decided) - len(views))
 
 
 def candidates(db: Session, *, reader: str) -> list[CandidateView]:

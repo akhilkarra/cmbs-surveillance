@@ -49,7 +49,7 @@ def predictions(version: int = 3, found: str | None = "forbearance") -> Predicti
     return PredictionSet(
         "jev-1.14.0",
         version,
-        {"G1": {BR: Prediction(found, True)}, "G2": {BR: Prediction(None, True)}},
+        {"G1": {BR: Prediction(found, True, 7)}, "G2": {BR: Prediction(None, True, 7)}},
     )
 
 
@@ -138,7 +138,7 @@ def test_build_report_stores_measures_and_compares_with_the_previous(seeded):
     assert entries[1].detail == {
         "model": "jev-1.14.0",
         "prompt_version": 4,
-        "settings_version": 7,
+        "settings_versions": [7],
         "items": 2,
         "flags": second.flags,
     }
@@ -153,13 +153,13 @@ def test_reports_need_a_golden_set_and_matching_predictions(seeded):
     service.import_golden_set(seeded, user="quinn", comments=comments(), source_name="g.json")
     seeded.commit()
     extra = PredictionSet(
-        "m", 3, {**predictions().predictions, "G7": {BR: Prediction(None, False)}}
+        "m", 3, {**predictions().predictions, "G7": {BR: Prediction(None, False, 7)}}
     )
     with pytest.raises(
         service.PredictionsDoNotMatch, match="^predictions for comments not in the golden set: G7$"
     ):
         service.build_report(seeded, user="quinn", predictions=extra)
-    short = PredictionSet("m", 3, {"G1": {BR: Prediction(None, False)}})
+    short = PredictionSet("m", 3, {"G1": {BR: Prediction(None, False, 7)}})
     with pytest.raises(
         service.PredictionsDoNotMatch, match="^no prediction for G2 borrower request$"
     ):
@@ -177,7 +177,7 @@ def test_many_missing_predictions_are_summarised(seeded):
         service.build_report(
             seeded,
             user="quinn",
-            predictions=PredictionSet("m", 3, {"G1": {BR: Prediction(None, False)}}),
+            predictions=PredictionSet("m", 3, {"G1": {BR: Prediction(None, False, 7)}}),
         )
     assert str(refused.value) == (
         "no prediction for G2 borrower request, G3 borrower request, G4 borrower request, "
@@ -235,16 +235,18 @@ def decided_comment(db: Session) -> None:
 def test_review_decisions_become_candidates_that_need_a_second_analyst(seeded):
     decided_comment(seeded)
     clock.set_now(NOW)
-    (candidate,) = service.extend_golden_set(seeded, user="quinn")
+    extended = service.extend_golden_set(seeded, user="quinn")
     seeded.commit()
-    assert candidate.key == f"{FIXTURE_DEAL}/2/2026-09/0009900001-26-000009"
+    (candidate,) = extended.proposed
+    assert extended.skipped == 0
+    assert candidate.key == f"{FIXTURE_DEAL}/2/2026-09/transfer_reason"
     assert (candidate.status, candidate.labels, candidate.sentences) == (
         "proposed",
         {"alex": {"transfer_reason": "imminent monetary default"}},
         {"transfer_reason": 1},
     )
     assert candidate.comment.startswith("The loan transferred to Special Servicing")
-    assert service.extend_golden_set(seeded, user="quinn") == []  # proposed once
+    assert service.extend_golden_set(seeded, user="quinn") == service.Extended([], 1)
     assert [c.id for c in service.candidates(seeded, reader="pat")] == [candidate.id]
 
     with pytest.raises(PermissionRefused, match="^quant may not decide review items$"):
@@ -274,7 +276,7 @@ def test_review_decisions_become_candidates_that_need_a_second_analyst(seeded):
 def test_a_second_analyst_may_reject_a_candidate(seeded):
     decided_comment(seeded)
     ensure_user(seeded, "ana", {Role.ANALYST})
-    (candidate,) = service.extend_golden_set(seeded, user="quinn")
+    (candidate,) = service.extend_golden_set(seeded, user="quinn").proposed
     seeded.commit()
     with pytest.raises(service.MissingReason, match="^a rejection needs a reason$"):
         service.reject_candidate(seeded, user="ana", item_id=candidate.id, reason="  ")
@@ -289,7 +291,8 @@ def test_a_second_analyst_may_reject_a_candidate(seeded):
         "the comment says monetary default",
     )
     assert candidate.key not in {g.key for g in service.golden_set(seeded)}
-    assert service.extend_golden_set(seeded, user="quinn") == []  # never proposed again
+    # Never proposed again.
+    assert service.extend_golden_set(seeded, user="quinn") == service.Extended([], 1)
     entry = audited(seeded, "reject golden item")[0]
     assert (entry.reason, entry.after) == ("the comment says monetary default", "rejected")
 
@@ -319,3 +322,120 @@ def test_the_fixture_golden_set_loads(seeded):
         )
         == 100
     )
+
+
+def test_a_comment_extracted_and_decided_again_is_one_candidate_with_the_latest_decision(seeded):
+    """Another model reads the same comment and alex decides its transfer reason again: one
+    candidate, labelled with the later decision, and no second label for alex."""
+    from cmbs.extraction.tables import ExtractedField, Extraction
+
+    decided_comment(seeded)
+    first = seeded.scalars(select(Extraction)).one()
+    again = Extraction(
+        **{
+            column: getattr(first, column)
+            for column in (
+                "deal_id",
+                "loan_id",
+                "period",
+                "accession",
+                "source_table",
+                "comment",
+                "sentences",
+                "prompt_version",
+                "settings_version",
+                "model_call",
+                "extracted_by",
+            )
+        },
+        model="jev-1.15.0",
+        extracted_at=dt.datetime(2026, 10, 3, tzinfo=dt.UTC),
+    )
+    seeded.add(again)
+    seeded.flush()
+    seeded.add(
+        ExtractedField(
+            extraction_id=again.id,
+            field="transfer_reason",
+            outcome="review",
+            status="human-reviewed",
+            value="monetary default",
+            sentence=1,
+            decided_by="alex",
+            decided_at=dt.datetime(2026, 10, 4, tzinfo=dt.UTC),
+        )
+    )
+    seeded.commit()
+    clock.set_now(NOW)
+    extended = service.extend_golden_set(seeded, user="quinn")
+    seeded.commit()
+    (candidate,) = extended.proposed
+    assert extended.skipped == 1  # the earlier decision
+    assert candidate.labels == {"alex": {"transfer_reason": "monetary default"}}
+    assert candidate.accession == first.accession
+
+
+def test_a_confirmed_candidate_does_not_count_toward_labeller_agreement(seeded):
+    from cmbs.quality.files import read_golden
+
+    golden = Path(__file__).parent / "fixtures" / "quality" / "golden_set.json"
+    comments = read_golden(json.loads(golden.read_text()))
+    service.import_golden_set(seeded, user="quinn", comments=comments, source_name="g.json")
+    decided_comment(seeded)
+    clock.set_now(NOW)
+    (candidate,) = service.extend_golden_set(seeded, user="quinn").proposed
+    service.confirm_candidate(seeded, user="morgan", item_id=candidate.id)
+    seeded.commit()
+    keys = [g.key for g in service.golden_set(seeded)]
+    assert len(keys) == 101
+    found = PredictionSet("jev-1.14.0", 3, {key: {BR: Prediction(None, False, 7)} for key in keys})
+    report = service.build_report(seeded, user="quinn", predictions=found)
+    agreement = report.results["agreement"]
+    assert (agreement["agreed"], agreement["double_labelled"]) == (19, 20)
+
+
+def test_reports_name_the_settings_versions_that_produced_the_predictions(seeded):
+    from cmbs.quality.render import report_text
+    from cmbs.settings.service import store_version
+    from cmbs.testing.world import BASELINE_SETTINGS
+
+    clock.set_now(NOW)
+    store_version(
+        seeded,
+        version=8,
+        values=BASELINE_SETTINGS,
+        proposed_by="quinn",
+        approved_by="rae",
+        approved_at=NOW - dt.timedelta(days=1),
+    )
+    service.import_golden_set(seeded, user="quinn", comments=comments(), source_name="g.json")
+    mixed = PredictionSet(
+        "jev-1.14.0",
+        3,
+        {"G1": {BR: Prediction("forbearance", True, 7)}, "G2": {BR: Prediction(None, True, 8)}},
+    )
+    report = service.build_report(seeded, user="quinn", predictions=mixed)
+    assert (report.settings_version, report.settings_versions) == (None, [7, 8])
+    assert "prompt version 3, settings versions 7 and 8;" in report_text(report)
+    # Settings version 8 is in force, but the predictions were made under 7: 7 is named.
+    single = service.build_report(seeded, user="quinn", predictions=predictions())
+    assert (single.settings_version, single.settings_versions) == (7, [7])
+
+
+def test_predictions_must_name_known_settings_versions(seeded):
+    service.import_golden_set(seeded, user="quinn", comments=comments(), source_name="g.json")
+    seeded.commit()
+    unsaid = PredictionSet(
+        "m", 3, {"G1": {BR: Prediction(None, False)}, "G2": {BR: Prediction(None, False, 7)}}
+    )
+    with pytest.raises(
+        service.PredictionsDoNotMatch,
+        match="^every prediction must name the settings version that produced it$",
+    ):
+        service.build_report(seeded, user="quinn", predictions=unsaid)
+    seeded.rollback()
+    unknown = PredictionSet(
+        "m", 3, {"G1": {BR: Prediction(None, False, 9)}, "G2": {BR: Prediction(None, False, 7)}}
+    )
+    with pytest.raises(service.UnknownSettingsVersion, match="^there is no settings version 9$"):
+        service.build_report(seeded, user="quinn", predictions=unknown)

@@ -24,6 +24,7 @@ GOLDEN = {
 PREDICTIONS = {
     "model": "jev-1.14.0",
     "prompt_version": 3,
+    "settings_version": 7,
     "predictions": {
         "G1": {BR: {"value": "forbearance", "automatic": True}},
         "G2": {BR: {"value": None, "automatic": False}},
@@ -76,14 +77,15 @@ def test_cli_candidates(seeded):
     assert none.output == "no candidates waiting\n"
     proposed = runner.invoke(cli, ["quality", "extend", "--user", "quinn"])
     assert proposed.exit_code == 0, proposed.output
-    line = proposed.output.strip()
+    counts, line = proposed.output.strip().splitlines()
+    assert counts == "1 proposed, 0 decisions skipped"
     number = line.split()[0].lstrip("#")
     assert line.endswith(
         "proposed: Fixture Trust 2026-F1 loan 2, September 2026: transfer reason imminent "
         "monetary default (sentence 1) by alex"
     )
     again = runner.invoke(cli, ["quality", "extend", "--user", "quinn"])
-    assert again.output == "no new candidates\n"
+    assert again.output == "0 proposed, 1 decision skipped\n"
     waiting = runner.invoke(cli, ["quality", "candidates", "--user", "pat"])
     assert waiting.output.strip() == line
     rejected = runner.invoke(
@@ -131,7 +133,8 @@ def test_api_candidates(seeded, client):
     decided_comment(seeded)
     clock.set_now(NOW)
     proposed = client.post("/quality/candidates", headers={"X-CMBS-User": "quinn"})
-    (candidate,) = proposed.json()
+    assert proposed.json()["skipped"] == 0
+    (candidate,) = proposed.json()["proposed"]
     assert (candidate["loan"], candidate["period"], candidate["status"]) == (
         "2",
         "September 2026",

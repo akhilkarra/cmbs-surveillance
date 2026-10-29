@@ -104,7 +104,9 @@ class QualityReport(Base):
     built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     model: Mapped[str] = mapped_column(String(64))
     prompt_version: Mapped[int] = mapped_column(Integer)
-    settings_version: Mapped[int] = mapped_column(
+    # The settings version that produced the predictions; null when they came from several,
+    # which `results["settings_versions"]` lists.
+    settings_version: Mapped[int | None] = mapped_column(
         ForeignKey(f"{APP_SCHEMA}.settings_version.version")
     )
     items: Mapped[int] = mapped_column(Integer)
