@@ -10,8 +10,9 @@ import Invariants.Theorems
 
 `#audit` fails the build unless the named theorem rests only on Lean's three standard axioms
 (`propext`, `Classical.choice`, `Quot.sound`). A proof left unfinished depends on the axiom Lean
-inserts for a missing proof, and a proof by `native_decide` on `Lean.ofReduceBool`; either one
-stops `lake build`. Every theorem in `Invariants` is listed here, so CI's build is the audit.
+inserts for a missing proof, and a proof by compiled evaluation on an axiom trusting the
+compiler; either one stops `lake build`. Every theorem in `Invariants` is listed here (and
+`tests/test_lean_sources.py` checks none is missing), so CI's build is the audit.
 -/
 
 open Lean Elab Command
