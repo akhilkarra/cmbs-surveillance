@@ -13,6 +13,16 @@ HAS_DB = bool(os.environ.get("DATABASE_URL"))
 needs_db = pytest.mark.skipif(not HAS_DB, reason="DATABASE_URL not set")
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Run the tests that need a database after the rest, each group in its usual order.
+
+    mutmut runs a mutant's tests with the first failure stopping the run, so a mutant of pure
+    logic is usually killed by a quick test before any database is cloned. Every database test
+    reaches the template through `db_template`.
+    """
+    items.sort(key=lambda item: "db_template" in getattr(item, "fixturenames", ()))
+
+
 @pytest.fixture
 def schedule_al_path() -> Path:
     return FIXTURES / "schedule_al_minimal.xml"
