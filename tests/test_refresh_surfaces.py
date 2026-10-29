@@ -15,6 +15,7 @@ from cmbs.cli import app as cli
 from cmbs.domain import money
 from cmbs.refresh.sources import ARCHIVE_REPLAY_ENV, EDGAR_REPLAY_ENV
 from tests.conftest import needs_db
+from tests.fixtures.refresh.offline import offline_fixture  # noqa: F401
 
 pytestmark = needs_db
 runner = CliRunner()

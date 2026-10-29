@@ -17,6 +17,7 @@ from cmbs.refresh.sources import (
     fetch_exhibit,
     pick_exhibit,
 )
+from tests.fixtures.refresh.offline import offline_fixture  # noqa: F401
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ARCHIVE = FIXTURES / "refresh" / "archive"

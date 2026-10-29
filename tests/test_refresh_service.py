@@ -45,6 +45,7 @@ from cmbs.runs.tables import Run
 from cmbs.tape.service import load_tape
 from cmbs.tape.tables import LoanPeriod, LoanTape
 from tests.conftest import needs_db
+from tests.fixtures.refresh.offline import offline_fixture  # noqa: F401
 
 pytestmark = needs_db
 
