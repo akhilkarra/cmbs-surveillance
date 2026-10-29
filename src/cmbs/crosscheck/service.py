@@ -209,9 +209,7 @@ def _scheduled_endings(
 
 
 def _ending(row: LoanPeriod, scheduled: dict[tuple[str, str, int], str | None]) -> rf.Ending:
-    return rf.ending_of(
-        scheduled.get((row.accession, row.file_name, row.asset_position)), row.ending_balance
-    )
+    return rf.ending_of(scheduled.get((row.accession, row.file_name, row.asset_position)))
 
 
 def balances_of(row: LoanPeriod, ending: rf.Ending) -> rf.Balances:

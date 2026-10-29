@@ -39,7 +39,7 @@ def test_cli_runs_the_checks_and_lists_flags(loaded):
         "2 raised, 0 already raised\n"
         "  loan 7: flag: balance does not roll forward\n"
         "  loan 7: flag: beginning balance does not match last month's ending balance\n"
-        "roll-forward: 1 roll-forward break, 1 passed, 1 not checked\n"
+        "roll-forward: 1 roll-forward break, 1 passed, 2 not checked\n"
     )
     listed = runner.invoke(cli, ["crosscheck", "flags", "--deal", DEAL, "--user", "rae"])
     assert listed.exit_code == 0, listed.output
@@ -96,12 +96,14 @@ def test_cli_prints_the_rollforward_without_raising_flags(loaded):
     )
     assert result.exit_code == 0, result.output
     assert result.output.splitlines() == [
-        f"{DEAL}, September 2026, as of 2026-10-01: 1 roll-forward break, 1 passed, 1 not checked",
-        "loan 1: roll-forward passed: unscheduled principal, other principal adjustments, "
-        "realized loss not reported",
+        f"{DEAL}, September 2026, as of 2026-10-01: 1 roll-forward break, 1 passed, 2 not checked",
+        "loan 1: roll-forward passed: unscheduled principal, other principal adjustments not "
+        "reported",
         "loan 7: roll-forward break: balance does not roll forward by $10,000.00; beginning "
         "balance does not match last month's ending balance by $10,000.00",
-        "loan 9: roll-forward not checked: beginning balance not reported",
+        "loan 9: roll-forward not checked: scheduled ending balance not reported",
+        "loan 10: roll-forward not checked: a realized-loss month: the loss includes more than "
+        "principal",
     ]
     flags = runner.invoke(cli, ["crosscheck", "flags", "--deal", DEAL, "--user", "pat"])
     assert flags.output == "no flags\n"
@@ -152,7 +154,12 @@ def test_api_runs_and_reads(loaded, client):
         ("7", "flag", True),
         ("7", "flag", True),
     ]
-    assert [r["status"] for r in body["rollforward"]] == ["passed", "break", "not checked"]
+    assert [r["status"] for r in body["rollforward"]] == [
+        "passed",
+        "break",
+        "not checked",
+        "not checked",
+    ]
     assert body["text_vs_tape"] == []
 
     roll = client.get(

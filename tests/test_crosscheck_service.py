@@ -141,13 +141,19 @@ def deal_id(db: Session) -> int:
 
 
 def two_months(db: Session) -> None:
-    """August and September: loan 1 rolls, loan 7 breaks by $10,000.00, loan 9 reports no
-    beginning balance; loan 1's beginning matches August's ending, loan 7's does not."""
+    """August and September: loan 1 rolls, loan 7 breaks by $10,000.00, loan 9 reports only an
+    actual ending balance, loan 10 reports a realized loss; loan 1's beginning matches August's
+    scheduled ending, loan 7's does not."""
     load_month(
         db,
         AUGUST,
         loan("1", AUGUST, reportPeriodEndScheduledLoanBalanceAmount="50100000.00"),
-        loan("7", AUGUST, reportPeriodEndActualBalanceAmount="9060000.00"),
+        loan(
+            "7",
+            AUGUST,
+            reportPeriodEndActualBalanceAmount="9050000.00",
+            reportPeriodEndScheduledLoanBalanceAmount="9060000.00",
+        ),
     )
     load_month(
         db,
@@ -168,9 +174,25 @@ def two_months(db: Session) -> None:
             unscheduledPrincipalCollectedAmount="0.00",
             otherPrincipalAdjustmentAmount="0.00",
             realizedLossToTrustAmount="0.00",
-            reportPeriodEndActualBalanceAmount="9000000.00",
+            reportPeriodEndActualBalanceAmount="9010000.00",
+            reportPeriodEndScheduledLoanBalanceAmount="9000000.00",
         ),
-        loan("9", SEPTEMBER, reportPeriodEndActualBalanceAmount="1000.00"),
+        loan(
+            "9",
+            SEPTEMBER,
+            reportPeriodBeginningScheduleLoanBalanceAmount="1000.00",
+            reportPeriodEndActualBalanceAmount="1000.00",
+        ),
+        loan(
+            "10",
+            SEPTEMBER,
+            reportPeriodBeginningScheduleLoanBalanceAmount="5000000.00",
+            scheduledPrincipalAmount="0.00",
+            unscheduledPrincipalCollectedAmount="3000000.00",
+            otherPrincipalAdjustmentAmount="0.00",
+            realizedLossToTrustAmount="2150000.00",
+            reportPeriodEndScheduledLoanBalanceAmount="0.00",
+        ),
     )
 
 
@@ -178,20 +200,16 @@ def test_rollforward_reads_each_loan_point_in_time(seeded):
     two_months(seeded)
     results = rollforward(seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=filed(SEPTEMBER))
     by_loan = {result.loan: result for result in results}
-    assert list(by_loan) == ["1", "7", "9"]
+    assert list(by_loan) == ["1", "7", "9", "10"]
 
     one = by_loan["1"]
     # Delinquent: the actual balance did not fall, the scheduled one did. The scheduled is used.
-    assert one.balances.ending == rf.Ending(money("50,000,000.00"), rf.SCHEDULED)
+    assert one.balances.ending == rf.Ending(money("50,000,000.00"))
     assert one.roll == rf.Roll(
         rf.Status.PASSED,
         expected_ending=money("50,000,000.00"),
         gap=money("0.00"),
-        not_reported=(
-            "unscheduled principal",
-            "other principal adjustments",
-            "realized loss",
-        ),
+        not_reported=("unscheduled principal", "other principal adjustments"),
     )
     assert one.continuity == rf.Continuity(
         rf.Status.PASSED, previous_ending=money("50,100,000.00"), gap=money("0.00")
@@ -204,14 +222,42 @@ def test_rollforward_reads_each_loan_point_in_time(seeded):
     assert one.label == "roll-forward passed"
 
     seven = by_loan["7"]
-    assert seven.balances.ending == rf.Ending(money("9,000,000.00"), rf.ACTUAL)
+    # The actual balances (9,050,000 then 9,010,000) would roll; the scheduled ones do not.
+    assert seven.balances.ending == rf.Ending(money("9,000,000.00"))
     assert (seven.roll.status, seven.roll.gap) == (rf.Status.BREAK, money("10,000.00"))
     assert (seven.continuity.status, seven.continuity.gap) == (rf.Status.BREAK, money("10,000.00"))
+    assert seven.continuity.previous_ending == money("9,060,000.00")
 
     nine = by_loan["9"]
-    assert nine.roll == rf.Roll(rf.Status.NOT_CHECKED, reason="beginning balance not reported")
+    # Only the actual ending balance: no fallback to it.
+    assert nine.roll == rf.Roll(
+        rf.Status.NOT_CHECKED, reason="scheduled ending balance not reported"
+    )
     assert nine.continuity.reason == "no August 2026 tape row for the loan"
     assert nine.status is rf.Status.NOT_CHECKED
+
+    ten = by_loan["10"]
+    assert ten.roll == rf.Roll(rf.Status.NOT_CHECKED, reason=rf.REALIZED_LOSS_MONTH)
+
+
+def test_continuity_needs_last_months_scheduled_ending(seeded):
+    load_month(seeded, AUGUST, loan("7", AUGUST, reportPeriodEndActualBalanceAmount="9050000.00"))
+    load_month(
+        seeded,
+        SEPTEMBER,
+        loan(
+            "7",
+            SEPTEMBER,
+            reportPeriodBeginningScheduleLoanBalanceAmount="9050000.00",
+            reportPeriodEndScheduledLoanBalanceAmount="9050000.00",
+        ),
+    )
+    (seven,) = rollforward(
+        seeded, deal_id=deal_id(seeded), period=SEPTEMBER, as_of=filed(SEPTEMBER)
+    )
+    assert seven.continuity == rf.Continuity(
+        rf.Status.NOT_CHECKED, reason="August 2026 scheduled ending balance not reported"
+    )
 
 
 def test_rollforward_before_the_tape_was_filed_is_empty(seeded):
@@ -225,7 +271,7 @@ def test_rollforward_defaults_to_today(seeded):
     clock.set_now(at(filed(SEPTEMBER) - dt.timedelta(days=1)))
     assert rollforward(seeded, deal_id=deal_id(seeded), period=SEPTEMBER) == []
     clock.set_now(at(filed(SEPTEMBER)))
-    assert len(rollforward(seeded, deal_id=deal_id(seeded), period=SEPTEMBER)) == 3
+    assert len(rollforward(seeded, deal_id=deal_id(seeded), period=SEPTEMBER)) == 4
 
 
 def test_check_rollforward_flags_breaks_with_both_sides_and_audits_them(seeded):
@@ -244,9 +290,9 @@ def test_check_rollforward_flags_breaks_with_both_sides_and_audits_them(seeded):
         ("7", SEPTEMBER.first_day, rf.CONTINUITY),
     ]
     assert stored[0].sides["gap"] == "$10,000.00"
-    assert stored[0].sides["reported ending balance"] == "$9,000,000.00"
+    assert stored[0].sides["reported scheduled ending balance"] == "$9,000,000.00"
     assert stored[0].sides["explained ending balance"] == "$9,010,000.00"
-    assert stored[1].sides["August 2026 ending balance"] == "$9,060,000.00"
+    assert stored[1].sides["August 2026 scheduled ending balance"] == "$9,060,000.00"
     entries = seeded.scalars(
         select(AuditEntry).where(AuditEntry.action == "raise check flag").order_by(AuditEntry.id)
     ).all()
@@ -417,7 +463,7 @@ def test_decimal_gap_is_exact_to_the_cent(seeded):
             SEPTEMBER,
             reportPeriodBeginningScheduleLoanBalanceAmount="100.00",
             scheduledPrincipalAmount="0.01",
-            reportPeriodEndActualBalanceAmount="100.00",
+            reportPeriodEndScheduledLoanBalanceAmount="100.00",
         ),
     )
     (result,) = rollforward(
