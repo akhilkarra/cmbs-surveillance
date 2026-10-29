@@ -9,7 +9,7 @@
     "!src/**/*.test.ts",
     "!src/**/*.test.tsx",
     "!src/main.tsx",
-    "!src/test-setup.ts"
+    "!src/test-*.ts"
   ],
   "reporters": ["clear-text", "progress", "html"],
   "htmlReporter": { "fileName": "reports/mutation/index.html" },

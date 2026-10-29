@@ -10,9 +10,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
-      exclude: ["src/**/*.test.{ts,tsx}", "src/main.tsx", "src/test-setup.ts"],
-      // Floors only rise; set from the score on 2026-10-28.
-      thresholds: { statements: 85, branches: 100, functions: 75, lines: 85 },
+      exclude: ["src/**/*.test.{ts,tsx}", "src/main.tsx", "src/test-*.ts"],
+      // Floors only rise; set from the score on 2026-10-29, with the dashboard's tests.
+      thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },
 });
