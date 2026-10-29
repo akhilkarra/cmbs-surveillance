@@ -242,3 +242,73 @@ def test_reading_an_answer_of_the_wrong_type_is_an_error(name, wrong):
     broken = response.model_copy(update={"answers": response.answers | {name: wrong}})
     with pytest.raises(TypeError, match=f"{name} is not a"):
         read(PLAN, SENTENCES, broken)
+
+
+def _figure(field: str, printed: str, sentence: int, p: float = 0.95) -> dict:
+    return {
+        value_name(field): choice_answer(_choice(value_name(field)), printed, p),
+        support_name(field): NoulAnswer(noul=p),
+        sentence_name(field): choice_answer(
+            _choice(sentence_name(field)), SENTENCES[sentence - 1].text, p
+        ),
+    }
+
+
+def test_a_figure_cited_from_a_sentence_that_does_not_print_it_is_not_evidence():
+    judgments = read(PLAN, SENTENCES, _response(_figure("dscr", "0.71x", 1)))
+    assert judgments["dscr"].sentence is None
+    results = decide_fields(judgments, low=LOW, high=HIGH)
+    assert results["dscr"].decision == Decision(Outcome.REVIEW, EVIDENCE_NOT_FOUND)
+
+
+def test_a_figure_cited_from_its_own_sentence_is_evidence():
+    judgments = read(PLAN, SENTENCES, _response(_figure("dscr", "0.71x", 2)))
+    assert judgments["dscr"].sentence == 2
+
+
+def test_an_as_of_date_must_come_from_its_figures_sentence():
+    # The reviewer's probe: DSCR 0.71x from sentence 2, "as of" the transfer date in sentence 1.
+    answers = _figure("dscr", "0.71x", 2) | _figure("dscr_as_of", "3/6/2025", 1)
+    judgments = read(PLAN, SENTENCES, _response(answers))
+    assert (judgments["dscr"].sentence, judgments["dscr_as_of"].sentence) == (2, None)
+    results = decide_fields(judgments, low=LOW, high=HIGH)
+    assert results["dscr"].decision == Decision(Outcome.AUTO_ACCEPT)
+    assert results["dscr_as_of"].decision == Decision(Outcome.REVIEW, EVIDENCE_NOT_FOUND)
+
+
+def test_an_as_of_date_from_the_same_sentence_as_its_figure_is_evidence():
+    answers = (
+        _figure("dscr", "0.71x", 2)
+        | _figure("dscr_as_of", "12/31/2024", 2)
+        | _figure("occupancy", "61.4%", 2)
+        | _figure("occupancy_as_of", "12/31/2024", 2)
+    )
+    judgments = read(PLAN, SENTENCES, _response(answers))
+    assert judgments["dscr_as_of"].sentence == 2
+    assert judgments["occupancy_as_of"].sentence == 2
+
+
+def test_an_as_of_date_whose_figure_has_no_evidence_has_none_either():
+    answers = _figure("dscr", "0.71x", 1) | _figure("dscr_as_of", "12/31/2024", 2)
+    judgments = read(PLAN, SENTENCES, _response(answers))
+    assert judgments["dscr_as_of"].sentence is None
+
+
+def test_an_as_of_date_without_its_figure_has_no_evidence():
+    comment = "As of 12/31/2024, occupancy was 61.4%."
+    sentences = split(comment)
+    asked = plan(comment, sentences)
+    assert "dscr" not in asked.asked and "dscr_as_of" in asked.asked
+    request = ModelRequest(model="jev-1.14.0", state=asked.state, questions=asked.questions)
+    value = asked.questions[value_name("dscr_as_of")]
+    cited = asked.questions[sentence_name("dscr_as_of")]
+    assert isinstance(value, Choice) and isinstance(cited, Choice)
+    response = respond(
+        request,
+        {
+            value_name("dscr_as_of"): choice_answer(value, "12/31/2024", 0.9),
+            support_name("dscr_as_of"): NoulAnswer(noul=0.9),
+            sentence_name("dscr_as_of"): choice_answer(cited, sentences[0].text, 0.9),
+        },
+    )
+    assert read(asked, sentences, response)["dscr_as_of"].sentence is None
