@@ -23,6 +23,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from defusedxml import DTDForbidden
+from defusedxml.ElementTree import fromstring
+
 from cmbs.errors import Refused
 
 NAMESPACE = "{http://www.sec.gov/edgar/document/absee/cmbs/assetdata}"
@@ -102,7 +105,14 @@ def _asset(element: ET.Element, position: int) -> Asset:
 def parse_assets(content: bytes) -> list[Asset]:
     """Every asset in the file, in file order, numbered from 1."""
     try:
-        root = ET.fromstring(content)
+        # Tapes come from EDGAR and from callers of the API. A DTD is how entity-expansion and
+        # external-entity attacks arrive, and Schedule AL never declares one, so it is refused
+        # before anything is expanded.
+        root = fromstring(content, forbid_dtd=True)
+    except DTDForbidden as error:
+        raise MalformedTape(
+            "the file declares a DTD, which Schedule AL asset data never does"
+        ) from error
     except ET.ParseError as error:
         raise MalformedTape(f"the file is not XML: {error}") from error
     if root.tag != ROOT_TAG:
