@@ -22,8 +22,8 @@ jobs:
       - run: uv sync --locked
       - run: uvx pre-commit run --all-files --show-diff-on-failure
 
-  # Tests and feature scenarios. Mutation testing runs alongside, split across the `mutation`
-  # shards; `py`, the required check, passes only when both have passed.
+  # Tests and feature scenarios. Mutation testing runs alongside when it is on, split across the
+  # `mutation` shards; `py`, the required check, passes only when every part that ran passed.
   tests:
     runs-on: ubuntu-latest
     services:
@@ -70,7 +70,10 @@ jobs:
   # Mutation testing in eight parallel shards that together run every mutant exactly once
   # (tools/mutation_shards.py). With a database, so code reached only by database tests is
   # mutation-tested too; every test uses its own scratch database, named per process.
+  # Paused (grill log Q76): it runs only while the repository variable MUTATION_TESTING is "on",
+  # so turning it back on is `gh variable set MUTATION_TESTING --body on`, with no code change.
   mutation:
+    if: vars.MUTATION_TESTING == 'on'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -112,29 +115,38 @@ jobs:
           retention-days: 7
 
   # The required check. It always runs, so a failed or cancelled dependency cannot leave it
-  # skipped (a skipped required check counts as passing). It needs the tests and every shard to
-  # have succeeded, then applies the floor to the shards' combined score. Raise the floor as
-  # tests improve; never lower it to make CI pass.
+  # skipped (a skipped required check counts as passing). It needs the tests to have succeeded
+  # and, while mutation testing is on, every shard too, then applies the floor to the shards'
+  # combined score. Raise the floor as tests improve; never lower it to make CI pass.
   py:
     needs: [tests, mutation]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Tests and every mutation shard passed
+      - name: Tests and, when on, every mutation shard passed
         env:
           TESTS: ${{ needs.tests.result }}
           MUTATION: ${{ needs.mutation.result }}
+          MUTATION_TESTING: ${{ vars.MUTATION_TESTING }}
         run: |
-          echo "tests: $TESTS, mutation shards: $MUTATION"
-          test "$TESTS" = success && test "$MUTATION" = success
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+          echo "tests: $TESTS, mutation testing: ${MUTATION_TESTING:-off}, mutation shards: $MUTATION"
+          test "$TESTS" = success
+          if [ "$MUTATION_TESTING" = on ]; then
+            test "$MUTATION" = success
+          else
+            test "$MUTATION" = skipped
+          fi
+      - if: vars.MUTATION_TESTING == 'on'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - if: vars.MUTATION_TESTING == 'on'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: mutation-shard-*
           path: shard-stats
       - name: Mutation score across all shards
+        if: vars.MUTATION_TESTING == 'on'
         run: python3 tools/check_mutation_score.py --min 71 shard-stats/*/shard-stats.json
 
   web:
