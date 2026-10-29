@@ -33,14 +33,17 @@ Feature: Pool invariants
       | 7    | not reported   | 9,000,000.00   |
     When the pool is split into delinquency buckets
     Then the buckets are:
-      | bucket                     | loans | balance       |
-      | current                    | 2     | 58,000,000.00 |
-      | grace or late              | 1     | 12,000,000.00 |
-      | 30 days                    | 1     | 4,000,000.00  |
-      | 60 days                    | 0     | 0.00          |
-      | 90 days or more            | 1     | 30,000,000.00 |
-      | non-performing matured     | 0     | 0.00          |
-      | status not reported        | 1     | 9,000,000.00  |
+      | bucket                                  | loans | balance       |
+      | current                                 | 2     | 58,000,000.00 |
+      | grace or late                           | 1     | 12,000,000.00 |
+      | 30 days                                 | 1     | 4,000,000.00  |
+      | 60 days                                 | 0     | 0.00          |
+      | 90 days or more                         | 1     | 30,000,000.00 |
+      | performing matured                      | 0     | 0.00          |
+      | non-performing matured                  | 0     | 0.00          |
+      | status not on the code list             | 0     | 0.00          |
+      | status not reported                     | 1     | 9,000,000.00  |
+      | not outstanding (no status, no balance) | 0     | 0.00          |
     And the buckets add up to 6 loans and $113,000,000.00, the pool balance
 
   @theorem:wac_bounds

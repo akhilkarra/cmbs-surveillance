@@ -17,6 +17,8 @@ from cmbs.tape.convert import (
     read_date,
     read_decimal,
     read_money,
+    read_rate,
+    read_rate_value,
     to_row,
 )
 from tests.fixtures.tape.tapes import asset, fixture_bytes, tape
@@ -47,6 +49,7 @@ EVERY_TAG = asset(
     mostRecentMasterServicerReturnDate="07-20-2026",
     workoutStrategyCode="8",
     modificationCode="4",
+    reportPeriodInterestRatePercentage=".04815000",
 )
 
 
@@ -71,6 +74,7 @@ def test_reads_every_field_from_its_tag():
         master_servicer_return_date=dt.date(2026, 7, 20),
         workout_strategy="8",
         modification_code="4",
+        interest_rate=Decimal("0.04815000"),
         property_count=1,
         property_type="MU",
         property_name="Cedar Medical Office",
@@ -83,6 +87,7 @@ def test_reads_every_field_from_its_tag():
         dscr=Decimal("1.0712"),
         occupancy=Decimal("0.93"),
         property_note=None,
+        interest_rate_note=None,
     )
 
 
@@ -92,6 +97,7 @@ def test_money_is_kept_to_the_cent_and_ratios_keep_every_digit():
     assert str(row.unscheduled_principal) == "10000.00"
     assert str(row.noi) == "612000.50"
     assert str(row.dscr) == "1.0712"
+    assert str(row.interest_rate) == "0.04815000"
 
 
 def test_a_loan_reporting_nothing_has_only_its_number_and_period_end():
@@ -144,6 +150,45 @@ def test_every_unreadable_value_is_a_reason_in_field_order():
         "most recent financials end is not a date: '13-01-2026'",
         "most recent NOI is not a number: 'n/a'",
     ]
+
+
+def test_a_rate_that_cannot_be_used_is_noted_and_the_loan_still_loads():
+    unreadable = to_row(only(tape(asset("8", reportPeriodInterestRatePercentage=" 4.5% "))))
+    assert isinstance(unreadable, LoanPeriodRow)
+    assert (unreadable.interest_rate, unreadable.interest_rate_note) == (
+        None,
+        "interest rate is not a number: '4.5%'",
+    )
+    percent = to_row(only(tape(asset("8", reportPeriodInterestRatePercentage="4.5"))))
+    assert isinstance(percent, LoanPeriodRow)
+    assert (percent.interest_rate, percent.interest_rate_note) == (
+        Decimal("4.5"),
+        "interest rate '4.5' is outside 0 to 0.25",
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "rate", "note"),
+    [
+        ("", None, None),
+        ("0.25", Decimal("0.25"), None),
+        ("0", Decimal("0"), None),
+        (".07747000", Decimal("0.07747000"), None),
+        ("0.2500001", Decimal("0.2500001"), "interest rate '0.2500001' is outside 0 to 0.25"),
+        ("-0.01", Decimal("-0.01"), "interest rate '-0.01' is outside 0 to 0.25"),
+        ("n/a", None, "interest rate is not a number: 'n/a'"),
+    ],
+)
+def test_read_rate(text, rate, note):
+    assert read_rate(text) == (rate, note)
+    assert read_rate_value(text, "interest rate") == rate
+
+
+def test_a_zero_rate_is_zero():
+    zero = to_row(only(tape(asset("8", reportPeriodInterestRatePercentage="0.00"))))
+    assert isinstance(zero, LoanPeriodRow)
+    assert zero.interest_rate == Decimal("0.00")
+    assert zero.interest_rate is not None
 
 
 def test_a_loan_without_a_number_cannot_be_typed():

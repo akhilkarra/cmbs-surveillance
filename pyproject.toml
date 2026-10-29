@@ -27,6 +27,7 @@ dev = [
     "basedpyright>=1.40.2",
     "behavex>=4.6.8",
     "httpx2>=2.16.0",
+    "hypothesis>=6.170.13",
     "mutmut>=3.8.0",
     "playwright>=1.64.1",
     "pytest>=8,<9.2",  # mutmut 3.8.0 reads item._nodeid, which pytest 9.2.0 removed

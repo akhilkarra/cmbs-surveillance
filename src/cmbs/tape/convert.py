@@ -43,6 +43,8 @@ class LoanPeriodRow:
     master_servicer_return_date: dt.date | None
     workout_strategy: str | None
     modification_code: str | None
+    # The rate for the period as a fraction (0.03768 is 3.768%), every digit as reported.
+    interest_rate: Decimal | None
     property_count: int
     property_type: str | None
     property_name: str | None
@@ -55,9 +57,19 @@ class LoanPeriodRow:
     dscr: Decimal | None
     occupancy: Decimal | None
     property_note: str | None
+    # Why the interest rate is not used as reported: not a number (the rate is then None), or
+    # outside 0 to RATE_LIMIT (kept as reported). The loan still loads either way.
+    interest_rate_note: str | None
 
 
 ROW_FIELDS = tuple(field.name for field in fields(LoanPeriodRow))
+
+
+# The interest rate is a fraction (0.03768 is 3.768%). Above RATE_LIMIT it is almost surely a
+# percent written for a fraction (4.5 for 4.5%, M-028); below zero it is not a coupon. Either way
+# the value is kept as reported and the row says why it is not used.
+RATE_TAG = "reportPeriodInterestRatePercentage"
+RATE_LIMIT = Decimal("0.25")
 
 
 class Unreadable(ValueError):
@@ -96,6 +108,25 @@ def read_date(text: str, label: str) -> dt.date | None:
         raise Unreadable(f"{label} is not a date: {text!r}") from None
 
 
+def read_rate(text: str) -> tuple[Decimal | None, str | None]:
+    """The interest rate and the note on it. Read leniently: a rate is one field of the loan, so a
+    rate that is not a number is not reported (None) with the reason, never a reason to
+    quarantine the loan. Migration 0013's backfill writes the same notes."""
+    if not text:
+        return None, None
+    if not _NUMBER.match(text):
+        return None, f"interest rate is not a number: '{text}'"
+    rate = Decimal(text)
+    if rate < 0 or rate > RATE_LIMIT:
+        return rate, f"interest rate '{text}' is outside 0 to {RATE_LIMIT}"
+    return rate, None
+
+
+def read_rate_value(text: str, label: str) -> Decimal | None:
+    """The rate as the row stores it; never raises (`read_rate` gives the note)."""
+    return read_rate(text)[0]
+
+
 @dataclass(frozen=True)
 class Source:
     """Where a value comes from: a Schedule AL tag, and how to read it."""
@@ -130,6 +161,7 @@ LOAN_SOURCES: dict[str, Source] = {
     ),
     "workout_strategy": Source("workoutStrategyCode", "workout strategy", read_code),
     "modification_code": Source("modificationCode", "modification code", read_code),
+    "interest_rate": Source(RATE_TAG, "interest rate", read_rate_value),
 }
 PROPERTY_SOURCES: dict[str, Source] = {
     "property_type": Source("propertyTypeCode", "property type", read_code),
@@ -211,6 +243,7 @@ def to_row(asset: Asset) -> LoanPeriodRow | list[str]:
         dscr=combined.dscr,
         occupancy=combined.occupancy,
         property_note=combined.note,
+        interest_rate_note=read_rate(asset.tags.get(RATE_TAG, "").strip())[1],
     )
     too_large = [
         f"{label} is too large to store"

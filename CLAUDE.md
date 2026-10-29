@@ -17,7 +17,7 @@ Exact versions live in `pyproject.toml`, `uv.lock` and `web/package.json`; this 
 | Pipeline model | Jev, TypeSafe's decision model, cloud API pinned to `jev-1.14.0`, behind a provider-neutral interface (`cmbs.model`), every call recorded and replayed; live answers in `tests/fixtures/model/live/`; Cloudflare Clef as the local fallback [Q7, Q87] | Built; Clef planned |
 | Requirements | Gherkin in `features/`, run with behave and behavex [Q5, Q29] | Built |
 | UI tests | Playwright for Python inside behave steps; hooks in `features/environment.py` [Q55] | Built |
-| Proofs | Lean 4 core (no Mathlib) on the host via elan, wired to Hypothesis differential tests [Q4] | In progress |
+| Proofs | Lean 4 core v4.35.0 (no Mathlib) in `lean/`, every theorem audited (`Invariants/Audit.lean`: no sorry, no native_decide, standard axioms only), a compiled oracle checked against the Python by Hypothesis differential tests; CI's `lean` job is required [Q4] | Built |
 | Mutation testing | mutmut on `src/cmbs` (fork-server isolation, eight CI shards), Stryker on `web/src` [Q51, Q75] | Built; paused in CI [Q76, Q86] |
 | Lint and types | pre-commit runs ruff, basedpyright (pyright, standard mode), Biome, typos, actionlint, zizmor, gitleaks and file hygiene on commit; pytest and Vitest with coverage floors on push [Q56] | Built |
 | Containers | Docker Compose on OrbStack: `db`, `web` built; `api` planned [Q19] | Partly built |

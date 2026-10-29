@@ -71,6 +71,34 @@ jobs:
           HEAD: ${{ github.sha }}
         run: uv run python tools/check_approved_features.py --range "$BASE..$HEAD"
 
+  # The Lean proofs (grill log Q4). Building lean/ checks every proof; --wfail fails on any
+  # warning, and lean/Invariants/Audit.lean fails the build if a theorem rests on an unfinished
+  # proof or an axiom beyond Lean's standard three. Then Python is run against the oracle the
+  # build produced (Hypothesis differential tests), which must not skip here.
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: leanprover/lean-action@fe408643ea7367d8c0404a8be3975bb145f5fb64 # v1.7.0
+        with:
+          lake-package-directory: lean
+          build-args: --wfail
+          test: false
+          lint: false
+          use-mathlib-cache: false
+      # A proof left open, or compiled code standing in for a proved definition
+      # (implemented_by, extern, unsafe), which the axiom audit cannot see.
+      - name: No proof is left unchecked in the sources
+        run: "! grep -rnwE 'sorry|admit|native_decide|implemented_by|extern|unsafe' lean --include='*.lean'"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - run: uv sync --locked
+      - name: Python against the Lean oracle
+        run: uv run pytest tests/test_lean_oracle.py tests/test_lean_sources.py
+        env:
+          CMBS_REQUIRE_LEAN: "1"
+
   # Mutation testing in eight parallel shards that together run every mutant exactly once
   # (tools/mutation_shards.py). With a database, so code reached only by database tests is
   # mutation-tested too; every test uses its own scratch database, named per process.
@@ -123,18 +151,20 @@ jobs:
   # and, while mutation testing is on, every shard too, then applies the floor to the shards'
   # combined score. Raise the floor as tests improve; never lower it to make CI pass.
   py:
-    needs: [tests, mutation]
+    needs: [tests, mutation, lean]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Tests and, when on, every mutation shard passed
+      - name: Tests, the Lean proofs and, when on, every mutation shard passed
         env:
           TESTS: ${{ needs.tests.result }}
+          LEAN: ${{ needs.lean.result }}
           MUTATION: ${{ needs.mutation.result }}
           MUTATION_TESTING: ${{ vars.MUTATION_TESTING }}
         run: |
-          echo "tests: $TESTS, mutation testing: ${MUTATION_TESTING:-off}, mutation shards: $MUTATION"
+          echo "tests: $TESTS, lean: $LEAN, mutation testing: ${MUTATION_TESTING:-off}, mutation shards: $MUTATION"
           test "$TESTS" = success
+          test "$LEAN" = success
           if [ "$MUTATION_TESTING" = on ]; then
             test "$MUTATION" = success
           else

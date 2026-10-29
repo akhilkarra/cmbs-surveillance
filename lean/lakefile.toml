@@ -1,0 +1,11 @@
+# The pool identities and the extraction decision table, proved in Lean 4 core (no Mathlib),
+# and the oracle the Python differential tests run against (grill log Q4).
+name = "invariants"
+defaultTargets = ["Invariants", "oracle"]
+
+[[lean_lib]]
+name = "Invariants"
+
+[[lean_exe]]
+name = "oracle"
+root = "Oracle"

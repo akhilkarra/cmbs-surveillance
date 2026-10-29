@@ -1,0 +1,90 @@
+[
+  {
+    "answer": [
+      "low",
+      "unsettled",
+      "high"
+    ],
+    "evidence_found": [
+      true,
+      false
+    ],
+    "outcome": "not stated",
+    "reason": null,
+    "support": [
+      "low"
+    ]
+  },
+  {
+    "answer": [
+      "low",
+      "unsettled",
+      "high"
+    ],
+    "evidence_found": [
+      false
+    ],
+    "outcome": "review",
+    "reason": "evidence not found in source",
+    "support": [
+      "unsettled"
+    ]
+  },
+  {
+    "answer": [
+      "low",
+      "unsettled",
+      "high"
+    ],
+    "evidence_found": [
+      false
+    ],
+    "outcome": "review",
+    "reason": "evidence not found in source",
+    "support": [
+      "high"
+    ]
+  },
+  {
+    "answer": [
+      "low",
+      "unsettled",
+      "high"
+    ],
+    "evidence_found": [
+      true
+    ],
+    "outcome": "review",
+    "reason": "unsettled support",
+    "support": [
+      "unsettled"
+    ]
+  },
+  {
+    "answer": [
+      "low",
+      "unsettled"
+    ],
+    "evidence_found": [
+      true
+    ],
+    "outcome": "review",
+    "reason": "unsettled answer",
+    "support": [
+      "high"
+    ]
+  },
+  {
+    "answer": [
+      "high"
+    ],
+    "evidence_found": [
+      true
+    ],
+    "outcome": "auto-accept",
+    "reason": null,
+    "support": [
+      "high"
+    ]
+  }
+]
