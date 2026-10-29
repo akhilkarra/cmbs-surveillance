@@ -47,10 +47,11 @@ from cmbs.runs.service import start_run
 from cmbs.settings.service import NoSettings, store_version
 from cmbs.settings.values import Settings
 from cmbs.tape.service import AMENDMENT, load_tape
+from cmbs.testing.world import FIXTURE_CIKS
 from tests.conftest import FIXTURES, needs_db
 
 F1, F2, F3 = "Fixture Trust 2026-F1", "Fixture Trust 2026-F2", "Fixture Trust 2026-F3"
-CIKS = {F1: 9_900_001, F2: 9_900_002, F3: 9_900_003}
+CIKS = FIXTURE_CIKS
 AUGUST, SEPTEMBER, OCTOBER = Period(2026, 8), Period(2026, 9), Period(2026, 10)
 TEMPLATE = FIXTURES / "alerts" / "fixture_10d_template.htm"
 URI = NAMESPACE.strip("{}")

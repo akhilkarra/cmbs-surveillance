@@ -21,7 +21,6 @@ a loan that appears was missing before.
 """
 
 import datetime as dt
-import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -29,6 +28,7 @@ from enum import StrEnum
 
 from cmbs.alerts.codes import PAYMENT_STATUS, WORKOUT_STRATEGY, lookup, name_of, same_code
 from cmbs.domain import Period
+from cmbs.extraction.sentences import split
 from cmbs.panel.service import loan_order
 from cmbs.settings.values import format_field
 
@@ -249,65 +249,11 @@ LOAN_RULES: tuple[LoanRule, ...] = (
 
 # ---------------------------------------------------------------------------- comments
 
-# Words that end in a period without ending a sentence. Compared in lower case, without the
-# final period: "No. 5", "approx. 61%", "U.S. Bank".
-ABBREVIATIONS = frozenset(
-    {
-        "approx",
-        "ave",
-        "co",
-        "corp",
-        "dr",
-        "e.g",
-        "est",
-        "etc",
-        "i.e",
-        "inc",
-        "jr",
-        "llc",
-        "ltd",
-        "mr",
-        "mrs",
-        "ms",
-        "n.a",
-        "no",
-        "nos",
-        "st",
-        "u.s",
-        "vs",
-    }
-)
-# Sentence-ending punctuation, any closing quotes or brackets, then space and the capital,
-# digit or opening quote that starts the next sentence. "3/6/2025", "0.71x" and "61.4%" have no
-# space after their points, so never split.
-_BOUNDARY = re.compile(r"[.!?][\"')\]]*\s+(?=[\"'(\[]?[A-Z0-9])")
-
-
-def normalize(text: str) -> str:
-    """Runs of whitespace collapsed to one space, ends trimmed."""
-    return " ".join(text.split())
-
-
-def _ends_abbreviation(text: str) -> bool:
-    """Whether the text's last word (it always has one: the punctuation) is an abbreviation."""
-    word = text.split()[-1].rstrip(".").lower()
-    return word in ABBREVIATIONS or (len(word) == 1 and word.isalpha())
-
 
 def sentences(text: str) -> tuple[str, ...]:
-    """The comment's sentences in order, whitespace normalized."""
-    text = normalize(text)
-    found: list[str] = []
-    start = 0
-    for boundary in _BOUNDARY.finditer(text):
-        if _ends_abbreviation(text[start : boundary.start() + 1]):
-            continue
-        found.append(text[start : boundary.end()].strip())
-        start = boundary.end()
-    rest = text[start:].strip()
-    if rest:
-        found.append(rest)
-    return tuple(found)
+    """The comment's sentences in order, whitespace normalized, split as extraction splits them
+    (`cmbs.extraction.sentences`), so an alert and an extraction agree on what a sentence is."""
+    return tuple(sentence.text for sentence in split(text))
 
 
 def added_sentences(before: str | None, after: str) -> tuple[str, ...]:
