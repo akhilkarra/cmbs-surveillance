@@ -444,15 +444,6 @@ def step_any_sentence_supports(context, p):
     context.scripts[context.field].update(support_p=float(p))
 
 
-@given(
-    'the model gives a probability of {p} that loan "{loan}"\'s comment supports a {answer} request'
-)
-def step_comment_supports_request(context, p, loan, answer):
-    assert loan == "2"
-    _september(context)
-    _script(context, "borrower request").update(answer=answer, support_p=float(p))
-
-
 @when("the decision rules run")
 def step_decision_rules_run(context):
     _run_scripted(context)
@@ -497,7 +488,10 @@ def _open_item(context):
 def step_review_item_shows(context, p):
     item = _open_item(context)
     assert item.comment == _stored_comment(SEPTEMBER)
-    assert item.question == WORDING[context.field].support, item.question
+    # The item asks the question whose probability was unsettled.
+    wording = WORDING[context.field]
+    expected = wording.value if item.reason == "unsettled answer" else wording.support
+    assert item.question == expected, item.question
     assert item.probability == Decimal(p), item.probability
 
 
