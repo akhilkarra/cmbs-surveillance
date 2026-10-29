@@ -50,8 +50,7 @@ def rebuild_panel(user: User, deal: Deal = None) -> None:
     """Rebuild the panel from the stored raw filings and compare; changes nothing. Exits 1 when
     the rebuilt panel differs."""
     try:
-        with engine.session() as db:
-            found = rebuild(db, user, deal=deal)
+        found = rebuild(user, deal=deal)
     except Refused as refused:
         typer.echo(str(refused), err=True)
         raise typer.Exit(1) from refused

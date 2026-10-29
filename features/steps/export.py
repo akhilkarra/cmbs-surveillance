@@ -147,7 +147,7 @@ def step_rebuilt(context):
     assert deal is not None
     context.deal_id = deal.id
     context.before = in_session(lambda db: panel_state(db, [deal.id]))
-    context.rebuild = attempt(context, lambda: in_session(lambda db: rebuild(db, QUANT)))
+    context.rebuild = attempt(context, lambda: rebuild(QUANT))
     assert context.refusal is None, f"the rebuild was refused: {context.refusal}"
 
 

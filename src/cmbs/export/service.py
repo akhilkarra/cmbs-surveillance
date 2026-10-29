@@ -4,9 +4,10 @@
 over the raw files stored for each tape (`raw.filing_file`, byte for byte, SHA-256 checked) and
 compares the rows it writes with the stored ones, field for field and by a checksum of the
 ordered rows. It works inside a savepoint that is always rolled back, so it changes nothing:
-the stored panel stays exactly as it was, whatever the rebuild found. The deals' rows are
-locked first, so no load of those deals runs while the rebuild reads them. Every rebuild is
-audited with both checksums.
+the stored panel stays exactly as it was, whatever the rebuild found. Deals are rebuilt one at
+a time, each in its own transaction with its deal row locked, so no load of that deal runs while
+it is read and loads of the other deals are not held up. Each deal's rebuild is audited with
+both checksums.
 
 **Export** (`export_panel`) writes the panel as of a day that has ended: the loan rows of each
 tape published by then (`cmbs.panel.service.as_of`), and each loan-month's extracted comment
@@ -31,6 +32,7 @@ from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import Actor, authorize
 from cmbs.audit.service import record, refuse
+from cmbs.db import engine
 from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
 from cmbs.distribution.service import canonical_loan
@@ -194,28 +196,23 @@ def _raw_tapes(db: Session, deal_ids: Sequence[int]) -> list[tuple[LoanTape, Fil
     return found
 
 
-def rebuild(db: Session, user: str, *, deal: str | None = None) -> Rebuild:
-    """Rebuild the panel of one deal (or every deal with a tape) from the stored raw filings and
-    compare it with the stored panel. Nothing stored changes."""
-    actor = authorize(db, user, Action.RUN_REFRESH)
+def _rebuild_deal(
+    db: Session, actor: Actor, deal: Deal, named: str | None
+) -> tuple[PanelState, PanelState, int]:
+    """One deal's stored and rebuilt panel, and how many tapes rebuilt it, in the caller's
+    transaction; audited there. Loads of the deal wait until the transaction ends."""
     try:
-        deals = _deals(db, deal)
-        if not deals:
-            raise NothingToRebuild("no loan tape is stored")
-        for row in deals:  # loads of these deals wait until the rebuild is done
-            db.get(Deal, row.id, with_for_update=True, populate_existing=True)
-        ids = [row.id for row in deals]
-        tapes = _raw_tapes(db, ids)
+        db.get(Deal, deal.id, with_for_update=True, populate_existing=True)
+        tapes = _raw_tapes(db, [deal.id])
         if not tapes:
-            raise NothingToRebuild(f"no loan tape of {deals[0].name} is stored")
+            raise NothingToRebuild(f"no loan tape of {deal.name} is stored")
     except Refused as error:
-        _refuse(db, error, actor, REBUILD, deal)
-    stored = panel_state(db, ids)
-    names = {row.id: row.name for row in deals}
+        _refuse(db, error, actor, REBUILD, named)
+    stored = panel_state(db, [deal.id])
     savepoint = db.begin_nested()
     try:
         for table in (LoanPeriod, QuarantinedLoan):
-            db.execute(delete(table).where(table.deal_id.in_(ids)))
+            db.execute(delete(table).where(table.deal_id == deal.id))
         accessions = [tape.accession for tape, _, _ in tapes]
         db.execute(delete(TapeAsset).where(TapeAsset.accession.in_(accessions)))
         db.execute(delete(LoanTape).where(LoanTape.accession.in_(accessions)))
@@ -223,7 +220,7 @@ def rebuild(db: Session, user: str, *, deal: str | None = None) -> Rebuild:
         for tape, filing, content in tapes:
             load_tape(
                 db,
-                deal=names[tape.deal_id],
+                deal=deal.name,
                 content=content,
                 file_name=tape.file_name,
                 accession=tape.accession,
@@ -232,39 +229,64 @@ def rebuild(db: Session, user: str, *, deal: str | None = None) -> Rebuild:
                 amends=filing.amends,
                 cik=filing.cik,
             )
-        rebuilt = panel_state(db, ids)
+        rebuilt = panel_state(db, [deal.id])
     finally:
         savepoint.rollback()
     db.expire_all()
     found = files.differences(stored.loans, rebuilt.loans, LOAN_COLUMNS)
     found += files.differences(stored.quarantined, rebuilt.quarantined, QUARANTINE_COLUMNS)
-    result = Rebuild(
-        deals=[row.name for row in deals],
-        tapes=len(tapes),
-        rows=len(rebuilt.loans),
-        stored_checksum=stored.checksum,
-        rebuilt_checksum=rebuilt.checksum,
-        differences=found,
-    )
     record(
         db,
         user=actor.user,
         role=actor.role.value,
         action=REBUILD,
         subject=PANEL,
-        subject_key=deal,
-        after="identical" if result.identical else f"{len(found)} differences",
+        subject_key=deal.name,
+        after="identical" if not found else f"{len(found)} differences",
         detail={
-            "deals": result.deals,
-            "tapes": result.tapes,
-            "rows": result.rows,
-            "stored_checksum": result.stored_checksum,
-            "rebuilt_checksum": result.rebuilt_checksum,
+            "tapes": len(tapes),
+            "rows": len(rebuilt.loans),
+            "stored_checksum": stored.checksum,
+            "rebuilt_checksum": rebuilt.checksum,
             "quarantine_checksums": [stored.quarantine_checksum, rebuilt.quarantine_checksum],
             "differences": len(found),
         },
     )
-    return result
+    return stored, rebuilt, len(tapes)
+
+
+def rebuild(user: str, *, deal: str | None = None) -> Rebuild:
+    """Rebuild the panel of one deal (or of every deal with a tape, one deal at a time, each in
+    its own transaction) from the stored raw filings and compare it with the stored panel.
+    Nothing stored changes."""
+    with engine.session() as db:
+        actor = authorize(db, user, Action.RUN_REFRESH)
+        try:
+            deals = _deals(db, deal)
+            if not deals:
+                raise NothingToRebuild("no loan tape is stored")
+        except Refused as error:
+            _refuse(db, error, actor, REBUILD, deal)
+    stored, rebuilt = PanelState({}, {}), PanelState({}, {})
+    tapes = 0
+    for row in deals:
+        with engine.session() as db:
+            before, after, count = _rebuild_deal(db, actor, row, deal)
+        stored.loans.update(before.loans)
+        stored.quarantined.update(before.quarantined)
+        rebuilt.loans.update(after.loans)
+        rebuilt.quarantined.update(after.quarantined)
+        tapes += count
+    found = files.differences(stored.loans, rebuilt.loans, LOAN_COLUMNS)
+    found += files.differences(stored.quarantined, rebuilt.quarantined, QUARANTINE_COLUMNS)
+    return Rebuild(
+        deals=[row.name for row in deals],
+        tapes=tapes,
+        rows=len(rebuilt.loans),
+        stored_checksum=stored.checksum,
+        rebuilt_checksum=rebuilt.checksum,
+        differences=found,
+    )
 
 
 # ---------------------------------------------------------------------------- export

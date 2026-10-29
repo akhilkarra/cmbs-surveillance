@@ -48,10 +48,11 @@ class RebuildOut(BaseModel):
     differences: list[str]
 
 
+# A rebuild opens its own transactions, one per deal, so this route takes no request session.
 @router.post("/rebuild")
-def rebuild_panel(user: User, db: DB, deal: str | None = None) -> RebuildOut:
+def rebuild_panel(user: User, deal: str | None = None) -> RebuildOut:
     """Rebuild the panel from the stored raw filings and compare; changes nothing."""
-    found = rebuild(db, user, deal=deal)
+    found = rebuild(user, deal=deal)
     return RebuildOut(
         deals=found.deals,
         tapes=found.tapes,

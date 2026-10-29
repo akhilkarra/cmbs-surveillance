@@ -62,7 +62,7 @@ def test_the_rebuilt_panel_is_identical_and_nothing_changes(loaded):
     before = in_session(
         lambda db: [(r.loan, r.period, r.ending_balance) for r in db.scalars(select(LoanPeriod))]
     )
-    found = in_session(lambda db: rebuild(db, "quinn", deal=FIXTURE_DEAL))
+    found = rebuild("quinn", deal=FIXTURE_DEAL)
     assert found.identical, found.text()
     assert (found.deals, found.tapes, found.rows) == ([FIXTURE_DEAL], 3, 21)
     assert found.stored_checksum == found.rebuilt_checksum
@@ -88,7 +88,7 @@ def test_the_rebuilt_panel_is_identical_and_nothing_changes(loaded):
     assert entry.detail["rows"] == 21
     assert entry.detail["stored_checksum"] == entry.detail["rebuilt_checksum"]
     # The whole panel (every deal with a tape) rebuilds the same way.
-    every = in_session(lambda db: rebuild(db, "olly"))
+    every = rebuild("olly")
     assert (every.deals, every.rows, every.stored_checksum) == (
         [FIXTURE_DEAL],
         21,
@@ -106,7 +106,7 @@ def test_a_stored_row_that_differs_from_its_raw_file_is_found(loaded):
         )
 
     in_session(tamper)
-    found = in_session(lambda db: rebuild(db, "quinn", deal=FIXTURE_DEAL))
+    found = rebuild("quinn", deal=FIXTURE_DEAL)
     assert not found.identical
     assert found.stored_checksum != found.rebuilt_checksum
     assert [(d.key[3], d.column, d.stored, d.rebuilt) for d in found.differences] == [
@@ -138,7 +138,7 @@ def test_a_corrupt_raw_file_is_refused(loaded):
 
     tape = in_session(corrupt)
     with pytest.raises(CorruptRawFile) as refused:
-        in_session(lambda db: rebuild(db, "quinn"))
+        rebuild("quinn")
     assert str(refused.value) == (
         f"the stored file {tape.accession}/{tape.file_name} does not match its SHA-256"
     )
@@ -146,18 +146,18 @@ def test_a_corrupt_raw_file_is_refused(loaded):
 
 def test_rebuild_refusals(seeded):
     with pytest.raises(PermissionRefused):
-        in_session(lambda db: rebuild(db, "pat"))
+        rebuild("pat")
     with pytest.raises(NothingToRebuild) as empty:
-        in_session(lambda db: rebuild(db, "quinn"))
+        rebuild("quinn")
     assert str(empty.value) == "no loan tape is stored"
     with pytest.raises(UnknownDeal) as unknown:
-        in_session(lambda db: rebuild(db, "quinn", deal="No Such Trust"))
+        rebuild("quinn", deal="No Such Trust")
     assert str(unknown.value) == "no deal named 'No Such Trust'"
     from tests.test_routine_world import register
 
     in_session(register)
     with pytest.raises(NothingToRebuild) as none:
-        in_session(lambda db: rebuild(db, "quinn", deal=FIXTURE_DEAL))
+        rebuild("quinn", deal=FIXTURE_DEAL)
     assert str(none.value) == f"no loan tape of {FIXTURE_DEAL} is stored"
     refused = in_session(
         lambda db: db.scalars(
@@ -165,6 +165,41 @@ def test_rebuild_refusals(seeded):
         ).all()
     )
     assert len(refused) == 4
+
+
+def test_a_whole_panel_rebuild_takes_one_deal_at_a_time(seeded, monkeypatch):
+    """While one deal is rebuilt, another deal is not locked: a load of it could go ahead."""
+    from cmbs.db import engine
+    from cmbs.deals.service import by_name
+    from cmbs.deals.tables import Deal
+
+    second = "Fixture Trust 2026-F2"
+    backfill(in_session, SEP, SEP)
+    backfill(in_session, SEP, SEP, deal=second)
+    ids = in_session(lambda db: {name: by_name(db, name).id for name in (FIXTURE_DEAL, second)})  # pyright: ignore[reportOptionalMemberAccess]
+    free: list[str] = []
+    load = service.load_tape
+
+    def loading(db, *, deal, **kwargs):
+        other = second if deal == FIXTURE_DEAL else FIXTURE_DEAL
+        with engine.session() as probe:
+            probe.get(Deal, ids[other], with_for_update={"nowait": True})
+            free.append(other)
+        return load(db, deal=deal, **kwargs)
+
+    monkeypatch.setattr(service, "load_tape", loading)
+    found = rebuild("quinn")
+    assert found.identical, found.text()
+    assert (found.deals, found.tapes, found.rows) == ([FIXTURE_DEAL, second], 2, 14)
+    assert free == [second, FIXTURE_DEAL]
+    keys = in_session(
+        lambda db: db.scalars(
+            select(AuditEntry.subject_key)
+            .where(AuditEntry.action == service.REBUILD)
+            .order_by(AuditEntry.id)
+        ).all()
+    )
+    assert keys == [FIXTURE_DEAL, second]
 
 
 # ---------------------------------------------------------------------------- export
