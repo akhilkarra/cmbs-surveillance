@@ -22,7 +22,7 @@ class Run(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     kind: Mapped[str] = mapped_column(String(32))
     started_by: Mapped[str] = mapped_column(String(64))
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(32), default="running")
     summary: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
