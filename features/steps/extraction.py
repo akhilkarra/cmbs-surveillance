@@ -495,6 +495,21 @@ def step_review_item_shows(context, p):
     assert item.probability == Decimal(p), item.probability
 
 
+@then('loan "{loan}"\'s {label} is not stated in the panel')
+def step_not_stated(context, loan, label):
+    assert loan == "2"
+    view_field = _field(context, label)
+    assert (view_field.value, view_field.status) == (None, "not stated"), view_field
+
+
+@then('no review item is opened for loan "{loan}"\'s {label}')
+def step_no_review_item(context, loan, label):
+    assert loan == "2"
+    field = fields.by_label(label).name
+    items = in_session(lambda db: open_review_items(db, READER))
+    assert [item for item in items if item.loan == loan and item.field == field] == [], items
+
+
 @then('loan "{loan}"\'s {label} goes to review with the reason "{reason}"')
 def step_goes_to_review(context, loan, label, reason):
     assert loan == "2"
