@@ -9,19 +9,19 @@ Exact versions live in `pyproject.toml`, `uv.lock` and `web/package.json`; this 
 | Layer | Choice | State |
 |---|---|---|
 | Core | Python 3.13, uv, one package `cmbs` in `src/cmbs`, Typer CLI `cmbs` [Q12] | Built |
-| Store | PostgreSQL 18 with `vector` and `pg_trgm`; layers are schemas `raw`/`bronze`/`silver`/`gold`, application state in `app`; SQLAlchemy 2.1, each feature's tables in `cmbs.<feature>.tables`; Alembic migrations in `src/cmbs/db/migrations`, psycopg 3 [Q20, Q53, Q54, Q60] | Built: shared tables |
-| Frames and contracts | Polars 2.0, Pandera checks before every load [Q14, Q20] | Installed |
-| API | FastAPI app in `cmbs.api.app`, each feature's router in `cmbs.<feature>.routes`; committed OpenAPI schema and orval client to come [Q12, Q60] | Skeleton built |
-| Web | React 19, Vite, strict TypeScript, Vitest in `web/` [Q13, Q52] | Scaffold built |
-| Web, to come | AG Grid Community, TradingView lightweight-charts, Biome [Q13] | Planned |
-| Pipeline model | Jev, TypeSafe's decision model, cloud API pinned to `jev-1.14.0`, behind a provider-neutral interface; Cloudflare Clef as the local fallback [Q7] | Planned |
+| Store | PostgreSQL 18 with `vector` and `pg_trgm`; layers are schemas `raw`/`bronze`/`silver`/`gold`, application state in `app`; SQLAlchemy 2.1, each feature's tables in `cmbs.<feature>.tables`; Alembic migrations in `src/cmbs/db/migrations`, psycopg 3 [Q20, Q53, Q54, Q60] | Built |
+| Frames and contracts | Polars 2.0, Pandera checks before every load [Q14, Q20] | Built: the loan-tape contract |
+| API | FastAPI app in `cmbs.api.app`, each feature's router in `cmbs.<feature>.routes`; committed OpenAPI schema and orval client to come [Q12, Q60] | Built |
+| Web | React 19, Vite, strict TypeScript, Vitest, AG Grid Community, Biome in `web/`: the dashboard's book and loan views, served from the built bundle [Q13, Q52] | Built |
+| Web, to come | TradingView lightweight-charts [Q13] | Planned |
+| Pipeline model | Jev, TypeSafe's decision model, cloud API pinned to `jev-1.14.0`, behind a provider-neutral interface (`cmbs.model`), every call recorded and replayed; live answers in `tests/fixtures/model/live/`; Cloudflare Clef as the local fallback [Q7, Q87] | Built; Clef planned |
 | Requirements | Gherkin in `features/`, run with behave and behavex [Q5, Q29] | Built |
 | UI tests | Playwright for Python inside behave steps; hooks in `features/environment.py` [Q55] | Built |
-| Proofs | Lean 4 core (no Mathlib) on the host via elan, wired to Hypothesis differential tests [Q4] | Planned |
-| Mutation testing | mutmut on `src/cmbs`, Stryker on `web/src` [Q51] | Built |
+| Proofs | Lean 4 core (no Mathlib) on the host via elan, wired to Hypothesis differential tests [Q4] | In progress |
+| Mutation testing | mutmut on `src/cmbs` (fork-server isolation, eight CI shards), Stryker on `web/src` [Q51, Q75] | Built; paused in CI [Q76, Q86] |
 | Lint and types | pre-commit runs ruff, basedpyright (pyright, standard mode), Biome, typos, actionlint, zizmor, gitleaks and file hygiene on commit; pytest and Vitest with coverage floors on push [Q56] | Built |
 | Containers | Docker Compose on OrbStack: `db`, `web` built; `api` planned [Q19] | Partly built |
-| Claude skills | `/cmbs-refresh`, read-only `/cmbs-ask`, both calling only the `cmbs` CLI [Q12] | Planned |
+| Claude skills | `/cmbs-refresh`, read-only `/cmbs-ask`, both calling only the `cmbs` CLI, in `.claude/skills/` [Q12] | Built |
 
 ## Running things
 
