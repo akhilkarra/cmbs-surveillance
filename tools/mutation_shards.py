@@ -10,8 +10,8 @@ the shards' files and proves that every shard ran once and that together they ch
 mutant.
 
 Usage:
-  uv run python tools/mutation_shards.py run --shard 0 --of 4 [--max-children 4]
-  uv run python tools/mutation_shards.py list --shard 0 --of 4      # names only, after a run
+  uv run python tools/mutation_shards.py run --shard 0 --of 8 [--max-children 4]
+  uv run python tools/mutation_shards.py list --shard 0 --of 8      # names only, after a run
 """
 
 import argparse
