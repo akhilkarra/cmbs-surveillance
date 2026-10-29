@@ -12,15 +12,27 @@ from typer.testing import CliRunner
 from cmbs import clock
 from cmbs.access.service import PermissionRefused
 from cmbs.api.app import create_app
-from cmbs.audit.service import BadFilter, loan_key, read_log, record, render_entries, render_entry
+from cmbs.audit.service import (
+    BadFilter,
+    UnknownDeal,
+    loan_history,
+    loan_key,
+    read_log,
+    record,
+    render_entries,
+    render_entry,
+)
 from cmbs.audit.tables import AuditEntry
 from cmbs.cli import app as cli
-from cmbs.testing.world import FIXTURE_DEAL
+from cmbs.deals.service import get_or_create
+from cmbs.errors import Refused
+from cmbs.testing.world import FIXTURE_CIK, FIXTURE_DEAL
 from tests.conftest import needs_db
 
 runner = CliRunner()
 AT = dt.datetime(2026, 9, 30, 15, tzinfo=dt.UTC)
 OTHER = "Fixture Trust 2026-F1A"  # a deal whose name starts with the fixture deal's
+ALIAS = "Fixture Trust 2026-F1 (alias)"
 
 
 def _entry(**values) -> AuditEntry:
@@ -77,7 +89,11 @@ def test_entries_rendered():
 @pytest.fixture
 def logged(seeded):
     """Entries for loans 2 and 7 of the fixture deal, loan 2 of a deal whose name extends it,
-    one from run 42, and a settings change that names no loan."""
+    one from run 42, and a settings change that names no loan. Both deals are registered, the
+    fixture deal with an alias."""
+    get_or_create(seeded, OTHER)
+    get_or_create(seeded, FIXTURE_DEAL, cik=FIXTURE_CIK)
+    get_or_create(seeded, ALIAS, cik=FIXTURE_CIK)
     for at, user, deal, loan, run in [
         (AT, "alex", FIXTURE_DEAL, "2", None),
         (AT + dt.timedelta(hours=1), "olly", FIXTURE_DEAL, "7", 42),
@@ -122,6 +138,8 @@ def test_the_log_by_deal_loan_and_run(logged):
 
 @needs_db
 def test_a_deal_name_with_wildcards_matches_only_itself(logged):
+    get_or_create(logged, "100%_Trust")
+    get_or_create(logged, "100%")
     with clock.frozen(AT):
         record(logged, user="alex", action="x", subject="loan", subject_key="100%_Trust/2")
     logged.commit()
@@ -185,3 +203,51 @@ def test_the_database_refuses_changes_that_go_around_the_service(logged):
             logged.execute(text(statement))
         logged.rollback()
     assert len(read_log(logged, "rae")) == 4
+
+
+@needs_db
+def test_a_deal_is_found_by_any_name_and_a_loan_as_stored(logged):
+    """Reading by an alias, odd spacing or a zero-padded loan finds the same entries; an unknown
+    deal is refused rather than read as an empty history."""
+    expected = [f"{FIXTURE_DEAL}/2"]
+    assert _keys(loan_history(logged, "pat", deal=ALIAS, loan="02")) == expected
+    assert _keys(loan_history(logged, "pat", deal="Fixture  Trust 2026-F1", loan="2")) == expected
+    assert _keys(read_log(logged, "rae", deal=ALIAS, loan="002")) == expected
+    assert _keys(read_log(logged, "rae", deal=ALIAS)) == [f"{FIXTURE_DEAL}/7", f"{FIXTURE_DEAL}/2"]
+    for read in (
+        lambda: loan_history(logged, "pat", deal="No Such Trust", loan="2"),
+        lambda: read_log(logged, "rae", deal="No Such Trust"),
+    ):
+        with pytest.raises(UnknownDeal, match="^no deal named 'No Such Trust'$"):
+            read()
+
+
+@needs_db
+def test_a_loans_log_includes_its_review_items(seeded):
+    """Refusals about a review item name the item; the loan's history still finds them."""
+    from cmbs.extraction.service import decide_review, open_review_items
+    from cmbs.review.service import decline
+    from tests.test_review_world import loan_two
+
+    loan_two(seeded, answer="forbearance", answer_p=0.55)
+    seeded.commit()
+    [item] = open_review_items(seeded, "alex")
+    with pytest.raises(Refused):
+        decide_review(seeded, "alex", item.id, value="forbearance", sentence=9)
+    seeded.rollback()
+    with pytest.raises(Refused):
+        decline(seeded, "morgan", item.id, reason=" ")
+    seeded.rollback()
+    decide_review(seeded, "alex", item.id, value="forbearance", sentence=3)
+    seeded.commit()
+    history = loan_history(seeded, "pat", deal=FIXTURE_DEAL, loan="2")
+    assert [(e.subject, e.subject_key, e.action, e.outcome) for e in history] == [
+        ("loan", f"{FIXTURE_DEAL}/2", "decide review item", "done"),
+        ("review item", str(item.id), "decline review item", "refused"),
+        ("review item", str(item.id), "decide review item", "refused"),
+        ("loan", f"{FIXTURE_DEAL}/2", "extract comment", "done"),
+    ]
+    by_loan = read_log(seeded, "rae", deal=FIXTURE_DEAL, loan="2")
+    assert [entry.id for entry in by_loan] == [entry.id for entry in history]
+    assert len(read_log(seeded, "rae", deal=FIXTURE_DEAL)) == 4
+    assert loan_history(seeded, "pat", deal=FIXTURE_DEAL, loan="7") == []

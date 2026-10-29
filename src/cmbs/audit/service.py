@@ -13,7 +13,7 @@ import datetime as dt
 from collections.abc import Sequence
 from typing import Any, NoReturn
 
-from sqlalchemy import Engine, create_engine, select
+from sqlalchemy import ColumnElement, Engine, String, and_, cast, create_engine, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
@@ -21,9 +21,14 @@ from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
 from cmbs.audit.tables import AuditEntry
+from cmbs.deals.service import by_name
+from cmbs.deals.tables import Deal
 from cmbs.errors import Refused
+from cmbs.extraction.tables import ReviewItem
 
 LOAN = "loan"
+# Refusals about a review item (deciding or declining one) name the item, not its loan.
+REVIEW_ITEM = "review item"
 AUDIT_ENTRY = "audit entry"
 APPEND_ONLY = "the audit log is append-only"
 NEWEST_FIRST = (AuditEntry.at.desc(), AuditEntry.id.desc())
@@ -39,6 +44,10 @@ class BadRange(Refused):
 
 class BadFilter(Refused):
     """A loan named without its deal."""
+
+
+class UnknownDeal(Refused):
+    pass
 
 
 def loan_key(deal: str, loan: str) -> str:
@@ -183,11 +192,47 @@ def day_bounds(
     return since, until
 
 
+def _deal(db: Session, name: str) -> Deal:
+    """The registered deal a name refers to (aliases and spacing followed)."""
+    found = by_name(db, name)
+    if found is None:
+        raise UnknownDeal(f"no deal named {name!r}")
+    return found
+
+
+def _canonical(loan: str) -> str:
+    # Imported here: the distribution service records audit entries, so it imports this module.
+    from cmbs.distribution.service import canonical_loan
+
+    return canonical_loan(loan)
+
+
+def about_loans(deal: Deal, loan: str | None) -> ColumnElement[bool]:
+    """Entries about one loan of a deal (every loan when `loan` is None): those whose subject is
+    the loan, and those about the loan's review items, such as a refused decision."""
+    key = AuditEntry.subject_key
+    loans = (
+        key == loan_key(deal.name, loan)
+        if loan is not None
+        else key.startswith(loan_key(deal.name, ""), autoescape=True)
+    )
+    items = select(cast(ReviewItem.id, String)).where(ReviewItem.deal_id == deal.id)
+    if loan is not None:
+        items = items.where(ReviewItem.loan_id == loan)
+    return or_(
+        and_(AuditEntry.subject == LOAN, loans),
+        and_(AuditEntry.subject == REVIEW_ITEM, key.in_(items)),
+    )
+
+
 def loan_history(db: Session, reader: str, *, deal: str, loan: str) -> Sequence[AuditEntry]:
-    """Every recorded change to one loan, newest first. Part of the panel: anyone who may read
-    the panel sees the history of what they can see."""
+    """Every recorded change to one loan, and every entry about its review items, newest first.
+    Part of the panel: anyone who may read the panel sees the history of what they can see.
+    The deal is looked up by any of its names; the loan number is read as stored ('02' is 2)."""
     authorize(db, reader, Action.READ_PANEL)
-    return entries_for_subject(db, LOAN, loan_key(deal, loan))
+    found = _deal(db, deal)
+    query = select(AuditEntry).where(about_loans(found, _canonical(loan)))
+    return db.scalars(query.order_by(*NEWEST_FIRST)).all()
 
 
 def read_log(
@@ -202,8 +247,8 @@ def read_log(
     run: int | None = None,
 ) -> Sequence[AuditEntry]:
     """The whole log, optionally narrowed to one user, the loans of one deal (or one of its
-    loans), one run and calendar days (UTC, inclusive), newest first. Needs
-    `Action.READ_AUDIT_LOG`."""
+    loans, with their review items, as `loan_history` reads them), one run and calendar days
+    (UTC, inclusive), newest first. Needs `Action.READ_AUDIT_LOG`."""
     authorize(db, reader, Action.READ_AUDIT_LOG)
     if loan is not None and deal is None:
         raise BadFilter(f"name the deal of loan {loan}")
@@ -212,12 +257,8 @@ def read_log(
     if user is not None:
         query = query.where(AuditEntry.user_name == user)
     if deal is not None:
-        key = AuditEntry.subject_key
         query = query.where(
-            AuditEntry.subject == LOAN,
-            key == loan_key(deal, loan)
-            if loan is not None
-            else key.startswith(loan_key(deal, ""), autoescape=True),
+            about_loans(_deal(db, deal), None if loan is None else _canonical(loan))
         )
     if run is not None:
         query = query.where(AuditEntry.run_id == run)
