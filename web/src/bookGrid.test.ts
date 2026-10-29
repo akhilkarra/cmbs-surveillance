@@ -28,8 +28,8 @@ describe("gridRow", () => {
     const whole = {
       ...(high as NonNullable<typeof high>),
       loans: [
-        { deal: F1, loan: "7" },
-        { deal: F2, loan: "3" },
+        { deal: F1, loan: "7", label: "7" },
+        { deal: F2, loan: "3", label: "3" },
       ],
     };
     const row = gridRow(whole, "2026-09");
@@ -43,5 +43,21 @@ describe("gridRow", () => {
   it("links nowhere for an alert that covers no loan", () => {
     const none = { ...(high as NonNullable<typeof high>), loans: [] };
     expect(gridRow(none, "2026-09")).toMatchObject({ deal: "", loan: "", loanHref: "" });
+  });
+
+  it("shows how many loans an alert on a deal lists, and links nowhere", () => {
+    const onDeal = {
+      ...(high as NonNullable<typeof high>),
+      severity: "medium" as const,
+      message:
+        "19 loans no longer reported: on the August 2026 tape, not on the September 2026 tape",
+      loans: [{ deal: F1, loan: null, label: "19 loans" }],
+    };
+    expect(gridRow(onDeal, "2026-09")).toMatchObject({
+      deal: F1,
+      loan: "19 loans",
+      loanHref: "",
+      alert: onDeal.message,
+    });
   });
 });

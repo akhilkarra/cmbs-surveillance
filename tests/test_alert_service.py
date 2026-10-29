@@ -20,7 +20,7 @@ from cmbs.access.roles import Role
 from cmbs.access.service import Actor, PermissionRefused, UnknownUser
 from cmbs.alerts import service
 from cmbs.alerts.lifecycle import AlertStateRefused, State
-from cmbs.alerts.rules import Severity
+from cmbs.alerts.rules import Finding, Rule, Severity
 from cmbs.alerts.service import (
     AlertSummary,
     AlertView,
@@ -38,6 +38,8 @@ from cmbs.alerts.service import (
 from cmbs.alerts.tables import Alert, AlertBuild, AlertLoan
 from cmbs.audit.tables import AuditEntry
 from cmbs.book.service import NoteRef, PositionLine, link_whole_loan, load_positions
+from cmbs.dashboard import service as dashboard
+from cmbs.dashboard.service import LoanRef
 from cmbs.deals.service import by_name
 from cmbs.distribution.service import load_report
 from cmbs.distribution.tables import ReportComment
@@ -46,9 +48,10 @@ from cmbs.panel.service import UnknownDeal
 from cmbs.runs.service import start_run
 from cmbs.settings.service import NoSettings, store_version
 from cmbs.settings.values import Settings
-from cmbs.tape.service import AMENDMENT, load_tape
+from cmbs.tape.service import AMENDMENT, load_tape, quarantined_loans
 from cmbs.testing.world import FIXTURE_CIKS
 from tests.conftest import FIXTURES, needs_db
+from tests.fixtures.tape.tapes import REAL_FILES, real_bytes
 
 F1, F2, F3 = "Fixture Trust 2026-F1", "Fixture Trust 2026-F2", "Fixture Trust 2026-F3"
 CIKS = FIXTURE_CIKS
@@ -63,8 +66,12 @@ COMMENT = "The loan transferred effective 3/6/2025. The borrower has requested a
 # ---------------------------------------------------------------------------- fixture months
 
 
+ASSET = "the whole asset"  # (loan, ASSET): None leaves the loan off the tape
+
+
 def month_tape(period: Period, changes: dict[tuple[str, str], str | None] | None = None) -> bytes:
-    """The fixture tape moved to `period`, with (loan, tag) set to a value or removed."""
+    """The fixture tape moved to `period`, with (loan, tag) set to a value or removed, and
+    (loan, ASSET) removing the loan."""
     root = ET.fromstring((FIXTURES / "schedule_al_minimal.xml").read_bytes())
     months = SEPTEMBER.months_until(period)
     for asset in root.findall(NAMESPACE + "assets"):
@@ -80,6 +87,9 @@ def month_tape(period: Period, changes: dict[tuple[str, str], str | None] | None
             for a in root.findall(NAMESPACE + "assets")
             if a.findtext(NAMESPACE + "assetNumber") == loan
         )
+        if tag == ASSET:
+            root.remove(asset)
+            continue
         element = asset.find(NAMESPACE + tag)
         if value is None:
             if element is not None:
@@ -176,7 +186,7 @@ def vintages(db: Session, deal: str = F1, period: Period = SEPTEMBER) -> list[Al
     )
 
 
-def messages(summary: AlertSummary) -> list[tuple[str, str, tuple[str, ...]]]:
+def messages(summary: AlertSummary) -> list[tuple[str, str, tuple[str | None, ...]]]:
     return [
         (view.severity.value, view.message, tuple(c.loan for c in view.loans))
         for view in summary.alerts
@@ -583,15 +593,352 @@ def test_a_loans_comments_from_several_tables_are_read_as_one_in_table_order(see
 
 
 @needs_db
-def test_a_quarantined_loan_is_reported_missing_with_the_reason(seeded):
+def test_loans_off_the_tape_are_one_alert_on_the_deal_a_quarantined_one_with_its_reason(seeded):
     load_month(seeded, F1, AUGUST)
-    load_month(seeded, F1, SEPTEMBER, {("7", "reportPeriodEndActualBalanceAmount"): "-1.00"})
+    september = load_month(
+        seeded,
+        F1,
+        SEPTEMBER,
+        {
+            ("7", "reportPeriodEndActualBalanceAmount"): "-1.00",
+            ("5", ASSET): None,
+            ("3", ASSET): None,
+            ("6", ASSET): None,  # paid off in August: not missed
+        },
+    )
+    clock.set_now(SEP_30)
+    summary = build(seeded, actor=QUANT)
+    assert summary.raised == 1
+    (alert,) = summary.alerts
+    reason = quarantined_loans(seeded, september)[0].reason
+    assert (alert.severity, alert.title, alert.message) == (
+        Severity.MEDIUM,
+        "no longer reported",
+        "3 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
+        f"(loans 3, 5, 7); loan 7 quarantined: {reason}",
+    )
+    (covered,) = alert.loans
+    assert (covered.deal, covered.loan, covered.loans, covered.label, covered.accession) == (
+        F1,
+        None,
+        ("3", "5", "7"),
+        "3 loans",
+        september,
+    )
+    # August's balances of loans 3, 5 and 7: 8, 12 and 9 million.
+    assert alert.balance == covered.balance == Decimal("29000000.00")
+    assert seeded.get_one(Alert, alert.id).subject == f"deal {deal_id(seeded)}"
+    entry = seeded.scalars(select(AuditEntry).where(AuditEntry.action == "raise alert")).one()
+    assert entry.detail == {
+        "deal": F1,
+        "loans": ["3", "5", "7"],
+        "period": "September 2026",
+        "rule": "no longer reported",
+        "severity": "medium",
+        "accession": september,
+    }
+
+
+@needs_db
+def test_loans_new_to_the_tape_are_one_low_alert_on_the_deal(seeded):
+    load_month(seeded, F1, AUGUST, {("5", ASSET): None, ("4", ASSET): None})
+    september = load_month(seeded, F1, SEPTEMBER)
     clock.set_now(SEP_30)
     (alert,) = build(seeded).alerts
-    assert alert.message.startswith(
-        f"no longer reported: quarantined in {accession(F1, SEPTEMBER, 1)}: "
+    assert (alert.severity, alert.message, alert.accessions) == (
+        Severity.LOW,
+        "2 loans newly reported: not on the August 2026 tape (loans 4, 5)",
+        (september,),
     )
-    assert alert.loans[0].balance is None
+    assert (alert.loans[0].loans, alert.balance) == (("4", "5"), Decimal("16000000.00"))
+    # Each listed loan's page shows the alert; a loan it does not list does not.
+    pages = {
+        loan: dashboard.loan_page(seeded, reader="pat", deal=F1, loan=loan, period=SEPTEMBER)
+        for loan in ("4", "5", "7")
+    }
+    assert {loan: [a.alert_id for a in page.alerts] for loan, page in pages.items()} == {
+        "4": [alert.id],
+        "5": [alert.id],
+        "7": [],
+    }
+
+
+# ---------------------------------------------------------------------------- the real tapes
+
+BNK13 = "BANK 2018-BNK13"
+# The 20 residential co-op loans (property type CH) the August 2026 tape lists and the September
+# tape omits (docs/MESS-REGISTER.md M-022), less loan 60, which August shows paid off (balance 0).
+BNK13_DROPPED = (
+    *("20", "26", "29", "37", "38", "40", "42", "47", "48", "50"),
+    *("51", "52", "53", "54", "57", "58", "59", "61", "62"),
+)
+# Their ending balances on the August tape, summed by hand from the file.
+BNK13_DROPPED_BALANCE = Decimal("55773638.00")
+
+
+@needs_db
+def test_the_real_bnk13_tapes_raise_one_alert_for_the_loans_september_omits(seeded):
+    for file, filed_on in (
+        ("bank-2018-bnk13_2026-08_ex102.xml.gz", dt.date(2026, 8, 27)),
+        ("bank-2018-bnk13_2026-09_ex102.xml.gz", dt.date(2026, 9, 29)),
+    ):
+        facts = REAL_FILES[file]
+        load_tape(
+            seeded,
+            deal=BNK13,
+            content=real_bytes(file),
+            file_name="exh_102.xml",
+            accession=facts.accession,
+            filing_date=filed_on,
+            cik=facts.cik,
+        )
+    clock.set_now(SEP_30)
+    summary = build(seeded, deal=BNK13)
+    # One line for the 19 loans the tape dropped, beside the two real changes on loan 11.
+    assert summary.raised == 3
+    assert [(v.severity.value, v.message, v.loans[0].label) for v in summary.alerts] == [
+        (
+            "medium",
+            "19 loans no longer reported: on the August 2026 tape, not on the September 2026 "
+            f"tape (loans {', '.join(BNK13_DROPPED)})",
+            "19 loans",
+        ),
+        ("medium", "paid-through date did not advance: still 2026-03-01", "11"),
+        ("medium", "workout strategy changed: to be determined to foreclosure", "11"),
+    ]
+    (alert,) = [view for view in summary.alerts if view.title == "no longer reported"]
+    assert (alert.loans[0].loans, alert.balance) == (BNK13_DROPPED, BNK13_DROPPED_BALANCE)
+    assert build(seeded, deal=BNK13).raised == 0
+
+
+@needs_db
+def test_the_alert_on_the_deal_moves_through_its_lifecycle_and_vintages_as_one(seeded):
+    load_month(seeded, F1, AUGUST)
+    original = load_month(seeded, F1, SEPTEMBER, {("3", ASSET): None, ("5", ASSET): None})
+    load_positions(
+        seeded, user="quinn", as_of=dt.date(2026, 9, 30), lines=[PositionLine(F1, "E", money("25"))]
+    )
+    clock.set_now(SEP_30)
+    first = build(seeded, actor=QUANT)
+    (group,) = first.alerts
+    assert (group.loans[0].loans, group.exposure, group.balance) == (
+        ("3", "5"),
+        Decimal("25.00"),
+        Decimal("20000000.00"),
+    )
+    # One acknowledgement and one assignment cover every loan the alert lists.
+    service.acknowledge(seeded, user="pat", alert_id=group.id)
+    service.assign(seeded, user="pat", alert_id=group.id, to="alex", note="ask the servicer")
+    assert [v.id for v in service.work_list(seeded, user="alex")] == [group.id]
+    assert [v.id for v in service.book_view(seeded, reader="pat", period=SEPTEMBER)] == [group.id]
+    (row,) = dashboard.book_page(seeded, reader="pat", period=SEPTEMBER).rows
+    assert (row.loans, row.exposure, row.balance, row.state_text) == (
+        (LoanRef(F1, None, "2 loans"),),
+        Decimal("25.00"),
+        Decimal("20000000.00"),
+        "assigned to alex",
+    )
+    # Building again changes nothing.
+    assert (build(seeded).raised, build(seeded).superseded) == (0, 0)
+
+    # An amendment restores loan 3: the alert listing both is superseded, one listing loan 5
+    # is raised.
+    corrected = amend_september(
+        seeded, {("5", ASSET): None}, on=dt.date(2026, 10, 10), number=3, amends=original
+    )
+    clock.set_now(OCT_11)
+    second = build(seeded, actor=QUANT)
+    assert (second.raised, second.superseded) == (1, 1)
+    assert messages(second) == [
+        (
+            "medium",
+            "1 loan no longer reported: on the August 2026 tape, not on the September 2026 tape "
+            "(loan 5)",
+            (None,),
+        )
+    ]
+    reason = f"no longer shown by September 2026 as published on 2026-10-10 (tape {corrected})"
+    (gone,) = second.superseded_alerts
+    assert (gone.id, gone.state_text, gone.superseded) == (
+        group.id,
+        "assigned to alex",
+        Supersession(second.vintage or 0, OCT_11, reason),
+    )
+    assert gone.message.startswith("2 loans no longer reported")
+    assert second.alerts[0].balance == Decimal("12000000.00")
+    entry = seeded.scalars(select(AuditEntry).where(AuditEntry.action == "supersede alert")).one()
+    assert entry.detail == {
+        "deal": F1,
+        "loans": ["3", "5"],
+        "period": "September 2026",
+        "vintage": second.vintage,
+        "alert superseded": True,
+    }
+    service.close(seeded, user="alex", alert_id=second.alerts[0].id, note="co-op left the trust")
+    assert service.book_view(seeded, reader="pat", period=SEPTEMBER) == []
+
+    # A further amendment restores loan 5: nothing is missing and the alert is superseded.
+    amend_september(seeded, {}, on=dt.date(2026, 10, 20), number=4, amends=corrected)
+    clock.set_now(dt.datetime(2026, 10, 21, tzinfo=dt.UTC))
+    third = build(seeded)
+    assert (third.raised, third.superseded, third.alerts) == (0, 1, ())
+    assert third.note == "no changes since August 2026"
+    assert [v.id for v in third.superseded_alerts] == [group.id, second.alerts[0].id]
+
+
+NEGATIVE: dict[tuple[str, str], str | None] = {("7", "reportPeriodEndActualBalanceAmount"): "-1.00"}
+
+
+@needs_db
+@pytest.mark.parametrize("quarantine", [{}, NEGATIVE], ids=["dropped only", "and quarantined"])
+def test_an_amendment_with_the_same_gap_keeps_the_alert_and_its_state(seeded, quarantine):
+    gap = {("3", ASSET): None, **quarantine}
+    load_month(seeded, F1, AUGUST)
+    original = load_month(seeded, F1, SEPTEMBER, gap)
+    clock.set_now(SEP_30)
+    (group,) = build(seeded, actor=QUANT).alerts
+    service.acknowledge(seeded, user="pat", alert_id=group.id)
+    # The amendment changes something else (loan 1 transfers) and drops the same loans, for
+    # the same reasons, under a new accession.
+    amendment = amend_september(
+        seeded,
+        {**gap, ("1", TRANSFER): "09-02-2026"},
+        on=dt.date(2026, 10, 10),
+        number=3,
+        amends=original,
+    )
+    clock.set_now(OCT_11)
+    second = build(seeded, actor=QUANT)
+    assert (second.raised, second.superseded, second.superseded_alerts) == (1, 0, ())
+    assert len(vintages(seeded)) == 2
+    kept = next(v for v in second.alerts if v.title == "no longer reported")
+    assert (kept.id, kept.message, kept.state_text) == (
+        group.id,
+        group.message,
+        "acknowledged by pat on 2026-09-30",
+    )
+    # The alert still shows the filing that first showed the gap.
+    assert kept.accessions == (original,) and amendment != original
+
+
+@needs_db
+def test_a_changed_quarantine_reason_restates_the_alert(seeded):
+    load_month(seeded, F1, AUGUST)
+    original = load_month(seeded, F1, SEPTEMBER, NEGATIVE)
+    clock.set_now(SEP_30)
+    (group,) = build(seeded).alerts
+    assert group.message.endswith("(loan 7); loan 7 quarantined: ending balance is negative")
+    amend_september(
+        seeded,
+        {("7", "reportPeriodBeginningScheduleLoanBalanceAmount"): "-1.00"},
+        on=dt.date(2026, 10, 10),
+        number=3,
+        amends=original,
+    )
+    clock.set_now(OCT_11)
+    second = build(seeded)
+    assert (second.raised, second.superseded) == (1, 1)
+    (restated,) = second.alerts
+    assert restated.message.endswith("(loan 7); loan 7 quarantined: beginning balance is negative")
+    assert [v.id for v in second.superseded_alerts] == [group.id]
+
+
+def test_a_gap_is_the_same_when_its_loans_and_reasons_are():
+    found = Finding(
+        loan=None,
+        rule=Rule.MISSING,
+        severity=Severity.MEDIUM,
+        title="no longer reported",
+        message="any",
+        accession="a",
+        loans=("3", "7"),
+        reasons=(("7", "ending balance is negative"),),
+    )
+    assert service.same_gap(["3", "7"], {"7": "ending balance is negative"}, found)
+    assert not service.same_gap(["3"], {"7": "ending balance is negative"}, found)
+    assert not service.same_gap(["3", "7"], {}, found)
+    assert not service.same_gap(["3", "7"], {"7": "beginning balance is negative"}, found)
+
+
+def old_shape_gap(db: Session, vintage: AlertBuild, loan: str, rule: Rule, message: str) -> int:
+    """A gap alert on one loan, as a build before decision Q88 stored it."""
+    alert = Alert(
+        subject=subject_of(vintage.deal_id, loan, None),
+        period=vintage.period,
+        rule=rule.value,
+        severity=(Severity.MEDIUM if rule is Rule.MISSING else Severity.LOW).value,
+        title=rule.value,
+        message=message,
+        added=[],
+        settings_version=vintage.settings_version,
+        as_of=vintage.as_of,
+        raised_at=SEP_30,
+        raised_in=vintage.id,
+        state=State.NEW.value,
+    )
+    db.add(alert)
+    db.flush()
+    db.add(
+        AlertLoan(
+            alert_id=alert.id, deal_id=vintage.deal_id, loan=loan, accession=vintage.accession
+        )
+    )
+    db.flush()
+    return alert.id
+
+
+@needs_db
+def test_a_month_built_before_q88_has_its_per_loan_gap_alerts_restated_once(seeded):
+    load_month(seeded, F1, AUGUST, {("4", ASSET): None})
+    load_month(seeded, F1, SEPTEMBER, {("3", ASSET): None, ("5", ASSET): None})
+    clock.set_now(SEP_30)
+    first = build(seeded)
+    # Turn the month back into what a build before Q88 left: one gap alert per loan.
+    for view in first.alerts:
+        seeded.delete(seeded.get_one(Alert, view.id))
+    seeded.flush()
+    vintage = vintages(seeded)[0]
+    gone = "no longer reported: on the August 2026 tape, not on the September 2026 tape"
+    old = [
+        old_shape_gap(seeded, vintage, "3", Rule.MISSING, gone),
+        old_shape_gap(
+            seeded, vintage, "4", Rule.NEW, "newly reported: not on the August 2026 tape"
+        ),
+        old_shape_gap(seeded, vintage, "5", Rule.MISSING, gone),
+    ]
+    service.acknowledge(seeded, user="pat", alert_id=old[0])
+
+    # The month reads nothing new, yet the build restates the gaps, as the build's own action.
+    clock.set_now(OCT_11)
+    second = build(seeded, actor=QUANT)
+    assert (second.raised, second.superseded) == (2, 3)
+    assert [(v.severity.value, v.message) for v in second.alerts] == [
+        (
+            "medium",
+            "2 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
+            "(loans 3, 5)",
+        ),
+        ("low", "1 loan newly reported: not on the August 2026 tape (loan 4)"),
+    ]
+    assert len(vintages(seeded)) == 2
+    assert sorted(v.id for v in second.superseded_alerts) == old
+    reasons = {v.superseded.reason for v in second.superseded_alerts if v.superseded}
+    assert reasons == {service.RESTATED_PER_DEAL}
+    # Never rewritten: pat's acknowledgement stays on the alert it was given to.
+    assert service.read_alert(seeded, reader="pat", alert_id=old[0]).state_text == (
+        "acknowledged by pat on 2026-09-30"
+    )
+    audited = seeded.scalars(
+        select(AuditEntry.subject_key).where(
+            AuditEntry.action == "supersede alert", AuditEntry.user_name == "quinn"
+        )
+    ).all()
+    assert sorted(audited) == sorted(str(alert_id) for alert_id in old)
+
+    # Once restated, building again is a no-op.
+    third = build(seeded, actor=QUANT)
+    assert (third.raised, third.superseded, third.vintage) == (0, 0, second.vintage)
+    assert len(vintages(seeded)) == 2
 
 
 @needs_db

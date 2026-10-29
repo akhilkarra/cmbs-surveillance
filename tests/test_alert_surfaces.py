@@ -52,6 +52,18 @@ def test_an_alert_line_names_the_loans_state_and_exposure():
         **{**view.__dict__, "loans": (CoveredLoan(F1, "7", "a", None, money("0"), ()),)}
     )
     assert alert_line(unheld).endswith("[new] exposure $0.00")
+    message = "2 loans no longer reported: on the August 2026 tape, not on the September 2026 tape"
+    on_deal = AlertView(
+        **{
+            **view.__dict__,
+            "severity": Severity.MEDIUM,
+            "message": f"{message} (loans 3, 5)",
+            "loans": (CoveredLoan(F1, None, "a", None, money("25"), ("E",), loans=("3", "5")),),
+        }
+    )
+    assert alert_line(on_deal) == (
+        f"#12 medium {F1}: {message} (loans 3, 5) [new] exposure $25.00 (E)"
+    )
 
 
 @pytest.mark.parametrize(
@@ -246,6 +258,8 @@ def test_api_builds_reads_and_changes_alerts(months, client):
             {
                 "deal": F1,
                 "loan": "7",
+                "loans": [],
+                "label": "7",
                 "accession": accession(F1, SEPTEMBER, 1),
                 "balance": "9000000.00",
                 "exposure": "25000000.00",

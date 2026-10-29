@@ -18,6 +18,8 @@ import { useApi } from "./useApi";
 export const GRID_THEME_PARAMS = {
   fontFamily: "inherit",
   fontSize: 14,
+  // Narrower than the theme's 16px, so the columns need less width before the grid scrolls.
+  cellHorizontalPadding: 12,
   backgroundColor: "var(--paper)",
   foregroundColor: "var(--ink)",
   headerBackgroundColor: "var(--panel)",
@@ -35,44 +37,50 @@ export function SeverityCell(props: ICellRendererParams<GridRow, GridRow["severi
   return <span className={`severity severity-${props.value}`}>{props.value}</span>;
 }
 
+/** A loan links to its page; an alert on a deal ("19 loans") has no one loan to open. */
 export function LoanCell(props: ICellRendererParams<GridRow, string>) {
-  return <a href={props.data?.loanHref}>{props.value}</a>;
+  const href = props.data?.loanHref;
+  return href ? <a href={href}>{props.value}</a> : <span>{props.value}</span>;
 }
+
+// Text that can run long wraps, and its row grows to fit it (autoHeight), so no line spills onto
+// the next row. Below the columns' minimum widths together (a window about 1,060px wide) the
+// grid scrolls sideways rather than squeezing or hiding a column.
+const WRAPS = { wrapText: true, autoHeight: true } as const;
 
 export const COLUMNS: ColDef<GridRow>[] = [
   {
     colId: "severity",
     field: "severity",
     headerName: "Severity",
-    width: 110,
+    width: 104,
     cellRenderer: SeverityCell,
   },
-  { colId: "deal", field: "deal", headerName: "Deal", flex: 1.2, minWidth: 190 },
-  { colId: "loan", field: "loan", headerName: "Loan", width: 90, cellRenderer: LoanCell },
+  { colId: "deal", field: "deal", headerName: "Deal", flex: 1.2, minWidth: 130, ...WRAPS },
+  { colId: "loan", field: "loan", headerName: "Loan", width: 92, cellRenderer: LoanCell },
   {
     colId: "alert",
     field: "alert",
     headerName: "What changed",
     flex: 2,
-    minWidth: 280,
-    wrapText: true,
-    autoHeight: true,
+    minWidth: 240,
+    ...WRAPS,
   },
   {
     colId: "exposure",
     field: "exposure",
     headerName: "Book exposure",
-    width: 160,
+    width: 140,
     type: "rightAligned",
   },
   {
     colId: "balance",
     field: "balance",
     headerName: "Loan balance",
-    width: 160,
+    width: 140,
     type: "rightAligned",
   },
-  { colId: "state", field: "state", headerName: "State", flex: 1, minWidth: 150 },
+  { colId: "state", field: "state", headerName: "State", flex: 1, minWidth: 130, ...WRAPS },
 ];
 
 // Rows and columns keep the API's order: no sorting, no moving.

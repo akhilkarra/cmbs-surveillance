@@ -29,8 +29,12 @@ def _money(value: Decimal | None) -> str | None:
 
 
 class CoveredLoanOut(BaseModel):
+    """A deal's loan an alert covers; for an alert on the deal, no loan and the loans it lists."""
+
     deal: str
-    loan: str
+    loan: str | None
+    loans: list[str]
+    label: str
     accession: str
     balance: str | None
     exposure: str
@@ -42,6 +46,8 @@ class CoveredLoanOut(BaseModel):
         return cls(
             deal=loan.deal,
             loan=loan.loan,
+            loans=list(loan.loans),
+            label=loan.label,
             accession=loan.accession,
             balance=_money(loan.balance),
             exposure=f"{loan.exposure:.2f}",
