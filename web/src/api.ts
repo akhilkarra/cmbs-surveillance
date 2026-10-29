@@ -12,9 +12,12 @@ export interface MonthRef {
   label: string;
 }
 
+/** A deal's loan an alert is on. An alert on the deal (loans its tape dropped or added) has no
+ * loan to open; its label says how many loans it lists ("19 loans"). */
 export interface LoanRef {
   deal: string;
-  loan: string;
+  loan: string | null;
+  label: string;
 }
 
 export interface BookRow {

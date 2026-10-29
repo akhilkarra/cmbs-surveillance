@@ -134,7 +134,7 @@ def test_the_book_page_lists_the_months_open_alerts(world, seeded):
     assert (row.severity, row.message, row.loans) == (
         "high",
         "transferred to special servicing on 2026-09-02",
-        (LoanRef(F1, "7"),),
+        (LoanRef(F1, "7", "7"),),
     )
     assert (row.exposure, row.balance, row.classes) == (
         Decimal("25000000.00"),
@@ -356,7 +356,7 @@ def test_the_book_route_sends_money_as_text(world, client):
         "9000000.00",
         "high",
     )
-    assert row["loans"] == [{"deal": F1, "loan": "7"}]
+    assert row["loans"] == [{"deal": F1, "loan": "7", "label": "7"}]
     assert client.get("/dashboard/book", headers=HEADERS).json()["month"]["key"] == "2026-09"
 
 

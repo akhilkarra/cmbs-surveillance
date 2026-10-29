@@ -2,11 +2,13 @@
 
 app.alert_build  every build of a deal's month that read something new: a vintage, with what
                  it compared and under which settings. Never changed once written.
-app.alert        one alert per loan (or linked whole loan), month and rule, with its state; an
-                 alert a later vintage no longer supports is marked superseded, never deleted
+app.alert        one alert per loan (or linked whole loan, or deal), month and rule, with its
+                 state; an alert a later vintage no longer supports is marked superseded, never
+                 deleted
 app.alert_loan   each deal's loan an alert covers, the filing that showed the change and the
                  loan's balance on it; a linked whole loan has one row per deal, each of which a
-                 later vintage of its own deal can supersede
+                 later vintage of its own deal can supersede; an alert on a deal has one row,
+                 with no loan, listing the loans it names and their total balance
 """
 
 from collections.abc import Iterable
@@ -69,7 +71,8 @@ class Alert(Base):
     """One change worth a PM's attention. One alert not superseded per subject, month and rule.
 
     `subject` is "<deal id>/<loan>" for a loan, or "whole loan <id>" for a linked whole loan,
-    so the same whole loan held through two deals raises one alert. `raised_in` is the vintage
+    so the same whole loan held through two deals raises one alert; "deal <id>" for an alert on
+    the deal's tape as a whole (the loans it no longer or newly reports). `raised_in` is the vintage
     that raised it; `superseded_by` the vintage that no longer supports it, with the reason.
     """
 
@@ -136,12 +139,16 @@ class Alert(Base):
 
 
 class AlertLoan(Base):
-    """A deal's loan an alert covers, with the filing that showed the change."""
+    """A deal's loan an alert covers, with the filing that showed the change; or, for an alert
+    on the deal itself (loans no longer or newly reported), the loans it lists."""
 
     __tablename__ = "alert_loan"
     __table_args__ = (
         Index("ix_app_alert_loan_deal_loan", "deal_id", "loan"),
         CheckConstraint("balance >= 0", name="balance_not_negative"),
+        CheckConstraint(
+            "(loan IS NULL) = (jsonb_array_length(loans) > 0)", name="one_loan_or_a_list"
+        ),
         {"schema": APP_SCHEMA},
     )
 
@@ -150,9 +157,16 @@ class AlertLoan(Base):
     )
     # A whole loan has one note in each deal, so an alert covers one loan of each deal.
     deal_id: Mapped[int] = mapped_column(ForeignKey("silver.deal.id"), primary_key=True)
-    loan: Mapped[str] = mapped_column(Text)
+    # None for an alert on the deal, which lists its loans in `loans` instead.
+    loan: Mapped[str | None] = mapped_column(Text)
+    # The loans an alert on the deal lists, in loan order; empty for an alert on one loan.
+    loans: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    # For an alert on the deal, each listed loan the new tape quarantined, with the reason. With
+    # `loans` it is what the alert means: a rebuild finding both again keeps the alert.
+    reasons: Mapped[dict[str, str]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     accession: Mapped[str] = mapped_column(ForeignKey("raw.filing.accession"))
     # The loan's ending balance on the month's tape; None when not reported or not on the tape.
+    # For an alert on the deal, the listed loans' total on the tape that reported them.
     balance: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
     # The vintage of this deal's month that no longer supports the alert for this loan.
     superseded_by: Mapped[int | None] = mapped_column(ForeignKey(f"{APP_SCHEMA}.alert_build.id"))

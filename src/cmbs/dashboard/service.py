@@ -132,8 +132,12 @@ def default_month(latest_built: Period | None, today: dt.date) -> Period:
 
 @dataclass(frozen=True)
 class LoanRef:
+    """A deal's loan an alert is on, and how the book's loan column shows it: the loan ('7'),
+    or for an alert on the deal no loan (nothing to open) and how many it lists ('19 loans')."""
+
     deal: str
-    loan: str
+    loan: str | None
+    label: str
 
 
 @dataclass(frozen=True)
@@ -169,7 +173,7 @@ def book_row(view: AlertView) -> BookRow:
         severity=view.severity.value,
         title=view.title,
         message=view.message,
-        loans=tuple(LoanRef(loan.deal, loan.loan) for loan in view.loans),
+        loans=tuple(LoanRef(loan.deal, loan.loan, loan.label) for loan in view.loans),
         exposure=view.exposure,
         balance=view.balance,
         classes=view.classes,
@@ -619,7 +623,8 @@ def _loan_alerts(
     db: Session, deal_id: int, loan: str, period: Period, day: dt.date
 ) -> tuple[LoanAlert, ...]:
     """The loan's alerts for the month as they stood at the end of `day`: raised by then and
-    not yet superseded for this deal, each in the state the audit trail shows it was in."""
+    not yet superseded for this deal, each in the state the audit trail shows it was in. An
+    alert on the deal that lists the loan (newly reported, say) is one of them."""
     end = _end_of(day)
     superseding = aliased(AlertBuild)
     found = db.scalars(
@@ -628,7 +633,7 @@ def _loan_alerts(
         .outerjoin(superseding, superseding.id == AlertLoan.superseded_by)
         .where(
             AlertLoan.deal_id == deal_id,
-            AlertLoan.loan == loan,
+            or_(AlertLoan.loan == loan, AlertLoan.loans.contains([loan])),
             Alert.period == period.first_day,
             Alert.raised_at < end,
             or_(AlertLoan.superseded_by.is_(None), superseding.built_at >= end),

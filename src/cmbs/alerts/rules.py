@@ -12,16 +12,19 @@ medium  paid-through date did not advance: the date stayed, the loan is behind f
 medium  DSCR fell below <threshold>: at or above the threshold last month, below it now
 medium  workout strategy changed: the workout strategy code changed, started or ended
 low     servicer comment changed: the 10-D comment has sentences it did not have before
-medium  no longer reported: on last month's tape, not on this one, without having paid off
-low     newly reported: on this tape, not on last month's
+medium  no longer reported: loans on last month's tape, not on this one, not having paid off
+low     newly reported: loans on this tape, not on last month's
 
 A loan that appears or disappears between two tapes of a static CMBS pool is itself worth a
 look: a loan dropped without first paying off may hide a liquidation or a reporting error, and
-a loan that appears was missing before.
+a loan that appears was missing before. These two rules read the deal's whole month, not one
+loan: a tape that drops loans usually drops many at once (BANK 2018-BNK13's September 2026 tape
+omits its residential co-ops, docs/MESS-REGISTER.md M-022), so each gives one deal-level
+finding listing every loan, not one finding per loan.
 """
 
 import datetime as dt
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
@@ -46,7 +49,8 @@ SEVERITY_ORDER: dict[Severity, int] = {Severity.HIGH: 0, Severity.MEDIUM: 1, Sev
 
 
 class Rule(StrEnum):
-    """Stable keys: an alert is stored once per loan, month and rule."""
+    """Stable keys: an alert is stored once per subject (a loan, or the deal for the loans no
+    longer or newly reported), month and rule."""
 
     TRANSFER = "special servicing transfer"
     PAYMENT_WORSENED = "payment status worsened"
@@ -94,15 +98,25 @@ class Month:
 
 @dataclass(frozen=True)
 class Finding:
-    """One change worth an alert. `accession` is the filing that shows it."""
+    """One change worth an alert. `accession` is the filing that shows it.
 
-    loan: str
+    A loan's finding names its `loan`. A deal-level finding (loans no longer or newly reported)
+    has no `loan`: it lists its `loans` in loan order, with their total `balance` on the tape
+    that reported them (None when none of them reported one) and, for a loan the new tape
+    quarantined, the reason (`reasons`, in loan order). The loans and reasons are what the
+    finding means: the same ones found again are the same alert.
+    """
+
+    loan: str | None
     rule: Rule
     severity: Severity
     title: str
     message: str
     accession: str
     added: tuple[str, ...] = ()
+    loans: tuple[str, ...] = ()
+    balance: Decimal | None = None
+    reasons: tuple[tuple[str, str], ...] = ()
 
 
 # ---------------------------------------------------------------------------- formatting
@@ -290,53 +304,103 @@ def comment(loan: str, before: Comments, after: Comments) -> Finding | None:
 # ---------------------------------------------------------------------------- the month
 
 
-def missing(row: LoanMonth, before: Month, after: Month) -> Finding | None:
-    """A loan last month's tape showed and this month's does not, unless it had paid off."""
-    if row.ending_balance is not None and row.ending_balance == 0:
-        return None
-    title = "no longer reported"
-    reason = after.quarantined.get(row.loan)
-    why = (
-        f"quarantined in {after.accession}: {reason}"
-        if reason is not None
-        else f"on the {before.period.label} tape, not on the {after.period.label} tape"
+def count_loans(count: int) -> str:
+    """'1 loan', '19 loans'."""
+    return f"{count} loan" if count == 1 else f"{count} loans"
+
+
+def name_loans(loans: Sequence[str]) -> str:
+    """'loan 20', 'loans 20, 26, 29'."""
+    return f"loan {loans[0]}" if len(loans) == 1 else f"loans {', '.join(loans)}"
+
+
+def total_balance(rows: Iterable[LoanMonth]) -> Decimal | None:
+    """The rows' ending balances summed; None when none of them reports one."""
+    reported = [row.ending_balance for row in rows if row.ending_balance is not None]
+    return sum(reported, Decimal("0.00")) if reported else None
+
+
+def unreported_balances(rows: Sequence[LoanMonth]) -> str:
+    """'; balance not reported for loan 7' (or 'loans 5, 7') when the total leaves some out."""
+    unreported = [row.loan for row in rows if row.ending_balance is None]
+    return f"; balance not reported for {name_loans(unreported)}" if unreported else ""
+
+
+def _paid_off(row: LoanMonth) -> bool:
+    return row.ending_balance is not None and row.ending_balance == 0
+
+
+def _in_loan_order(rows: Iterable[LoanMonth]) -> list[LoanMonth]:
+    return sorted(rows, key=lambda row: loan_order(row.loan))
+
+
+def missing(before: Month, after: Month) -> Finding | None:
+    """The loans last month's tape showed and this month's does not, except those that had paid
+    off: one finding for the deal listing every loan in loan order, and for a loan quarantined
+    on the new tape the reason. Its balance is their total on last month's tape; the message
+    names any loan whose balance that total leaves out."""
+    gone = _in_loan_order(
+        row for loan, row in before.loans.items() if loan not in after.loans and not _paid_off(row)
     )
+    if not gone:
+        return None
+    loans = tuple(row.loan for row in gone)
+    reasons = tuple((loan, after.quarantined[loan]) for loan in loans if loan in after.quarantined)
+    title = "no longer reported"
+    why = "".join(f"; loan {loan} quarantined: {reason}" for loan, reason in reasons)
     return Finding(
-        loan=row.loan,
+        loan=None,
         rule=Rule.MISSING,
         severity=Severity.MEDIUM,
         title=title,
-        message=f"{title}: {why}",
+        message=(
+            f"{count_loans(len(loans))} {title}: on the {before.period.label} tape, "
+            f"not on the {after.period.label} tape ({name_loans(loans)}){why}"
+            f"{unreported_balances(gone)}"
+        ),
         accession=after.accession,
+        loans=loans,
+        balance=total_balance(gone),
+        reasons=reasons,
     )
 
 
-def new_loan(row: LoanMonth, before: Month) -> Finding:
+def new_loans(before: Month, after: Month) -> Finding | None:
+    """The loans this month's tape shows and last month's did not: one finding for the deal
+    listing every loan in loan order. Its balance is their total on this month's tape; the
+    message names any loan whose balance that total leaves out."""
+    found = _in_loan_order(row for loan, row in after.loans.items() if loan not in before.loans)
+    if not found:
+        return None
+    loans = tuple(row.loan for row in found)
     title = "newly reported"
     return Finding(
-        loan=row.loan,
+        loan=None,
         rule=Rule.NEW,
         severity=Severity.LOW,
         title=title,
-        message=f"{title}: not on the {before.period.label} tape",
-        accession=row.accession,
+        message=(
+            f"{count_loans(len(loans))} {title}: not on the {before.period.label} tape "
+            f"({name_loans(loans)}){unreported_balances(found)}"
+        ),
+        accession=after.accession,
+        loans=loans,
+        balance=total_balance(found),
     )
 
 
 def compare(before: Month, after: Month, context: Context) -> list[Finding]:
-    """Every finding for the month, by loan ('2' before '10'), then in rule order."""
+    """Every finding for the month: each loan's, by loan ('2' before '10') then in rule order,
+    then the deal's loans no longer reported and its loans newly reported."""
     findings: list[Finding] = []
     loans = sorted(before.loans.keys() | after.loans.keys(), key=loan_order)
     for loan in loans:
         old, new = before.loans.get(loan), after.loans.get(loan)
-        if old is None:
-            findings.append(new_loan(after.loans[loan], before))
-        elif new is None:
-            findings.extend(_some([missing(old, before, after)]))
-        else:
+        if old is not None and new is not None:
             findings.extend(_some(rule(old, new, context) for rule in LOAN_RULES))
         if before.comments is not None and after.comments is not None:
             findings.extend(_some([comment(loan, before.comments, after.comments)]))
+    findings.extend(_some([missing(before, after), new_loans(before, after)]))
     return findings
 
 

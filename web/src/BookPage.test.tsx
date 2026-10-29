@@ -20,8 +20,20 @@ afterEach(() => {
 
 describe("the grid's set-up", () => {
   it("takes every colour from a token the page defines, and the page's font", () => {
-    const { fontFamily, fontSize, wrapperBorderRadius, rowBorder, ...colours } = GRID_THEME_PARAMS;
-    expect([fontFamily, fontSize, wrapperBorderRadius]).toEqual(["inherit", 14, 0]);
+    const {
+      fontFamily,
+      fontSize,
+      wrapperBorderRadius,
+      rowBorder,
+      cellHorizontalPadding,
+      ...colours
+    } = GRID_THEME_PARAMS;
+    expect([fontFamily, fontSize, wrapperBorderRadius, cellHorizontalPadding]).toEqual([
+      "inherit",
+      14,
+      0,
+      12,
+    ]);
     const used = [...Object.values(colours), rowBorder.color];
     expect(used).toHaveLength(8);
     for (const colour of used) {
@@ -43,8 +55,26 @@ describe("the grid's set-up", () => {
       "state",
     ]);
     expect([byId.exposure?.type, byId.balance?.type]).toEqual(["rightAligned", "rightAligned"]);
-    expect([byId.alert?.wrapText, byId.alert?.autoHeight]).toEqual([true, true]);
     expect(DEFAULT_COLUMN).toEqual({ sortable: false, suppressMovable: true });
+  });
+
+  it("grows a row with every column that wraps, so no text runs over the next row", () => {
+    const wrapping = COLUMNS.filter((column) => column.wrapText).map((column) => column.colId);
+    expect(wrapping).toEqual(["deal", "alert", "state"]);
+    for (const column of COLUMNS) {
+      expect(column.autoHeight ?? false, column.colId).toBe(column.wrapText ?? false);
+    }
+    // A wrapped line is spaced as text, not as a whole row.
+    expect(styles).toMatch(/\.grid \.ag-cell-wrap-text \{\s*line-height: 1\.45;/);
+  });
+
+  it("fits a 1,400px window and scrolls sideways, not over itself, in an 800px one", () => {
+    const widths = COLUMNS.map((column) => column.width ?? column.minWidth ?? 0);
+    const least = widths.reduce((sum, width) => sum + width, 0);
+    // The page's side padding is at most 2.5rem each side, and the grid has a 1px border.
+    expect(least).toBe(976);
+    expect(least).toBeLessThanOrEqual(1400 - 2 * 40 - 2);
+    expect(least).toBeGreaterThan(800 - 2 * 32 - 2);
   });
 });
 
@@ -78,6 +108,12 @@ describe("grid cells", () => {
     expect(screen.getByRole("link", { name: "7" }).getAttribute("href")).toBe(
       "#/loan/F1/7/2026-09",
     );
+  });
+
+  it("show an alert on a deal's loan count as text, not a link", () => {
+    render(<LoanCell {...cell("19 loans", { loanHref: "" })} />);
+    expect(screen.getByText("19 loans").tagName).toBe("SPAN");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
 
