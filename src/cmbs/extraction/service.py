@@ -715,8 +715,22 @@ def comment_view(
     as_of: dt.date | None = None,
 ) -> CommentView | None:
     """The latest extraction of a loan's comment for a period, as known on `as_of` (today):
-    from a filing public by that day, extracted by the end of it (UTC)."""
+    from a filing public by that day, extracted by the end of it (UTC). Needs the right to read
+    the panel."""
     authorize(db, reader, Action.READ_PANEL)
+    return panel_fields(db, deal=deal, loan=loan, period=period, as_of=as_of)
+
+
+def panel_fields(
+    db: Session, *, deal: str, loan: str, period: Period, as_of: dt.date | None = None
+) -> CommentView | None:
+    """What `comment_view` shows, overrides and declines laid on, point in time, without
+    authorizing a reader.
+
+    Internal: for system work that already holds its own authority (the checks a refresh runs
+    compare comments under "run refreshes and backfills"). A user's read goes through
+    `comment_view`.
+    """
     deal_row = deals.by_name(db, deal)
     if deal_row is None:
         raise UnknownDeal(f"no deal named {deal!r}")

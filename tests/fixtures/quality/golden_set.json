@@ -1,0 +1,1085 @@
+{
+ "description": "Synthetic golden set for the extraction-quality scenarios; not filed comments, not real labels. Built by make_golden_set.py.",
+ "items": [
+  {
+   "key": "G001",
+   "comment": "The loan transferred to special servicing effective 1/18/2024 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G002",
+   "comment": "The loan transferred to special servicing effective 2/4/2024 due to a cash management trigger. The borrower has requested a modification of the loan's amortization schedule. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G003",
+   "comment": "The loan transferred to special servicing effective 2/21/2024 due to imminent monetary default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G004",
+   "comment": "The loan transferred to special servicing effective 3/9/2024 due to maturity default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G005",
+   "comment": "The loan transferred to special servicing effective 3/26/2024 due to a cash management trigger. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G006",
+   "comment": "The loan transferred to special servicing effective 4/12/2024 due to imminent monetary default. The borrower has requested a 12-month extension of the loan's maturity date. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G007",
+   "comment": "The loan transferred to special servicing effective 4/29/2024 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G008",
+   "comment": "The loan transferred to special servicing effective 5/16/2024 due to a cash management trigger. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G009",
+   "comment": "The loan transferred to special servicing effective 6/2/2024 due to imminent monetary default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G010",
+   "comment": "The loan transferred to special servicing effective 6/19/2024 due to maturity default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G011",
+   "comment": "The loan transferred to special servicing effective 7/6/2024 due to a cash management trigger. The borrower has requested the release of an outparcel from the collateral. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "collateral release",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G012",
+   "comment": "The loan transferred to special servicing effective 7/23/2024 due to imminent monetary default. The borrower has requested a 12-month extension of the loan's maturity date. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G013",
+   "comment": "The loan transferred to special servicing effective 8/9/2024 due to maturity default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G014",
+   "comment": "The loan transferred to special servicing effective 8/26/2024 due to a cash management trigger. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G015",
+   "comment": "The loan transferred to special servicing effective 9/12/2024 due to imminent monetary default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G016",
+   "comment": "The loan transferred to special servicing effective 9/29/2024 due to maturity default. The borrower has requested consent to a transfer of the property and assumption of the loan. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan assumption",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G017",
+   "comment": "The loan transferred to special servicing effective 10/16/2024 due to a cash management trigger. The borrower has requested the release of an outparcel from the collateral. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "collateral release",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G018",
+   "comment": "The loan transferred to special servicing effective 11/2/2024 due to imminent monetary default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G019",
+   "comment": "The loan transferred to special servicing effective 11/19/2024 due to maturity default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G020",
+   "comment": "The loan transferred to special servicing effective 12/6/2024 due to a cash management trigger. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G021",
+   "comment": "The loan transferred to special servicing effective 12/23/2024 due to imminent monetary default. The borrower has requested a discounted payoff of the loan. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G022",
+   "comment": "The loan transferred to special servicing effective 1/9/2025 due to maturity default. The borrower has requested consent to a transfer of the property and assumption of the loan. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan assumption",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G023",
+   "comment": "The loan transferred to special servicing effective 1/26/2025 due to a cash management trigger. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G024",
+   "comment": "The loan transferred to special servicing effective 2/12/2025 due to imminent monetary default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G025",
+   "comment": "The loan transferred to special servicing effective 3/1/2025 due to maturity default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G026",
+   "comment": "The loan transferred to special servicing effective 3/18/2025 due to a cash management trigger. The borrower has requested a modification of the loan's amortization schedule. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G027",
+   "comment": "The loan transferred to special servicing effective 4/4/2025 due to imminent monetary default. The borrower has requested a discounted payoff of the loan. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G028",
+   "comment": "The loan transferred to special servicing effective 4/21/2025 due to maturity default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G029",
+   "comment": "The loan transferred to special servicing effective 5/8/2025 due to a cash management trigger. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G030",
+   "comment": "The loan transferred to special servicing effective 5/25/2025 due to imminent monetary default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G031",
+   "comment": "The loan transferred to special servicing effective 6/11/2025 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G032",
+   "comment": "The loan transferred to special servicing effective 6/28/2025 due to a cash management trigger. The borrower has requested a modification of the loan's amortization schedule. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G033",
+   "comment": "The loan transferred to special servicing effective 7/15/2025 due to imminent monetary default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G034",
+   "comment": "The loan transferred to special servicing effective 8/1/2025 due to maturity default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G035",
+   "comment": "The loan transferred to special servicing effective 8/18/2025 due to a cash management trigger. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G036",
+   "comment": "The loan transferred to special servicing effective 9/4/2025 due to imminent monetary default. The borrower has requested a 12-month extension of the loan's maturity date. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G037",
+   "comment": "The loan transferred to special servicing effective 9/21/2025 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G038",
+   "comment": "The loan transferred to special servicing effective 10/8/2025 due to a cash management trigger. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G039",
+   "comment": "The loan transferred to special servicing effective 10/25/2025 due to imminent monetary default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G040",
+   "comment": "The loan transferred to special servicing effective 11/11/2025 due to maturity default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G041",
+   "comment": "The loan transferred to special servicing effective 11/28/2025 due to a cash management trigger. The borrower has requested the release of an outparcel from the collateral. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "collateral release",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G042",
+   "comment": "The loan transferred to special servicing effective 12/15/2025 due to imminent monetary default. The borrower has requested a 12-month extension of the loan's maturity date. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G043",
+   "comment": "The loan transferred to special servicing effective 1/1/2026 due to maturity default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G044",
+   "comment": "The loan transferred to special servicing effective 1/18/2026 due to a cash management trigger. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G045",
+   "comment": "The loan transferred to special servicing effective 2/4/2026 due to imminent monetary default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G046",
+   "comment": "The loan transferred to special servicing effective 2/21/2026 due to maturity default. The borrower has requested consent to a transfer of the property and assumption of the loan. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan assumption",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G047",
+   "comment": "The loan transferred to special servicing effective 3/10/2026 due to a cash management trigger. The borrower has requested the release of an outparcel from the collateral. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "collateral release",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G048",
+   "comment": "The loan transferred to special servicing effective 3/27/2026 due to imminent monetary default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G049",
+   "comment": "The loan transferred to special servicing effective 4/13/2026 due to maturity default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G050",
+   "comment": "The loan transferred to special servicing effective 4/30/2026 due to a cash management trigger. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G051",
+   "comment": "The loan transferred to special servicing effective 5/17/2026 due to imminent monetary default. The borrower has requested a discounted payoff of the loan. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G052",
+   "comment": "The loan transferred to special servicing effective 6/3/2026 due to maturity default. The borrower has requested consent to a transfer of the property and assumption of the loan. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan assumption",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G053",
+   "comment": "The loan transferred to special servicing effective 6/20/2026 due to a cash management trigger. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G054",
+   "comment": "The loan transferred to special servicing effective 7/7/2026 due to imminent monetary default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G055",
+   "comment": "The loan transferred to special servicing effective 7/24/2026 due to maturity default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G056",
+   "comment": "The loan transferred to special servicing effective 8/10/2026 due to a cash management trigger. The borrower has requested a modification of the loan's amortization schedule. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G057",
+   "comment": "The loan transferred to special servicing effective 8/27/2026 due to imminent monetary default. The borrower has requested a discounted payoff of the loan. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G058",
+   "comment": "The loan transferred to special servicing effective 9/13/2026 due to maturity default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G059",
+   "comment": "The loan transferred to special servicing effective 9/30/2026 due to a cash management trigger. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G060",
+   "comment": "The loan transferred to special servicing effective 10/17/2026 due to imminent monetary default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G061",
+   "comment": "The loan transferred to special servicing effective 11/3/2026 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G062",
+   "comment": "The loan transferred to special servicing effective 11/20/2026 due to a cash management trigger. The borrower has requested a modification of the loan's amortization schedule. The special servicer declined the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G063",
+   "comment": "The loan transferred to special servicing effective 12/7/2026 due to imminent monetary default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G064",
+   "comment": "The loan transferred to special servicing effective 12/24/2026 due to maturity default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G065",
+   "comment": "The loan transferred to special servicing effective 1/10/2027 due to a cash management trigger. A receiver was appointed and is managing the property.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G066",
+   "comment": "The loan transferred to special servicing effective 1/27/2027 due to imminent monetary default. The borrower has requested a 12-month extension of the loan's maturity date. The special servicer is reviewing the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G067",
+   "comment": "The loan transferred to special servicing effective 2/13/2027 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G068",
+   "comment": "The loan transferred to special servicing effective 3/2/2027 due to a cash management trigger. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G069",
+   "comment": "The loan transferred to special servicing effective 3/19/2027 due to imminent monetary default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G070",
+   "comment": "The loan transferred to special servicing effective 4/5/2027 due to maturity default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G071",
+   "comment": "The loan transferred to special servicing effective 4/22/2027 due to a cash management trigger. The borrower has requested the release of an outparcel from the collateral. The special servicer declined the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "collateral release",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G072",
+   "comment": "The loan transferred to special servicing effective 5/9/2027 due to imminent monetary default. The borrower has requested a 12-month extension of the loan's maturity date. The special servicer is reviewing the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G073",
+   "comment": "The loan transferred to special servicing effective 5/26/2027 due to maturity default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G074",
+   "comment": "The loan transferred to special servicing effective 6/12/2027 due to a cash management trigger. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G075",
+   "comment": "The loan transferred to special servicing effective 6/29/2027 due to imminent monetary default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G076",
+   "comment": "The loan transferred to special servicing effective 7/16/2027 due to maturity default. The borrower has requested consent to a transfer of the property and assumption of the loan. The special servicer approved the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "loan assumption",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G077",
+   "comment": "The loan transferred to special servicing effective 8/2/2027 due to a cash management trigger. The borrower has requested the release of an outparcel from the collateral. The special servicer declined the request.",
+   "labels": {
+    "morgan": {
+     "borrower_request": "collateral release",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G078",
+   "comment": "The loan transferred to special servicing effective 8/19/2027 due to imminent monetary default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G079",
+   "comment": "The loan transferred to special servicing effective 9/5/2027 due to maturity default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G080",
+   "comment": "The loan transferred to special servicing effective 9/22/2027 due to a cash management trigger. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G081",
+   "comment": "The loan transferred to special servicing effective 10/9/2027 due to imminent monetary default. The borrower has requested a discounted payoff of the loan. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    },
+    "morgan": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G082",
+   "comment": "The loan transferred to special servicing effective 10/26/2027 due to maturity default. The borrower has requested consent to a transfer of the property and assumption of the loan. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan assumption",
+     "request_status": "granted"
+    },
+    "morgan": {
+     "borrower_request": "loan assumption",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G083",
+   "comment": "The loan transferred to special servicing effective 11/12/2027 due to a cash management trigger. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G084",
+   "comment": "The loan transferred to special servicing effective 11/29/2027 due to imminent monetary default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G085",
+   "comment": "The loan transferred to special servicing effective 12/16/2027 due to maturity default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G086",
+   "comment": "The loan transferred to special servicing effective 1/2/2028 due to a cash management trigger. The borrower has requested a modification of the loan's amortization schedule. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    },
+    "morgan": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G087",
+   "comment": "The loan transferred to special servicing effective 1/19/2028 due to imminent monetary default. The borrower has requested a discounted payoff of the loan. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    },
+    "morgan": {
+     "borrower_request": "discounted payoff",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G088",
+   "comment": "The loan transferred to special servicing effective 2/5/2028 due to maturity default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G089",
+   "comment": "The loan transferred to special servicing effective 2/22/2028 due to a cash management trigger. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G090",
+   "comment": "The loan transferred to special servicing effective 3/10/2028 due to imminent monetary default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G091",
+   "comment": "The loan transferred to special servicing effective 3/27/2028 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    },
+    "morgan": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G092",
+   "comment": "The loan transferred to special servicing effective 4/13/2028 due to a cash management trigger. The borrower has requested a modification of the loan's amortization schedule. The special servicer declined the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    },
+    "morgan": {
+     "borrower_request": "loan modification",
+     "request_status": "denied"
+    }
+   }
+  },
+  {
+   "key": "G093",
+   "comment": "The loan transferred to special servicing effective 4/30/2028 due to imminent monetary default. A receiver was appointed and is managing the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G094",
+   "comment": "The loan transferred to special servicing effective 5/17/2028 due to maturity default. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G095",
+   "comment": "The loan transferred to special servicing effective 6/3/2028 due to a cash management trigger. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G096",
+   "comment": "The loan transferred to special servicing effective 6/20/2028 due to imminent monetary default. The borrower has requested a 12-month extension of the loan's maturity date. The special servicer is reviewing the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    },
+    "morgan": {
+     "borrower_request": "maturity extension",
+     "request_status": "pending"
+    }
+   }
+  },
+  {
+   "key": "G097",
+   "comment": "The loan transferred to special servicing effective 7/7/2028 due to maturity default. The borrower has requested a three-month forbearance of debt service payments. The special servicer approved the request.",
+   "labels": {
+    "alex": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    },
+    "morgan": {
+     "borrower_request": "forbearance",
+     "request_status": "granted"
+    }
+   }
+  },
+  {
+   "key": "G098",
+   "comment": "The loan transferred to special servicing effective 7/24/2028 due to a cash management trigger. The special servicer has engaged counsel and ordered a new appraisal.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G099",
+   "comment": "The loan transferred to special servicing effective 8/10/2028 due to imminent monetary default. The property is being marketed for sale by the receiver.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  },
+  {
+   "key": "G100",
+   "comment": "The loan transferred to special servicing effective 8/27/2028 due to maturity default. The special servicer is dual-tracking foreclosure while it evaluates the property.",
+   "labels": {
+    "alex": {
+     "borrower_request": null,
+     "request_status": null
+    },
+    "morgan": {
+     "borrower_request": null,
+     "request_status": null
+    }
+   }
+  }
+ ]
+}
