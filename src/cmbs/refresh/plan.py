@@ -17,6 +17,9 @@ September 2026") waits for the filing: the run goes on to other deals and ends "
 problems". A month that fails to load (a filing that cannot be fetched, parsed or loaded) needs
 fixing: the run ends "failed" and says where it stopped, but still refreshes its other deals.
 
+A loaded month that a check finds fault with (a quarantined loan, a reconciliation flag, a
+balance roll-forward break) ends the run "completed with problems", never "succeeded".
+
 Amendments (ABS-EE/A, 10-D/A) are not loaded by runs yet: EDGAR does not say which filing an
 amendment corrects, and the loaders need that link. Each run says which months have one.
 """
@@ -28,6 +31,7 @@ from enum import StrEnum
 from typing import Any
 
 from cmbs.domain import Period
+from cmbs.edgar.archives import filing_base_url
 
 TAPE_FORM = "ABS-EE"
 REPORT_FORM = "10-D"
@@ -73,6 +77,27 @@ class MonthFilings:
             "that runs do not load yet"
             for form in forms
         )
+
+
+@dataclass(frozen=True)
+class FilingLink:
+    """A filing a month's numbers came from, with its folder on EDGAR."""
+
+    form: str
+    accession: str
+    url: str
+
+    def as_json(self) -> dict[str, str]:
+        return {"form": self.form, "accession": self.accession, "url": self.url}
+
+
+def links(month: MonthFilings) -> tuple[FilingLink, ...]:
+    """The month's ABS-EE and 10-D, as far as it has them, each linked to its EDGAR folder."""
+    return tuple(
+        FilingLink(filing.form, filing.accession, filing_base_url(filing.cik, filing.accession))
+        for filing in (month.tape, month.report)
+        if filing is not None
+    )
 
 
 def _later(current: FilingRef | None, candidate: FilingRef) -> FilingRef:
@@ -158,6 +183,18 @@ class MonthResult:
     # True when the month failed to load, rather than missing a filing: the run fails.
     failed: bool = False
     notes: tuple[str, ...] = ()
+    # Comments the month's extraction read, and the fields of them it sent to review. None when
+    # the run was given no model to extract with.
+    comments: int | None = None
+    review_items: int = 0
+    # Balance roll-forward breaks the month's check flagged; None when it was not checked.
+    rollforward_breaks: int | None = None
+    filings: tuple[FilingLink, ...] = ()
+
+    @property
+    def problems(self) -> bool:
+        """Loaded, but a check found fault: a quarantined loan, a flag or a roll-forward break."""
+        return bool(self.quarantined or self.flags or self.rollforward_breaks)
 
     def text(self) -> str:
         return "\n".join(month_lines(self.as_json()))
@@ -174,6 +211,10 @@ class MonthResult:
             "alerts": self.alerts,
             "failed": self.failed,
             "notes": list(self.notes),
+            "comments": self.comments,
+            "review_items": self.review_items,
+            "rollforward_breaks": self.rollforward_breaks,
+            "filings": [filing.as_json() for filing in self.filings],
         }
 
 
@@ -187,6 +228,8 @@ class DealResult:
     notes: tuple[str, ...] = ()
     # True when the deal was skipped for a reason that is a problem: another run held it.
     problem: bool = False
+    # The newest month loaded once the run was done with the deal; None when none is.
+    loaded_through: Period | None = None
 
     @property
     def stopped_at(self) -> MonthResult | None:
@@ -202,6 +245,8 @@ class DealResult:
             "reason": self.reason,
             "months": [month.as_json() for month in self.months],
             "notes": list(self.notes),
+            "problem": self.problem,
+            "loaded_through": self.loaded_through.label if self.loaded_through else None,
         }
 
 
@@ -238,22 +283,32 @@ def deal_lines(deal: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def deal_outcome(deal: str, months: Sequence[MonthResult], notes: Sequence[str] = ()) -> DealResult:
-    """Failed if a month failed to load, otherwise refreshed."""
+def deal_outcome(
+    deal: str,
+    months: Sequence[MonthResult],
+    notes: Sequence[str] = (),
+    loaded_before: Iterable[Period] = (),
+) -> DealResult:
+    """Failed if a month failed to load, otherwise refreshed; loaded through the newest month
+    loaded before the run or by it."""
     failed = any(month.failed for month in months)
     outcome = DealOutcome.FAILED if failed else DealOutcome.REFRESHED
-    return DealResult(deal, outcome, None, tuple(months), tuple(notes))
+    loaded = {*loaded_before, *(m.period for m in months if m.outcome is MonthOutcome.LOADED)}
+    return DealResult(
+        deal, outcome, None, tuple(months), tuple(notes), loaded_through=max(loaded, default=None)
+    )
 
 
 def run_status(deals: Sequence[DealResult]) -> str:
-    """failed when a deal failed; completed with problems when a month was not loaded, a loan
-    was quarantined or another run held a deal; succeeded otherwise. Skipping a deal that is
-    not publicly reported is not a problem: it is the answer."""
+    """failed when a deal failed; completed with problems when a month was not loaded, a check
+    found fault with a loaded month (a quarantined loan, a reconciliation flag, a roll-forward
+    break) or another run held a deal; succeeded otherwise. Skipping a deal that is not
+    publicly reported is not a problem: it is the answer."""
     if any(deal.outcome is DealOutcome.FAILED for deal in deals):
         return "failed"
     months = [month for deal in deals for month in deal.months]
     if any(deal.problem for deal in deals) or any(
-        m.outcome is MonthOutcome.NOT_LOADED or m.quarantined for m in months
+        m.outcome is MonthOutcome.NOT_LOADED or m.problems for m in months
     ):
         return "completed with problems"
     return "succeeded"
@@ -295,6 +350,9 @@ def summary(deals: Sequence[DealResult]) -> dict[str, Any]:
         "quarantined": sum(m.quarantined for m in months),
         "flags": sum(m.flags for m in months),
         "alerts_raised": alerts_raised(months),
+        "comments": sum(m.comments or 0 for m in months),
+        "review_items": sum(m.review_items for m in months),
+        "rollforward_breaks": sum(m.rollforward_breaks or 0 for m in months),
         "stopped": stopped(deals),
         "deals": [deal.as_json() for deal in deals],
     }
