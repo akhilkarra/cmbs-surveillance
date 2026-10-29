@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-built Schedule AL (EX-102) fixture. Values are synthetic; tags and layout follow real CMBS ABS-EE files. -->
+<assetData xmlns="http://www.sec.gov/edgar/document/absee/cmbs/assetdata">
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>1</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>50000000.00</reportPeriodEndActualBalanceAmount>
+    <paidThroughDate>02-01-2026</paidThroughDate>
+    <paymentStatusLoanCode>0</paymentStatusLoanCode>
+    <property>
+      <propertyName>Harbor Office Tower</propertyName>
+      <propertyTypeCode>OF</propertyTypeCode>
+      <mostRecentFinancialsStartDate>04-01-2025</mostRecentFinancialsStartDate>
+      <mostRecentFinancialsEndDate>09-30-2025</mostRecentFinancialsEndDate>
+      <mostRecentNetOperatingIncomeAmount>2100000.00</mostRecentNetOperatingIncomeAmount>
+      <mostRecentDebtServiceCoverageNetOperatingIncomePercentage>1.45</mostRecentDebtServiceCoverageNetOperatingIncomePercentage>
+      <mostRecentPhysicalOccupancyPercentage>0.88</mostRecentPhysicalOccupancyPercentage>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>1A</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>25000000.00</reportPeriodEndActualBalanceAmount>
+    <property>
+      <propertyName>NA</propertyName>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>2</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>30000000.00</reportPeriodEndActualBalanceAmount>
+    <paymentStatusLoanCode>3</paymentStatusLoanCode>
+    <mostRecentSpecialServicerTransferDate>03-06-2025</mostRecentSpecialServicerTransferDate>
+    <workoutStrategyCode>11</workoutStrategyCode>
+    <property>
+      <propertyName>Lakeside Hotel Portfolio</propertyName>
+      <propertyTypeCode>LO</propertyTypeCode>
+      <mostRecentFinancialsStartDate>01-01-2024</mostRecentFinancialsStartDate>
+      <mostRecentFinancialsEndDate>12-31-2024</mostRecentFinancialsEndDate>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>2-001</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>0</reportPeriodEndActualBalanceAmount>
+    <property>
+      <propertyName>Lakeside Hotel A</propertyName>
+      <propertyTypeCode>LO</propertyTypeCode>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>3</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>8000000.00</reportPeriodEndActualBalanceAmount>
+    <property>
+      <propertyName>Defeased</propertyName>
+      <propertyTypeCode>RT</propertyTypeCode>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>4</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>4000000.00</reportPeriodEndActualBalanceAmount>
+    <paymentStatusLoanCode>1</paymentStatusLoanCode>
+    <property>
+      <propertyName>Elm Street Cooperative</propertyName>
+      <propertyTypeCode>CH</propertyTypeCode>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>5</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>12000000.00</reportPeriodEndActualBalanceAmount>
+    <property>
+      <propertyName>Maple Industrial Park</propertyName>
+      <propertyTypeCode>IN</propertyTypeCode>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>6</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>0</reportPeriodEndActualBalanceAmount>
+    <property>
+      <propertyName>Paid Off Plaza</propertyName>
+      <propertyTypeCode>RT</propertyTypeCode>
+      <mostRecentFinancialsEndDate>09-30-2025</mostRecentFinancialsEndDate>
+    </property>
+  </assets>
+  <assets>
+    <assetTypeNumber>Prospectus Loan ID</assetTypeNumber>
+    <assetNumber>7</assetNumber>
+    <reportingPeriodEndDate>02-11-2026</reportingPeriodEndDate>
+    <reportPeriodEndActualBalanceAmount>9000000.00</reportPeriodEndActualBalanceAmount>
+    <property>
+      <propertyName>Riverside Apartments</propertyName>
+      <propertyTypeCode>MF</propertyTypeCode>
+      <mostRecentFinancialsStartDate>10-01-2024</mostRecentFinancialsStartDate>
+      <mostRecentFinancialsEndDate>09-30-2025</mostRecentFinancialsEndDate>
+    </property>
+  </assets>
+</assetData>
