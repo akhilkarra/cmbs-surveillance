@@ -364,7 +364,13 @@ class _Server(ThreadingHTTPServer):
 
 
 _RUNNING: dict[str, _Server] = {}
-BUILD = "[ -x node_modules/.bin/vite ] || npm ci; npm run build"
+# Install from the lock file whenever it differs from the one last installed into the
+# node_modules volume (a volume made before a dependency was added would otherwise lack it),
+# then build.
+BUILD = (
+    '[ "$(cat package-lock.json)" = "$(cat node_modules/.installed-lock 2>/dev/null)" ] '
+    "|| { npm ci && cp package-lock.json node_modules/.installed-lock; } && npm run build"
+)
 
 
 # The files beside src/ that change what the build makes.
