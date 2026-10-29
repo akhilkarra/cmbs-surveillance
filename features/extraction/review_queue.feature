@@ -1,4 +1,4 @@
-@draft @layer:logic @surface:api @surface:ui
+@approved @layer:logic @surface:api @surface:ui
 Feature: The review queue
   Items waiting for a human are ordered so the ones that matter most come first, and nothing
   waits forever unnoticed. An analyst can decide, decline or leave an item for someone else.

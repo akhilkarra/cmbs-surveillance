@@ -1,4 +1,4 @@
-@draft @surface:skill @surface:ui
+@approved @surface:skill @surface:ui
 Feature: Ask the panel
   Anyone with access asks a question in plain English and gets an answer drawn only from
   the panel, with a citation for every fact. Asking can read the data but never change it.

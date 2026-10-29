@@ -1,4 +1,4 @@
-@draft @layer:model @surface:cli @surface:api
+@approved @layer:model @surface:cli @surface:api
 Feature: Extraction quality
   A golden set of comments labelled by analysts measures how well extraction works, field by
   field, with a confidence interval on every number. The report is re-run whenever the model,

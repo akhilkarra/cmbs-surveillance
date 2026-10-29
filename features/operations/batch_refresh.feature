@@ -1,4 +1,4 @@
-@draft @layer:data @surface:cli @surface:skill
+@approved @layer:data @surface:cli @surface:skill
 Feature: Batch refresh and backfill
   One run can refresh every deal in the book, or load a range of past months. A deal and
   month either loads completely or not at all, and two runs never work on the same deal

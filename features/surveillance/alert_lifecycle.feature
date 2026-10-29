@@ -1,4 +1,4 @@
-@draft @layer:logic @surface:api @surface:ui
+@approved @layer:logic @surface:api @surface:ui
 Feature: Alert lifecycle
   Alerts are shared. Each one is new until someone acknowledges it, can be assigned to a
   user, and is closed with a note. Everyone sees the same state, and every step is audited.

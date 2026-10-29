@@ -1,4 +1,4 @@
-@draft @layer:data @surface:cli @surface:api @contract:loan_period
+@approved @layer:data @surface:cli @surface:api @contract:loan_period
 Feature: Loan tape ingestion
   Each month's ABS-EE loan tape becomes one row per loan per period.
   Every row can be traced to the exact file it came from.

@@ -1,4 +1,4 @@
-@draft @layer:data @surface:cli @surface:api
+@approved @layer:data @surface:cli @surface:api
 Feature: Reproducibility and export
   The panel can be rebuilt from the raw filings and come out identical, and a quant can take
   an as-of snapshot away as files that say exactly what produced them.

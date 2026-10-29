@@ -1,4 +1,4 @@
-@draft @layer:data @surface:cli @surface:api @surface:ui
+@approved @layer:data @surface:cli @surface:api @surface:ui
 Feature: Run history
   Every refresh and backfill is a run with a number, a starter, a start and end time, what
   it loaded and what went wrong. Operators see runs; everyone can trace a value to its run.

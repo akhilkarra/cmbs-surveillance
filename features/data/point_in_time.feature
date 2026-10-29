@@ -1,4 +1,4 @@
-@draft @layer:data @surface:cli @surface:api @contract:as_of
+@approved @layer:data @surface:cli @surface:api @contract:as_of
 Feature: Point-in-time availability
   A value can be used only from the moment it became public, which is its filing date.
   Anything that asks "what did we know on date D" must never see data published after D.
