@@ -38,6 +38,7 @@ def problem_counts(summary: Mapping[str, Any]) -> list[str]:
     quarantined = sum(m.get("quarantined", 0) for m in loaded)
     breaks = sum(m.get("rollforward_breaks") or 0 for m in loaded)
     flags = sum(m.get("flags", 0) for m in loaded)
+    text = sum(m.get("text_flags") or 0 for m in loaded)
     not_loaded = sum(m["outcome"] == MonthOutcome.NOT_LOADED.value for m in months)
     failed = sum(d["outcome"] == DealOutcome.FAILED.value and not d.get("months") for d in deals)
     held = sum(d["outcome"] == DealOutcome.SKIPPED.value and d.get("problem") for d in deals)
@@ -45,6 +46,7 @@ def problem_counts(summary: Mapping[str, Any]) -> list[str]:
         (quarantined, counted(quarantined, "loan") + " quarantined"),
         (breaks, counted(breaks, "roll-forward break")),
         (flags, counted(flags, "reconciliation flag")),
+        (text, counted(text, "text-versus-tape flag")),
         (not_loaded, counted(not_loaded, "month") + " not loaded"),
         (failed, counted(failed, "deal") + " not refreshed"),
         (held, counted(held, "deal") + " held by another run"),
@@ -105,6 +107,13 @@ def month_report(month: Mapping[str, Any]) -> list[str]:
         lines.append(f"  {counted(flags, 'reconciliation flag')}: {both}")
     else:
         lines.append(f"  reconciliation passed: {both}")
+    text = month.get("text_flags")
+    if text is None:
+        lines.append(f"  text versus tape not checked: {both}")
+    elif text:
+        lines.append(f"  {counted(text, 'text-versus-tape flag')}: {both}")
+    else:
+        lines.append(f"  text versus tape agreed: {both}")
     lines += [f"  {note}" for note in month.get("notes", [])]
     return lines
 

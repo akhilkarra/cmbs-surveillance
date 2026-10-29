@@ -41,6 +41,7 @@ def loaded(period: Period = SEP, **extra: Any) -> MonthResult:
         "review_items": 2,
         "alerts": 3,
         "rollforward_breaks": 0,
+        "text_flags": 0,
     }
     values.update(extra)
     return MonthResult(period, MonthOutcome.LOADED, filings=(TAPE, REPORT), **values)
@@ -101,13 +102,14 @@ def test_a_loaded_month_counts_each_thing_with_its_filings():
         "  3 alerts raised: ABS-EE T9 https://t9/; 10-D R9 https://r9/",
         "  roll-forward passed: ABS-EE T9 https://t9/",
         "  reconciliation passed: ABS-EE T9 https://t9/; 10-D R9 https://r9/",
+        "  text versus tape agreed: ABS-EE T9 https://t9/; 10-D R9 https://r9/",
     ]
 
 
 def test_a_month_with_problems_lists_them():
     month = loaded(
         loan_rows=1, comments=2, review_items=1, alerts=1, quarantined=1, flags=2,
-        rollforward_breaks=1, notes=("an amendment",),
+        rollforward_breaks=1, text_flags=3, notes=("an amendment",),
     )  # fmt: skip
     assert month_report(month.as_json()) == [
         "September 2026: loaded",
@@ -118,13 +120,17 @@ def test_a_month_with_problems_lists_them():
         "  1 loan quarantined: ABS-EE T9 https://t9/",
         "  1 roll-forward break: ABS-EE T9 https://t9/",
         "  2 reconciliation flags: ABS-EE T9 https://t9/; 10-D R9 https://r9/",
+        "  3 text-versus-tape flags: ABS-EE T9 https://t9/; 10-D R9 https://r9/",
         "  an amendment",
     ]
 
 
 def test_a_month_without_a_model_or_the_roll_forward_says_so():
-    month = loaded(comments=None, rollforward_breaks=None)
+    month = loaded(comments=None, rollforward_breaks=None, text_flags=None)
     lines = month_report(month.as_json())
+    assert lines[-1] == (
+        "  text versus tape not checked: ABS-EE T9 https://t9/; 10-D R9 https://r9/"
+    )
     assert lines[2] == "  comments not extracted (the run had no model to ask): 10-D R9 https://r9/"
     assert "sent to review" not in "\n".join(lines)
     assert "  roll-forward not checked: ABS-EE T9 https://t9/" in lines
@@ -174,7 +180,9 @@ def test_loaded_through_counts_months_loaded_before_and_by_the_run():
 def test_problem_counts_in_the_order_to_act_on_them():
     gap = MonthResult(Period(2026, 10), MonthOutcome.NOT_LOADED, "no 10-D filed for October 2026")
     deals = [
-        deal_outcome("F1", [loaded(quarantined=2, rollforward_breaks=1, flags=3), gap]),
+        deal_outcome(
+            "F1", [loaded(quarantined=2, rollforward_breaks=1, flags=3, text_flags=1), gap]
+        ),
         DealResult("F2", DealOutcome.SKIPPED, "run 4 is already refreshing F2", problem=True),
         DealResult("F3", DealOutcome.FAILED, "filing discovery failed: boom"),
         DealResult("HYT", DealOutcome.SKIPPED, "not publicly reported"),
@@ -183,6 +191,7 @@ def test_problem_counts_in_the_order_to_act_on_them():
         "2 loans quarantined",
         "1 roll-forward break",
         "3 reconciliation flags",
+        "1 text-versus-tape flag",
         "1 month not loaded",
         "1 deal not refreshed",
         "1 deal held by another run",
@@ -242,6 +251,8 @@ def test_run_status_counts_flags_and_roll_forward_breaks_as_problems():
     broken = loaded(rollforward_breaks=1)
     assert run_status([deal_outcome("F1", [broken])]) == "completed with problems"
     assert run_status([deal_outcome("F1", [loaded(rollforward_breaks=None)])]) == "succeeded"
+    assert run_status([deal_outcome("F1", [loaded(text_flags=1)])]) == "completed with problems"
+    assert loaded(text_flags=2).problems
     assert loaded(quarantined=1).problems
     assert not loaded().problems
 

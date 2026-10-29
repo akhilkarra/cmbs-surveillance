@@ -216,6 +216,7 @@ def test_month_as_json():
         "comments": None,
         "review_items": 0,
         "rollforward_breaks": None,
+        "text_flags": None,
         "filings": [],
     }
     assert loaded(SEP, alerts=3, quarantined=1, flags=2, notes=("n",)).as_json() == {
@@ -232,6 +233,7 @@ def test_month_as_json():
         "comments": None,
         "review_items": 0,
         "rollforward_breaks": None,
+        "text_flags": None,
         "filings": [],
     }
 
@@ -331,6 +333,7 @@ def test_summary_counts_deals_months_rows_quarantines_and_flags():
         "comments": 0,
         "review_items": 0,
         "rollforward_breaks": 0,
+        "text_flags": 0,
         "stopped": {
             "deal": "F2",
             "period": "September 2026",

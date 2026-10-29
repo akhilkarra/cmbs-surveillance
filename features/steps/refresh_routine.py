@@ -118,9 +118,11 @@ def step_no_later_filing(context):
     "{breaks:d} balance roll-forward break"
 )
 def step_tape_has_problems(context, month, quarantined, breaks):
-    """Loan 5 reports a negative balance, which the loan_period contract quarantines; loan 7
-    reports a beginning balance equal to August's ending balance and scheduled principal of
-    $25,000.00, but the same ending balance, so the month does not roll forward by $25,000.00."""
+    """Loan 5 reports a negative balance, which the loan_period contract quarantines. Loan 7
+    reports scheduled principal of $25,000.00 and no other deduction, but the same beginning and
+    ending scheduled balance ($9,000,000.00), so it does not roll forward by $25,000.00. It
+    reports no realized loss (a loss month is not checked, grill log Q81), and August reports no
+    scheduled balance, so the month-to-month continuity is not checked and cannot break."""
     assert (quarantined, breaks) == (1, 1)
     _loaded_through(context, "Fixture Trust 2026-F1", month.shift(-1))
 
@@ -136,7 +138,8 @@ def step_tape_has_problems(context, month, quarantined, breaks):
             "    <scheduledPrincipalAmount>25000.00</scheduledPrincipalAmount>\n"
             "    <unscheduledPrincipalCollectedAmount>0.00</unscheduledPrincipalCollectedAmount>\n"
             "    <otherPrincipalAdjustmentAmount>0.00</otherPrincipalAdjustmentAmount>\n"
-            "    <realizedLossToTrustAmount>0.00</realizedLossToTrustAmount>\n    "
+            "    <reportPeriodEndScheduledLoanBalanceAmount>9000000.00"
+            "</reportPeriodEndScheduledLoanBalanceAmount>\n    "
         )
         at = tape.index("<reportPeriodEndActualBalanceAmount>", start, end)
         return tape[:at] + amounts + tape[at:]

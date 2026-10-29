@@ -13,14 +13,15 @@ A run, in order:
 
 A month loads completely or not at all. Its two files are fetched with no transaction open, then
 the loan tape and the distribution report are loaded, the report reconciled with the tape, the
-balance roll-forward checked, the month's alerts built and, when the run has a model, its
-special-servicing comments extracted, all in one transaction with the month's run record. If
+month's alerts built, its special-servicing comments extracted (when the run has a model), and
+the month checked (text versus tape, the balance roll-forward), all in one transaction with the
+month's run record. If
 any of it fails, nothing of the month is stored and the month is recorded as not loaded, saying
 why in the words of `not_loaded`. EDGAR refusing the request (HTTP 403, which www.sec.gov answers
 to a user agent without a contact address) says how to fix it.
 
-The roll-forward check is `cmbs.crosscheck.service.rollforward`, which raises a check flag per
-break; until that package is installed, months are reported "roll-forward not checked".
+The checks are `cmbs.crosscheck.service.run_checks`, which flags each break and disagreement;
+until that package is installed, a month is reported "roll-forward not checked".
 
 The run's summary is saved as it goes, with the deal and month it is on, so a run that stops
 early still shows what it did and where it was. An unexpected error (a bug, a lost database)
@@ -37,7 +38,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cmbs import clock
@@ -47,7 +48,6 @@ from cmbs.access.service import Actor, authorize
 from cmbs.alerts import service as alerts
 from cmbs.audit.service import record, refuse
 from cmbs.book.service import book_as_of
-from cmbs.checks.tables import CheckFlag
 from cmbs.coverage.rules import Coverage
 from cmbs.coverage.service import classify_deal
 from cmbs.db import engine
@@ -135,6 +135,7 @@ class Stage(StrEnum):
     LOAD_REPORT = "load report"
     BUILD_ALERTS = "build alerts"
     EXTRACT = "extract comments"
+    CHECK = "check month"
 
 
 _REASONS = {
@@ -145,9 +146,12 @@ _REASONS = {
     Stage.LOAD_REPORT: "10-D was refused",
     Stage.BUILD_ALERTS: "alerts could not be built",
     Stage.EXTRACT: "comments could not be extracted",
+    Stage.CHECK: "checks could not be run",
 }
 EDGAR_FORBIDDEN = "HTTP 403 from EDGAR: set SEC_USER_AGENT to a string with a contact address"
 CROSSCHECK = "cmbs.crosscheck.service"
+# A text-versus-tape finding that disagrees (`cmbs.crosscheck.rules.Status.FLAG`), not a note.
+FLAG = "flag"
 
 
 def edgar_forbidden(error: BaseException) -> bool:
@@ -238,7 +242,6 @@ def load_month(
     except Refused as error:
         raise not_loaded(Stage.LOAD_REPORT, error) from error
     reconciliation = reconcile(db, deal_id=deal.id, period=month.period, as_of=on)
-    breaks = rollforward_breaks(db, deal_id=deal.id, period=month.period)
     try:
         built = alerts.build_alerts(
             db, deal_id=deal.id, period=month.period, actor=actor, run_id=run_id
@@ -250,6 +253,7 @@ def load_month(
         if model is None
         else extract_month(db, actor=actor, run_id=run_id, deal=deal, month=month, model=model)
     )
+    checked = crosscheck_month(db, actor=actor, run_id=run_id, deal=deal, period=month.period)
     return MonthResult(
         period=month.period,
         outcome=MonthOutcome.LOADED,
@@ -260,7 +264,8 @@ def load_month(
         notes=month.notes(),
         comments=comments,
         review_items=review_items,
-        rollforward_breaks=breaks,
+        rollforward_breaks=checked.rollforward_breaks if checked else None,
+        text_flags=checked.text_flags if checked else None,
         filings=plan.links(month),
     )
 
@@ -289,26 +294,35 @@ def extract_month(
     return len(extracted.comments), review
 
 
-def rollforward_breaks(db: Session, *, deal_id: int, period: Period) -> int | None:
-    """Run the balance roll-forward check on the month; the breaks it flagged, or None when the
-    check is not installed (`cmbs.crosscheck`, built in parallel)."""
+@dataclass(frozen=True)
+class Checked:
+    """What the month's checks found: roll-forward breaks, and text-versus-tape flags."""
+
+    rollforward_breaks: int
+    text_flags: int
+
+
+def crosscheck_month(
+    db: Session, *, actor: Actor, run_id: int, deal: Deal, period: Period
+) -> Checked | None:
+    """Run every check of the month (`cmbs.crosscheck.service.run_checks`) under the run; None
+    when the checks are not installed (`cmbs.crosscheck`, built in parallel)."""
     try:
         crosscheck = importlib.import_module(CROSSCHECK)
     except ModuleNotFoundError as error:
         if error.name is None or not CROSSCHECK.startswith(error.name):
             raise
         return None
-    before = db.scalar(select(func.max(CheckFlag.id))) or 0
-    crosscheck.rollforward(db, deal_id=deal_id, period=period)
-    return db.scalar(
-        select(func.count())
-        .select_from(CheckFlag)
-        .where(
-            CheckFlag.id > before,
-            CheckFlag.deal_id == deal_id,
-            CheckFlag.period == period.first_day,
+    try:
+        summary = crosscheck.run_checks(
+            db, user=actor.user, deal=deal.name, period=period, run_id=run_id
         )
+    except Refused as error:
+        raise not_loaded(Stage.CHECK, error) from error
+    flags = sum(
+        finding.status == FLAG for loan in summary.text_vs_tape for finding in loan.findings
     )
+    return Checked(rollforward_breaks=summary.rollforward_breaks, text_flags=flags)
 
 
 def run_month_detail(result: MonthResult) -> str | None:

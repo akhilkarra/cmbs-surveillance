@@ -18,7 +18,8 @@ problems". A month that fails to load (a filing that cannot be fetched, parsed o
 fixing: the run ends "failed" and says where it stopped, but still refreshes its other deals.
 
 A loaded month that a check finds fault with (a quarantined loan, a reconciliation flag, a
-balance roll-forward break) ends the run "completed with problems", never "succeeded".
+balance roll-forward break, a comment that disagrees with the tape) ends the run "completed
+with problems", never "succeeded".
 
 Amendments (ABS-EE/A, 10-D/A) are not loaded by runs yet: EDGAR does not say which filing an
 amendment corrects, and the loaders need that link. Each run says which months have one.
@@ -187,14 +188,17 @@ class MonthResult:
     # the run was given no model to extract with.
     comments: int | None = None
     review_items: int = 0
-    # Balance roll-forward breaks the month's check flagged; None when it was not checked.
+    # What the month's checks flagged: balance roll-forward breaks, and comments that disagree
+    # with the tape. None when the checks did not run.
     rollforward_breaks: int | None = None
+    text_flags: int | None = None
     filings: tuple[FilingLink, ...] = ()
 
     @property
     def problems(self) -> bool:
-        """Loaded, but a check found fault: a quarantined loan, a flag or a roll-forward break."""
-        return bool(self.quarantined or self.flags or self.rollforward_breaks)
+        """Loaded, but a check found fault: a quarantined loan, a reconciliation flag, a
+        roll-forward break or a comment that disagrees with the tape."""
+        return bool(self.quarantined or self.flags or self.rollforward_breaks or self.text_flags)
 
     def text(self) -> str:
         return "\n".join(month_lines(self.as_json()))
@@ -214,6 +218,7 @@ class MonthResult:
             "comments": self.comments,
             "review_items": self.review_items,
             "rollforward_breaks": self.rollforward_breaks,
+            "text_flags": self.text_flags,
             "filings": [filing.as_json() for filing in self.filings],
         }
 
@@ -353,6 +358,7 @@ def summary(deals: Sequence[DealResult]) -> dict[str, Any]:
         "comments": sum(m.comments or 0 for m in months),
         "review_items": sum(m.review_items for m in months),
         "rollforward_breaks": sum(m.rollforward_breaks or 0 for m in months),
+        "text_flags": sum(m.text_flags or 0 for m in months),
         "stopped": stopped(deals),
         "deals": [deal.as_json() for deal in deals],
     }
