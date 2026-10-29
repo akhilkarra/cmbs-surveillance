@@ -35,8 +35,10 @@ export function SeverityCell(props: ICellRendererParams<GridRow, GridRow["severi
   return <span className={`severity severity-${props.value}`}>{props.value}</span>;
 }
 
+/** A loan links to its page; an alert on a deal ("19 loans") has no one loan to open. */
 export function LoanCell(props: ICellRendererParams<GridRow, string>) {
-  return <a href={props.data?.loanHref}>{props.value}</a>;
+  const href = props.data?.loanHref;
+  return href ? <a href={href}>{props.value}</a> : <span>{props.value}</span>;
 }
 
 export const COLUMNS: ColDef<GridRow>[] = [

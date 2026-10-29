@@ -79,6 +79,12 @@ describe("grid cells", () => {
       "#/loan/F1/7/2026-09",
     );
   });
+
+  it("show an alert on a deal's loan count as text, not a link", () => {
+    render(<LoanCell {...cell("19 loans", { loanHref: "" })} />);
+    expect(screen.getByText("19 loans").tagName).toBe("SPAN");
+    expect(screen.queryByRole("link")).toBeNull();
+  });
 });
 
 describe("BookContent", () => {
