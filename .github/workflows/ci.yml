@@ -149,18 +149,20 @@ jobs:
   # and, while mutation testing is on, every shard too, then applies the floor to the shards'
   # combined score. Raise the floor as tests improve; never lower it to make CI pass.
   py:
-    needs: [tests, mutation]
+    needs: [tests, mutation, lean]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Tests and, when on, every mutation shard passed
+      - name: Tests, the Lean proofs and, when on, every mutation shard passed
         env:
           TESTS: ${{ needs.tests.result }}
+          LEAN: ${{ needs.lean.result }}
           MUTATION: ${{ needs.mutation.result }}
           MUTATION_TESTING: ${{ vars.MUTATION_TESTING }}
         run: |
-          echo "tests: $TESTS, mutation testing: ${MUTATION_TESTING:-off}, mutation shards: $MUTATION"
+          echo "tests: $TESTS, lean: $LEAN, mutation testing: ${MUTATION_TESTING:-off}, mutation shards: $MUTATION"
           test "$TESTS" = success
+          test "$LEAN" = success
           if [ "$MUTATION_TESTING" = on ]; then
             test "$MUTATION" = success
           else
