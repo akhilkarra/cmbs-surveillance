@@ -41,8 +41,12 @@ def _period(text: str) -> Period:
 
 def alert_line(view: AlertView) -> str:
     """'#12 high  Fixture Trust 2026-F1 loan 7: transferred to special servicing on 2026-09-02
-    [new] exposure $25,000,000.00 (E, F)'."""
-    where = "; ".join(f"{loan.deal} loan {loan.loan}" for loan in view.loans)
+    [new] exposure $25,000,000.00 (E, F)'. An alert on a deal names the deal alone: its
+    message lists the loans."""
+    where = "; ".join(
+        f"{loan.deal} loan {loan.loan}" if loan.loan is not None else loan.deal
+        for loan in view.loans
+    )
     held = f" ({', '.join(view.classes)})" if view.classes else ""
     return (
         f"#{view.id} {view.severity.value:<6} {where}: {view.message} [{view.state_text}] "

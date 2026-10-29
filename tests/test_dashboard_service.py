@@ -1,6 +1,7 @@
 """The dashboard's pure pieces: months, links, what verified a value, and the rows it shows."""
 
 import datetime as dt
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -116,7 +117,7 @@ def test_a_book_row_carries_the_alert_as_the_alerts_service_reads_it():
         severity="high",
         title="transferred to special servicing",
         message="transferred to special servicing on 2026-09-02",
-        loans=(LoanRef(F1, "7"),),
+        loans=(LoanRef(F1, "7", "7"),),
         exposure=Decimal("25000000.00"),
         balance=Decimal("9000000.00"),
         classes=("E", "F"),
@@ -130,7 +131,7 @@ def test_a_whole_loan_row_lists_each_deal_and_sums_exposure_and_balance():
     row = service.book_row(
         alert(covered(F1, "7", "25000000.00"), covered(F2, "3", "40000000.00", "8000000.00"))
     )
-    assert row.loans == (LoanRef(F1, "7"), LoanRef(F2, "3"))
+    assert row.loans == (LoanRef(F1, "7", "7"), LoanRef(F2, "3", "3"))
     assert row.exposure == Decimal("65000000.00")
     assert row.balance == Decimal("17000000.00")
     assert row.classes == ("E", "F", "D")
@@ -138,6 +139,15 @@ def test_a_whole_loan_row_lists_each_deal_and_sums_exposure_and_balance():
 
 def test_a_loan_whose_balance_is_not_reported_has_no_balance():
     assert service.book_row(alert(covered(F1, "7", "25000000.00", None))).balance is None
+
+
+def test_an_alert_on_a_deal_shows_how_many_loans_it_lists_and_links_to_none():
+    on_deal = replace(covered(F1, "7", "25000000.00", "1250000.50"), loan=None)
+    many = service.book_row(alert(replace(on_deal, loans=("20", "26", "29"))))
+    assert many.loans == (LoanRef(F1, None, "3 loans"),)
+    assert (many.exposure, many.balance) == (Decimal("25000000.00"), Decimal("1250000.50"))
+    one = service.book_row(alert(replace(on_deal, loans=("20",))))
+    assert one.loans == (LoanRef(F1, None, "1 loan"),)
 
 
 def test_an_empty_book_says_whether_the_month_was_built():

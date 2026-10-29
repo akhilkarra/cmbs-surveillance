@@ -18,14 +18,17 @@ from cmbs.alerts.rules import (
     added_sentences,
     comment,
     compare,
+    count_loans,
     dscr,
     format_dscr,
     format_threshold,
     missing,
-    new_loan,
+    name_loans,
+    new_loans,
     paid_through,
     payment_status,
     sentences,
+    total_balance,
     transfer,
     workout,
 )
@@ -470,35 +473,112 @@ def month(period: Period, accession: str, *rows: LoanMonth, **rest) -> Month:
     return Month(period=period, accession=accession, loans={r.loan: r for r in rows}, **rest)
 
 
-def test_a_loan_dropped_from_the_tape_is_a_medium_alert():
-    old = month(AUGUST, OLD, before(ending_balance=Decimal("9000000.00")))
-    new = month(SEPTEMBER, NEW)
-    found = missing(old.loans["7"], old, new)
-    assert found == finding(
+def test_loan_counts_and_lists_read_as_words():
+    assert [count_loans(n) for n in (0, 1, 2, 19)] == ["0 loans", "1 loan", "2 loans", "19 loans"]
+    assert name_loans(["20"]) == "loan 20"
+    assert name_loans(["20", "26", "29"]) == "loans 20, 26, 29"
+    assert total_balance([before(ending_balance=Decimal("1.50")), before()]) == Decimal("1.50")
+    assert total_balance([before(), before()]) is None
+    assert total_balance([]) is None
+
+
+def test_loans_dropped_from_the_tape_are_one_medium_alert_for_the_deal():
+    old = month(
+        AUGUST,
+        OLD,
+        before(loan="29", ending_balance=Decimal("1000000.00")),
+        before(loan="1"),
+        before(loan="20", ending_balance=Decimal("250000.50")),
+        before(loan="26"),
+    )
+    new = month(SEPTEMBER, NEW, after(loan="1"))
+    assert missing(old, new) == finding(
         Rule.MISSING,
         Severity.MEDIUM,
         "no longer reported",
-        "no longer reported: on the August 2026 tape, not on the September 2026 tape",
+        "3 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
+        "(loans 20, 26, 29)",
+        loan=None,
+        loans=("20", "26", "29"),
+        balance=Decimal("1250000.50"),
     )
 
 
-def test_a_quarantined_loan_says_why_it_is_missing():
-    old = month(AUGUST, OLD, before())
-    new = month(SEPTEMBER, NEW, quarantined={"7": "ending balance is negative"})
-    found = missing(old.loans["7"], old, new)
+def test_one_loan_dropped_is_named_in_the_singular():
+    old = month(AUGUST, OLD, before(ending_balance=Decimal("9000000.00")))
+    assert missing(old, month(SEPTEMBER, NEW)) == finding(
+        Rule.MISSING,
+        Severity.MEDIUM,
+        "no longer reported",
+        "1 loan no longer reported: on the August 2026 tape, not on the September 2026 tape "
+        "(loan 7)",
+        loan=None,
+        loans=("7",),
+        balance=Decimal("9000000.00"),
+    )
+
+
+def test_a_quarantined_loan_is_listed_with_why_it_is_missing():
+    old = month(AUGUST, OLD, before(loan="7"), before(loan="10"), before(loan="12"))
+    new = month(
+        SEPTEMBER,
+        NEW,
+        quarantined={"7": "ending balance is negative", "12": "rate is out of range"},
+    )
+    found = missing(old, new)
     assert found is not None
-    assert found.message == f"no longer reported: quarantined in {NEW}: ending balance is negative"
+    assert found.message == (
+        "3 loans no longer reported: on the August 2026 tape, not on the September 2026 tape "
+        f"(loans 7, 10, 12); loan 7 quarantined in {NEW}: ending balance is negative; "
+        f"loan 12 quarantined in {NEW}: rate is out of range"
+    )
+    assert (found.loans, found.balance) == (("7", "10", "12"), None)
 
 
-def test_a_loan_that_had_paid_off_may_leave_the_tape():
-    old = month(AUGUST, OLD, before(ending_balance=Decimal("0.00")))
-    assert missing(old.loans["7"], old, month(SEPTEMBER, NEW)) is None
+def test_loans_that_had_paid_off_may_leave_the_tape():
+    old = month(
+        AUGUST,
+        OLD,
+        before(loan="7", ending_balance=Decimal("0.00")),
+        before(loan="8", ending_balance=Decimal("5.00")),
+    )
+    found = missing(old, month(SEPTEMBER, NEW))
+    assert found is not None
+    assert (found.loans, found.balance) == (("8",), Decimal("5.00"))
+    assert found.message.startswith("1 loan no longer reported")
+    paid = month(AUGUST, OLD, before(loan="7", ending_balance=Decimal("0.00")))
+    assert missing(paid, month(SEPTEMBER, NEW)) is None
 
 
-def test_a_loan_new_to_the_tape_is_a_low_alert():
-    found = new_loan(after(), month(AUGUST, OLD))
-    assert found == finding(
-        Rule.NEW, Severity.LOW, "newly reported", "newly reported: not on the August 2026 tape"
+def test_no_missing_or_new_finding_when_the_tapes_list_the_same_loans():
+    old = month(AUGUST, OLD, before(loan="7"))
+    new = month(SEPTEMBER, NEW, after(loan="7"))
+    assert (missing(old, new), new_loans(old, new)) == (None, None)
+
+
+def test_loans_new_to_the_tape_are_one_low_alert_for_the_deal():
+    old = month(AUGUST, OLD, before(loan="1"))
+    new = month(
+        SEPTEMBER,
+        NEW,
+        after(loan="1"),
+        after(loan="10", ending_balance=Decimal("3.00")),
+        after(loan="4", ending_balance=Decimal("2.00")),
+    )
+    assert new_loans(old, new) == finding(
+        Rule.NEW,
+        Severity.LOW,
+        "newly reported",
+        "2 loans newly reported: not on the August 2026 tape (loans 4, 10)",
+        loan=None,
+        loans=("4", "10"),
+        balance=Decimal("5.00"),
+    )
+    one = new_loans(month(AUGUST, OLD), month(SEPTEMBER, NEW, after()))
+    assert one is not None
+    assert (one.message, one.balance) == (
+        "1 loan newly reported: not on the August 2026 tape (loan 7)",
+        None,
     )
 
 
@@ -522,17 +602,18 @@ def test_compare_runs_every_rule_by_loan_in_number_order():
             transfer_date=dt.date(2026, 9, 2),
         ),
         after(loan="4"),
-        comments=Comments(REPORT, {"2": "Old. New."}),
+        comments=Comments(REPORT, {"2": "Old. New.", "4": "Fresh."}),
     )
     found = compare(old, new, Context(SEPTEMBER, THRESHOLD))
-    assert [(f.loan, f.rule) for f in found] == [
-        ("2", Rule.TRANSFER),
-        ("2", Rule.DSCR),
-        ("2", Rule.WORKOUT),
-        ("2", Rule.COMMENT),
-        ("3", Rule.MISSING),
-        ("4", Rule.NEW),
-        ("10", Rule.PAYMENT_WORSENED),
+    assert [(f.loan, f.loans, f.rule) for f in found] == [
+        ("2", (), Rule.TRANSFER),
+        ("2", (), Rule.DSCR),
+        ("2", (), Rule.WORKOUT),
+        ("2", (), Rule.COMMENT),
+        ("4", (), Rule.COMMENT),
+        ("10", (), Rule.PAYMENT_WORSENED),
+        (None, ("3",), Rule.MISSING),
+        (None, ("4",), Rule.NEW),
     ]
 
 
