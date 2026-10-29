@@ -56,6 +56,10 @@ jobs:
           DATABASE_URL: postgresql+psycopg://cmbs@localhost:5432/cmbs
       - name: Chromium for @surface:ui scenarios
         run: uv run playwright install --with-deps chromium
+      # The dashboard scenarios serve the built bundle (features/steps/dashboard.py); build it
+      # once here, in the same pinned web image the steps use, so they find it fresh.
+      - name: Dashboard bundle for @surface:ui scenarios
+        run: docker compose run --rm --no-deps web sh -c "npm ci && npm run build"
       # behavex ignores default_tags in behave.ini, so drafts are excluded here explicitly.
       - name: Feature scenarios
         run: uv run behavex -t 'not @draft' --parallel-processes 2 -o output/behavex
