@@ -38,6 +38,8 @@ def wac_text(found: Wac) -> str:
     )
     for label, loans in (
         ("rate not reported", found.rate_not_reported),
+        ("rate not readable", found.rate_not_readable),
+        ("rate out of range", found.rate_out_of_range),
         ("balance not reported", found.balance_not_reported),
         ("reported rate 0.00", found.zero_rate),
     ):
@@ -89,6 +91,8 @@ def wac_json(found: Wac) -> dict[str, Any]:
         "averaged": list(found.averaged),
         "balance": _money(found.balance),
         "rate_not_reported": list(found.rate_not_reported),
+        "rate_not_readable": list(found.rate_not_readable),
+        "rate_out_of_range": list(found.rate_out_of_range),
         "balance_not_reported": list(found.balance_not_reported),
         "zero_rate": list(found.zero_rate),
     }

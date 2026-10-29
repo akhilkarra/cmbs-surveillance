@@ -18,6 +18,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from cmbs.crosscheck import rollforward as rf
+from cmbs.domain import Period
 from cmbs.invariants import oracle, table
 from cmbs.invariants.partition import Bucket, PoolLoan, partition
 from cmbs.invariants.wac import RatedLoan, wac
@@ -110,6 +111,38 @@ def test_rollforward_cases_from_the_scenarios(lean):
     assert python_roll(breaks) == answer
 
 
+# Continuity across months.
+
+CONTINUITY_REASON = {
+    "beginning balance not reported": "not reported: beginning",
+    f"August 2026 {rf.ENDING_SCHEDULED} not reported": "not reported: previous ending",
+    "no August 2026 tape row for the loan": "no previous row",
+}
+AUGUST = Period(2026, 8)
+
+
+@st.composite
+def continuities(draw) -> tuple[Decimal | None, rf.Ending | None]:
+    beginning = draw(reported)
+    if draw(st.booleans()):
+        return beginning, None
+    ending = beginning if beginning is not None and draw(st.booleans()) else draw(reported)
+    return beginning, rf.Ending(ending)
+
+
+@given(continuities())
+@EXAMPLES
+def test_continuity_agrees_with_lean(lean, case):
+    beginning, previous = case
+    found = rf.continuity(beginning, previous, AUGUST)
+    assert {
+        "status": found.status.value,
+        "previous_ending": oracle.cents(found.previous_ending),
+        "gap": oracle.cents(found.gap),
+        "reason": None if found.reason is None else CONTINUITY_REASON[found.reason],
+    } == lean.ask(oracle.continuity_case(beginning, previous))
+
+
 # The delinquency partition.
 
 statuses = st.none() | st.sampled_from(
@@ -175,7 +208,8 @@ rated_pools = st.lists(
         RatedLoan,
         loan=st.text(alphabet="0123456789", min_size=1, max_size=3),
         balance=st.none() | st.just(Decimal("0.00")) | small | money,
-        rate=st.none() | st.just(Decimal("0.00")) | rates,
+        rate=st.none() | st.just(Decimal("0.00")) | st.just(Decimal("0.25")) | rates,
+        rate_note=st.none() | st.just("interest rate is not a number: 'n/a'"),
     ),
     max_size=30,
 )

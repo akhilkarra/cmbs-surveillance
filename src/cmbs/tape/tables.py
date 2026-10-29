@@ -152,6 +152,8 @@ class LoanPeriod(Base):
     dscr: Mapped[Decimal | None] = mapped_column(Numeric)
     occupancy: Mapped[Decimal | None] = mapped_column(Numeric)
     property_note: Mapped[str | None] = mapped_column(Text)
+    # Why the interest rate is not used: not a number, or outside 0 to 0.25 (cmbs.tape.convert).
+    interest_rate_note: Mapped[str | None] = mapped_column(Text)
 
 
 class QuarantinedLoan(Base):

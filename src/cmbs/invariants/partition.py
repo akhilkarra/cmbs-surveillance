@@ -3,17 +3,18 @@
 Buckets follow the loan's Schedule AL payment status (`paymentStatusLoanCode`, read as
 `cmbs.alerts.codes` reads codes, so "01" is "1" and "b" is "B"):
 
-| code        | bucket                      |
-|-------------|-----------------------------|
-| 0           | current                     |
-| A, B        | grace or late               |
-| 1           | 30 days                     |
-| 2           | 60 days                     |
-| 3           | 90 days or more             |
-| 4           | performing matured          |
-| 5           | non-performing matured      |
-| any other   | status not on the code list |
-| none        | status not reported         |
+| code                        | bucket                                  |
+|-----------------------------|-----------------------------------------|
+| 0                           | current                                 |
+| A, B                        | grace or late                           |
+| 1                           | 30 days                                 |
+| 2                           | 60 days                                 |
+| 3                           | 90 days or more                         |
+| 4                           | performing matured                      |
+| 5                           | non-performing matured                  |
+| any other                   | status not on the code list             |
+| none, a balance reported    | status not reported                     |
+| none, no ending balance     | not outstanding (no status, no balance) |
 
 **A performing matured balloon (4) has a bucket of its own.** The loan is past its maturity
 date without paying off, so it is not current; it keeps making its monthly payments, so it is
@@ -21,13 +22,18 @@ not delinquent by any number of days either. Counting it with "current" would hi
 default, and counting it with "30 days" would claim a missed payment the servicer did not
 report.
 
-**Nothing is dropped.** A code that is not on the list has its own bucket rather than being
-guessed into one, and a loan without a status has "status not reported". A loan whose ending
-balance is not reported is counted in its bucket and listed as such; its balance is never taken
-as zero, so each bucket's balance is the sum of the balances reported.
+**A loan with neither a status nor an ending balance is not outstanding.** Tapes keep paid-off
+loans that way (BANK 2018-BNK13 keeps six, M-026), so they have a bucket of their own and
+"status not reported" holds only outstanding loans whose status is missing.
 
-`lean/Invariants/Delinquency.lean` proves, for every pool, that every loan lands in exactly one
-bucket and that the buckets' loans, balances and loans without a balance add up to the pool's.
+**Nothing is dropped.** A code that is not on the list has its own bucket rather than being
+guessed into one. A loan whose ending balance is not reported is
+counted in its bucket and listed as such; its balance is never taken as zero, so each bucket's
+balance is the sum of the balances reported.
+
+`lean/Invariants/Delinquency.lean` proves that each loan's bucket is the one this table gives it,
+and, for every pool, that the buckets' loans, balances and loans without a balance add up to the
+pool's.
 """
 
 from collections.abc import Iterable
@@ -48,6 +54,7 @@ class Bucket(StrEnum):
     NON_PERFORMING_MATURED = "non-performing matured"
     UNRECOGNIZED = "status not on the code list"
     NOT_REPORTED = "status not reported"
+    NOT_OUTSTANDING = "not outstanding (no status, no balance)"
 
 
 # Schedule AL payment status codes and their buckets.
@@ -72,18 +79,18 @@ def code_of(status: str | None) -> str | None:
     return next((code for code in BY_CODE if same_code(status, code)), status.strip())
 
 
-def bucket_of(status: str | None) -> Bucket:
-    code = code_of(status)
-    if code is None:
-        return Bucket.NOT_REPORTED
-    return BY_CODE.get(code, Bucket.UNRECOGNIZED)
-
-
 @dataclass(frozen=True)
 class PoolLoan:
     loan: str
     status: str | None
     balance: Decimal | None
+
+
+def bucket_of(loan: PoolLoan) -> Bucket:
+    code = code_of(loan.status)
+    if code is not None:
+        return BY_CODE.get(code, Bucket.UNRECOGNIZED)
+    return Bucket.NOT_OUTSTANDING if loan.balance is None else Bucket.NOT_REPORTED
 
 
 @dataclass(frozen=True)
@@ -128,7 +135,7 @@ def partition(loans: Iterable[PoolLoan]) -> Partition:
     buckets = dict.fromkeys(Bucket, Tally())
     pool = Tally()
     for loan in loans:
-        bucket = bucket_of(loan.status)
+        bucket = bucket_of(loan)
         buckets[bucket] = buckets[bucket].add(loan)
         pool = pool.add(loan)
     return Partition(buckets, pool)

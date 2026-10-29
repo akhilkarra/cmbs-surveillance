@@ -1,9 +1,10 @@
 """The pool identities on real tapes, typed as the loader types them (no database needed).
 
 BANK 2018-BNK13's September 2026 tape lists 42 loans: six paid off (no status, no ending balance,
-a rate of 0.00) and none of the deal's co-op loans, so its WAC is over 36 loans and $595.9
-million, where the 10-D's stratification (56 loans, $695.6 million of scheduled balance) prints
-4.5925%. BANK5 2026-5YR23 reports every loan's status, balance and rate.
+a rate of 0.00), which are "not outstanding" (M-026), and none of the deal's co-op loans, so its
+WAC is over 36 loans and $595.9 million, where the 10-D's stratification (56 loans, $695.6
+million of scheduled balance) prints 4.5925%. BANK5 2026-5YR23 reports every loan's status,
+balance and rate.
 """
 
 from decimal import Decimal
@@ -42,11 +43,13 @@ def test_bnk13_buckets():
         Bucket.PERFORMING_MATURED: (0, D("0.00")),
         Bucket.NON_PERFORMING_MATURED: (0, D("0.00")),
         Bucket.UNRECOGNIZED: (0, D("0.00")),
-        Bucket.NOT_REPORTED: (6, D("0.00")),
+        Bucket.NOT_REPORTED: (0, D("0.00")),
+        Bucket.NOT_OUTSTANDING: (6, D("0.00")),
     }
     assert found.buckets[Bucket.GRACE_OR_LATE].members == ("22",)
     assert found.buckets[Bucket.DAYS_90_PLUS].members == ("11",)
-    assert found.buckets[Bucket.NOT_REPORTED].balance_not_reported == PAID_OFF
+    assert found.buckets[Bucket.NOT_OUTSTANDING].members == PAID_OFF
+    assert found.buckets[Bucket.NOT_OUTSTANDING].balance_not_reported == PAID_OFF
     assert (found.pool.loans, found.pool.balance) == (42, D("595925941.14"))
     assert found.adds_up()
 

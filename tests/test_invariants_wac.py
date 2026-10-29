@@ -64,6 +64,30 @@ def test_loans_left_out_are_listed_by_why():
     )
 
 
+def test_rates_the_loader_could_not_use_are_listed_not_averaged():
+    found = wac(
+        [
+            RatedLoan("1", D("100.00"), D("0.05")),
+            RatedLoan("2", D("100.00"), None, "interest rate is not a number: 'n/a'"),
+            RatedLoan("3", D("100.00"), D("4.5"), "interest rate '4.5' is outside 0 to 0.25"),
+            RatedLoan("4", D("100.00"), D("-0.01")),
+            RatedLoan("5", D("100.00"), D("0.25")),
+            RatedLoan("6", D("100.00"), D("0.2500001")),
+        ]
+    )
+    assert found == Wac(
+        Fraction(3, 20),
+        lowest=D("0.05"),
+        highest=D("0.25"),
+        averaged=("1", "5"),
+        balance=D("200.00"),
+        rate_not_readable=("2",),
+        rate_out_of_range=("3", "4", "6"),
+    )
+    only_bad = wac([RatedLoan("1", D("1.00"), D("4.5")), RatedLoan("2", D("1.00"), None, "x")])
+    assert only_bad == Wac(None, NO_RATE, rate_not_readable=("2",), rate_out_of_range=("1",))
+
+
 def test_no_outstanding_balance_means_no_wac():
     found = wac([RatedLoan("1", D("0.00"), D("0.05")), RatedLoan("2", None, D("0.04"))])
     assert found == Wac(None, NO_BALANCE, balance_not_reported=("2",))

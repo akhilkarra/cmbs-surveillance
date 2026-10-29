@@ -9,15 +9,27 @@ import re
 import tomllib
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 LEAN = ROOT / "lean"
-SOURCES = sorted([*LEAN.glob("*.lean"), *(LEAN / "Invariants").glob("*.lean")])
-THEOREM = re.compile(r"^theorem\s+(\S+)", re.MULTILINE)
+SOURCES = sorted(path for path in LEAN.rglob("*.lean") if ".lake" not in path.parts)
+# A theorem or lemma declaration, however it is written: indented, after a docstring or
+# attributes on the same line, private or protected.
+THEOREM = re.compile(
+    r"^[ \t]*(?:/--.*?-/[ \t]*)?(?:@\[[^\]]*\][ \t]*)*"
+    r"(?:(?:private|protected|noncomputable|nonrec)[ \t]+)*"
+    r"(?:theorem|lemma)[ \t]+([^\s:({\[]+)",
+    re.MULTILINE,
+)
 NAMESPACE = re.compile(r"^namespace\s+(\S+)", re.MULTILINE)
 TAG = re.compile(r"@theorem:(\w+)")
-# Words that would let a proof through unchecked. `Audit.lean` catches them in the build; this
-# keeps them out of the source too.
-UNCHECKED = re.compile(r"\b(sorry|admit|native_decide)\b")
+# Words that would let a proof through unchecked. `Audit.lean` catches the first three in the
+# build. It cannot see the last three: `@[implemented_by]` and `@[extern]` make compiled code
+# stand in for a proved definition (a theorem about `f n = n` while the oracle runs `n + 1`), and
+# `unsafe` code is outside the logic. Keeping them all out of the source means the oracle runs
+# only what is proved.
+UNCHECKED = re.compile(r"\b(sorry|admit|native_decide|implemented_by|extern|unsafe)\b")
 
 
 def theorems() -> set[str]:
@@ -46,8 +58,44 @@ def test_the_project_is_lean_core_on_a_pinned_toolchain():
 
 def test_every_theorem_is_audited():
     found = theorems()
-    assert len(found) == 33
+    assert len(found) == 34
     assert found == audited()
+
+
+def test_declarations_are_found_however_they_are_written():
+    text = """
+theorem plain : True := trivial
+  theorem indented : True := trivial
+@[simp] theorem with_attribute : True := trivial
+@[simp, grind] private theorem hidden (n : Nat) : n = n := rfl
+protected lemma guarded: True := trivial
+/-- A docstring. -/ theorem documented : True := trivial
+-- theorem in_a_comment is not one
+def notATheorem := 1
+"""
+    assert THEOREM.findall(text) == [
+        "plain",
+        "indented",
+        "with_attribute",
+        "hidden",
+        "guarded",
+        "documented",
+    ]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "theorem t : 1 = 2 := sorry",
+        "  admit",
+        "theorem t : f 1 = 1 := by native_decide",
+        "@[implemented_by fast] def f (n : Nat) : Nat := n",
+        '@[extern "lean_f"] def f (n : Nat) : Nat := n',
+        "unsafe def f (n : Nat) : Nat := n + 1",
+    ],
+)
+def test_each_unchecked_word_is_caught(line):
+    assert UNCHECKED.search(line)
 
 
 def test_every_feature_theorem_tag_names_a_theorem():

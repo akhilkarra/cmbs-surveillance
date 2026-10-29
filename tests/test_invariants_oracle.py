@@ -63,6 +63,24 @@ def test_a_rollforward_case():
         oracle.rollforward_case(unreadable)
 
 
+def test_a_continuity_case():
+    assert oracle.continuity_case(D("9000000.00"), Ending(D("9025000.00"))) == {
+        "kind": "continuity",
+        "beginning": 900000000,
+        "previous_row": True,
+        "previous_ending": 902500000,
+    }
+    assert oracle.continuity_case(None, None) == {
+        "kind": "continuity",
+        "beginning": None,
+        "previous_row": False,
+        "previous_ending": None,
+    }
+    assert oracle.continuity_case(D("1.00"), Ending(None))["previous_ending"] is None
+    with pytest.raises(ValueError, match="last month's ending balance could not be read: bad"):
+        oracle.continuity_case(D("1.00"), Ending(None, "bad"))
+
+
 def test_a_partition_case_reads_codes_as_python_does():
     loans = [PoolLoan("1", "01", D("1.00")), PoolLoan("2", None, None), PoolLoan("3", " x ", None)]
     assert oracle.partition_case(loans) == {
@@ -81,8 +99,11 @@ def test_a_wac_case_and_its_answer():
     assert scale == 4
     assert case == {
         "kind": "wac",
+        "cap": 2500,
         "loans": [{"balance": 1000, "rate": 450}, {"balance": None, "rate": 525}],
     }
+    wide, wide_scale = oracle.wac_case([RatedLoan("1", D("1.00"), D("4.5"))])
+    assert (wide["cap"], wide["loans"][0]["rate"], wide_scale) == (25, 450, 2)
     answer = {"num": 450_000, "den": 1000, "lo": 450, "hi": 450}
     assert oracle.lean_wac(answer, scale) == oracle.LeanWac(
         rate=Fraction(45, 1000), lowest=Fraction(45, 1000), highest=Fraction(45, 1000)

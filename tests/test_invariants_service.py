@@ -20,6 +20,7 @@ from cmbs.domain import Period
 from cmbs.invariants import service
 from cmbs.invariants.partition import Bucket, Tally
 from cmbs.invariants.wac import Wac
+from cmbs.panel import service as panel
 from cmbs.panel.service import NothingPublished, UnknownDeal
 from cmbs.tape.service import load_tape
 from tests.conftest import needs_db
@@ -43,6 +44,11 @@ SEPTEMBER = tape(
           reportPeriodInterestRatePercentage=".06000000"),
     asset("6", paymentStatusLoanCode="7", reportPeriodEndActualBalanceAmount="0.00",
           reportPeriodInterestRatePercentage="0.05"),
+    # Rates the loader cannot use: they are noted, and the loans still load.
+    asset("7", paymentStatusLoanCode="0", reportPeriodEndActualBalanceAmount="1000000.00",
+          reportPeriodInterestRatePercentage="n/a"),
+    asset("8", paymentStatusLoanCode="0", reportPeriodEndActualBalanceAmount="2000000.00",
+          reportPeriodInterestRatePercentage="4.5"),
 )  # fmt: skip
 OCTOBER = tape(
     asset("1", reportingPeriodEndDate="10-13-2026", paymentStatusLoanCode="1",
@@ -80,7 +86,7 @@ def test_the_september_pool_as_of_october_first(loaded):
         "0009900300-26-000009",
     )
     assert found.partition.buckets == {
-        Bucket.CURRENT: Tally(("1",), D("50000000.00")),
+        Bucket.CURRENT: Tally(("1", "7", "8"), D("53000000.00")),
         Bucket.GRACE_OR_LATE: Tally(("5",), D("12000000.00")),
         Bucket.DAYS_30: Tally(),
         Bucket.DAYS_60: Tally(),
@@ -88,9 +94,12 @@ def test_the_september_pool_as_of_october_first(loaded):
         Bucket.PERFORMING_MATURED: Tally(("3",), D("8000000.00")),
         Bucket.NON_PERFORMING_MATURED: Tally(),
         Bucket.UNRECOGNIZED: Tally(("6",), D("0.00")),
-        Bucket.NOT_REPORTED: Tally(("4",), D("0.00"), ("4",)),
+        Bucket.NOT_REPORTED: Tally(),
+        Bucket.NOT_OUTSTANDING: Tally(("4",), D("0.00"), ("4",)),
     }
-    assert found.partition.pool == Tally(("1", "2", "3", "4", "5", "6"), D("100000000.00"), ("4",))
+    assert found.partition.pool == Tally(
+        ("1", "2", "3", "4", "5", "6", "7", "8"), D("103000000.00"), ("4",)
+    )
     assert found.wac == Wac(
         Fraction(909, 18400),
         lowest=D("0.045"),
@@ -98,7 +107,18 @@ def test_the_september_pool_as_of_october_first(loaded):
         averaged=("1", "2", "5"),
         balance=D("92000000.00"),
         rate_not_reported=("3",),
+        rate_not_readable=("7",),
+        rate_out_of_range=("8",),
         balance_not_reported=("4",),
+    )
+    rows = {row.loan: row for row in panel.as_of(loaded, dt.date(2026, 10, 1), loan=None)}
+    assert (rows["7"].interest_rate, rows["7"].interest_rate_note) == (
+        None,
+        "interest rate is not a number: 'n/a'",
+    )
+    assert (rows["8"].interest_rate, rows["8"].interest_rate_note) == (
+        D("4.5"),
+        "interest rate '4.5' is outside 0 to 0.25",
     )
 
 
@@ -127,18 +147,21 @@ runner = CliRunner()
 EXPECTED_TEXT = (
     "Invariant Trust, September 2026, as of 2026-10-01 (tape 0009900300-26-000009)\n"
     "delinquency buckets:\n"
-    "  current                      1 loan, $50,000,000.00\n"
-    "  grace or late                1 loan, $12,000,000.00\n"
-    "  30 days                      0 loans, $0.00\n"
-    "  60 days                      0 loans, $0.00\n"
-    "  90 days or more              1 loan, $30,000,000.00\n"
-    "  performing matured           1 loan, $8,000,000.00\n"
-    "  non-performing matured       0 loans, $0.00\n"
-    "  status not on the code list  1 loan, $0.00\n"
-    "  status not reported          1 loan, $0.00 (balance not reported: loan 4)\n"
-    "  pool                         6 loans, $100,000,000.00 (balance not reported: loan 4)\n"
+    "  current                                  3 loans, $53,000,000.00\n"
+    "  grace or late                            1 loan, $12,000,000.00\n"
+    "  30 days                                  0 loans, $0.00\n"
+    "  60 days                                  0 loans, $0.00\n"
+    "  90 days or more                          1 loan, $30,000,000.00\n"
+    "  performing matured                       1 loan, $8,000,000.00\n"
+    "  non-performing matured                   0 loans, $0.00\n"
+    "  status not on the code list              1 loan, $0.00\n"
+    "  status not reported                      0 loans, $0.00\n"
+    "  not outstanding (no status, no balance)  1 loan, $0.00 (balance not reported: loan 4)\n"
+    "  pool                                     8 loans, $103,000,000.00 "
+    "(balance not reported: loan 4)\n"
     "weighted-average coupon: 4.940217% (rounded), between 4.50% and 6.00%, over 3 loans and "
-    "$92,000,000.00; rate not reported: loan 3; balance not reported: loan 4\n"
+    "$92,000,000.00; rate not reported: loan 3; rate not readable: loan 7; "
+    "rate out of range: loan 8; balance not reported: loan 4\n"
 )
 
 
@@ -189,9 +212,9 @@ def test_the_api_returns_the_pool(loaded, client):
         "balance_not_reported": [],
     }
     assert body["pool"] == {
-        "loans": 6,
-        "loan_numbers": ["1", "2", "3", "4", "5", "6"],
-        "balance": "100000000.00",
+        "loans": 8,
+        "loan_numbers": ["1", "2", "3", "4", "5", "6", "7", "8"],
+        "balance": "103000000.00",
         "balance_not_reported": ["4"],
     }
     assert body["wac"] == {
@@ -204,6 +227,8 @@ def test_the_api_returns_the_pool(loaded, client):
         "averaged": ["1", "2", "5"],
         "balance": "92000000.00",
         "rate_not_reported": ["3"],
+        "rate_not_readable": ["7"],
+        "rate_out_of_range": ["8"],
         "balance_not_reported": ["4"],
         "zero_rate": [],
     }

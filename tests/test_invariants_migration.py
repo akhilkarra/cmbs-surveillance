@@ -1,7 +1,8 @@
-"""Migration 0013 fills each stored loan row's interest rate from the tag kept in bronze.
+"""Migration 0013 fills each stored loan row's interest rate and its note from the tag kept in
+bronze, exactly as the tape loader reads them.
 
-Runs on its own scratch database: a tape is loaded at head, the rates are taken away by going
-down to 0012, and coming back up must restore exactly what the loader reads.
+Runs on its own scratch database: a tape is loaded at head, the columns are taken away by going
+down to 0012, and coming back up must restore exactly what the loader stored.
 """
 
 import datetime as dt
@@ -24,7 +25,6 @@ from tests.fixtures.tape.tapes import asset, tape
 pytestmark = needs_db
 PYPROJECT = Path(__file__).parents[1] / "pyproject.toml"
 SCRATCH_DB = f"cmbs_test_invariants_migration_{os.getpid()}"
-RATE = "reportPeriodInterestRatePercentage"
 
 
 @pytest.fixture
@@ -43,25 +43,43 @@ def scratch_url(monkeypatch) -> Iterator[str]:
     server.dispose()
 
 
-def rates(url: str) -> dict[str, Decimal | None]:
+def rates(url: str) -> dict[str, tuple[Decimal | None, str | None]]:
     bind = create_engine(url)
     with bind.connect() as conn:
-        rows = conn.execute(text("SELECT loan, interest_rate FROM silver.loan_period")).all()
+        rows = conn.execute(
+            text("SELECT loan, interest_rate, interest_rate_note FROM silver.loan_period")
+        ).all()
     bind.dispose()
-    return dict(sorted((loan, rate) for loan, rate in rows))
+    return {loan: (rate, note) for loan, rate, note in sorted(rows)}
 
 
-def test_going_up_to_0013_fills_rates_from_bronze(scratch_url):
+# Every kind of rate text: usable, zero, missing, empty, not a number, a percent written for a
+# fraction, negative, and the limit itself.
+RATES = {
+    "1": "0.045",
+    "2": " .07747000 ",
+    "3": "0.00",
+    "4": None,
+    "5": "",
+    "6": "n/a",
+    "7": "4.5",
+    "8": "-0.01",
+    "9": "0.25",
+    "10": "5.",
+}
+
+
+def test_the_backfill_reads_rates_exactly_as_the_loader_does(scratch_url):
     config = Config(toml_file=str(PYPROJECT))
     command.upgrade(config, "head")
     content = tape(
-        asset("1", reportPeriodInterestRatePercentage="0.045"),
-        asset("2", reportPeriodInterestRatePercentage=" .07747000 "),
-        asset("3", reportPeriodInterestRatePercentage="0.00"),
-        asset("4"),
-        asset("5", reportPeriodInterestRatePercentage="5."),
+        *(
+            asset(loan) if rate is None else asset(loan, reportPeriodInterestRatePercentage=rate)
+            for loan, rate in RATES.items()
+        )
     )
-    with Session(create_engine(scratch_url)) as db:
+    bind = create_engine(scratch_url)
+    with Session(bind) as db:
         load_tape(
             db,
             deal="Migration Trust",
@@ -72,26 +90,23 @@ def test_going_up_to_0013_fills_rates_from_bronze(scratch_url):
             cik=9_900_400,
         )
         db.commit()
-    loaded = {
-        "1": Decimal("0.045"),
-        "2": Decimal("0.07747000"),
-        "3": Decimal("0.00"),
-        "4": None,
-        "5": Decimal("5"),
-    }
-    assert rates(scratch_url) == loaded
-
-    command.downgrade(config, "0012")
-    bind = create_engine(scratch_url)
-    with bind.begin() as conn:
-        # A value the loader would never have stored as a rate: the backfill must leave it null.
-        conn.execute(
-            text(
-                "UPDATE bronze.loan_tape_asset SET tags = jsonb_set(tags, :path, '\"n/a\"') "
-                "WHERE asset_number = '5'"
-            ),
-            {"path": "{" + RATE + "}"},
-        )
     bind.dispose()
+    loaded = rates(scratch_url)
+    # Every loan loads, whatever its rate; a rate that cannot be used carries the reason.
+    assert loaded == {
+        "1": (Decimal("0.045"), None),
+        "10": (Decimal("5"), "interest rate '5.' is outside 0 to 0.25"),
+        "2": (Decimal("0.07747000"), None),
+        "3": (Decimal("0.00"), None),
+        "4": (None, None),
+        "5": (None, None),
+        "6": (None, "interest rate is not a number: 'n/a'"),
+        "7": (Decimal("4.5"), "interest rate '4.5' is outside 0 to 0.25"),
+        "8": (Decimal("-0.01"), "interest rate '-0.01' is outside 0 to 0.25"),
+        "9": (Decimal("0.25"), None),
+    }
+
+    # Going down drops the columns; coming back up must fill them from bronze identically.
+    command.downgrade(config, "0012")
     command.upgrade(config, "head")
-    assert rates(scratch_url) == loaded | {"5": None}
+    assert rates(scratch_url) == loaded

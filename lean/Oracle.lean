@@ -13,7 +13,9 @@ and `null` is "not reported".
     {"kind": "rollforward", "beginning": 5010000000, "scheduled": 10000000, "unscheduled": 0,
      "other": 0, "realized_loss": 0, "ending": 5000000000}
     {"kind": "partition", "loans": [{"status": "0", "balance": 5000000000}]}
-    {"kind": "wac", "loans": [{"balance": 5000000000, "rate": 450}]}
+    {"kind": "continuity", "beginning": 5000000000, "previous_row": true,
+     "previous_ending": 5000000000}
+    {"kind": "wac", "cap": 2500, "loans": [{"balance": 5000000000, "rate": 450}]}
     {"kind": "decision", "answer": "high", "support": "high", "evidence_found": true}
     {"kind": "table"}
 
@@ -79,6 +81,24 @@ def runRollforward (j : Json) : Except String Json := do
     ("reason", strJson (r.reason.map rollReason)),
     ("missing", Json.arr (r.missing.map (Json.str ∘ deductionName)).toArray)]
 
+def continuityReason : ContinuityReason → String
+  | .noPreviousRow => "no previous row"
+  | .beginningNotReported => "not reported: beginning"
+  | .previousEndingNotReported => "not reported: previous ending"
+
+/-- `previous_row` false: last month's tape does not show the loan. -/
+def runContinuity (j : Json) : Except String Json := do
+  let beginning ← optInt j "beginning"
+  let previous ← if ← j.getObjValAs? Bool "previous_row" then
+      some <$> optInt j "previous_ending"
+    else pure none
+  let c := continuity beginning previous
+  return Json.mkObj [
+    ("status", Json.str (statusName c.status)),
+    ("previous_ending", intJson c.previousEnding),
+    ("gap", intJson c.gap),
+    ("reason", strJson (c.reason.map continuityReason))]
+
 end Rollforward
 
 section Delinquency
@@ -94,6 +114,7 @@ def bucketName : Bucket → String
   | .nonPerformingMatured => "non-performing matured"
   | .unrecognized => "status not on the code list"
   | .notReported => "status not reported"
+  | .notOutstanding => "not outstanding (no status, no balance)"
 
 def tallyJson (t : Tally) : List (String × Json) :=
   [("loans", Json.num t.loans), ("balance", intJson (some t.balance)),
@@ -114,9 +135,10 @@ section Wac
 open Invariants.Wac
 
 def runWac (j : Json) : Except String Json := do
+  let cap ← j.getObjValAs? Int "cap"
   let loans ← (← j.getObjValAs? (Array Json) "loans").toList.mapM fun l => do
     pure ({ balance := ← optInt l "balance", rate := ← optInt l "rate" } : Loan)
-  return match wac loans with
+  return match wac cap loans with
     | some r => Json.mkObj [
         ("num", intJson (some r.num)), ("den", intJson (some r.den)),
         ("lo", intJson (some r.lo)), ("hi", intJson (some r.hi))]
@@ -172,6 +194,7 @@ def answer (line : String) : Json :=
     let j ← Json.parse line
     match ← j.getObjValAs? String "kind" with
     | "rollforward" => runRollforward j
+    | "continuity" => runContinuity j
     | "partition" => runPartition j
     | "wac" => runWac j
     | "decision" => runDecision j

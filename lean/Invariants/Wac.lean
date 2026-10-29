@@ -5,15 +5,16 @@
 
     WAC = Σ (balance × rate) / Σ balance
 
-over the loans that report a positive ending balance and an interest rate. A loan whose balance
-or rate is not reported is left out (and listed by Python), never taken as zero; a reported
-rate of zero counts as zero.
+over the loans that report a positive ending balance and an interest rate between 0 and a cap
+(Python's 0.25: a larger rate is a percent written for a fraction, M-028). A loan whose balance
+or rate is not reported or not readable is left out (and listed by Python), never taken as zero;
+a reported rate of zero counts as zero. `mem_weighted` says exactly which loans are averaged.
 
 **Representation.** Lean core has no rationals we rely on, so everything is an integer:
 balances in cents, and rates as integers over a common scale chosen by the caller (Python
 scales every rate of a pool by the same power of ten, so 0.03768 at scale 10^5 is 3768). The
 WAC is the fraction `num / den`, never divided out. `wac` is `none` exactly when no loan has a
-positive balance and a rate; otherwise `den > 0`, so the bound
+positive balance and a rate within the cap; otherwise `den > 0`, so the bound
 
     lo ≤ num / den ≤ hi    is the same statement as    lo × den ≤ num ≤ hi × den,
 
@@ -28,14 +29,15 @@ structure Loan where
   rate : Option Int
 deriving Repr
 
-/-- A loan's (balance, rate) when it counts in the average. -/
-def weight (l : Loan) : Option (Int × Int) :=
+/-- A loan's (balance, rate) when it counts in the average: a positive balance and a rate from
+0 to `cap`, on the rates' scale. -/
+def weight (cap : Int) (l : Loan) : Option (Int × Int) :=
   match l.balance, l.rate with
-  | some b, some r => if 0 < b then some (b, r) else none
+  | some b, some r => if 0 < b ∧ 0 ≤ r ∧ r ≤ cap then some (b, r) else none
   | _, _ => none
 
-def weighted (pool : List Loan) : List (Int × Int) :=
-  pool.filterMap weight
+def weighted (cap : Int) (pool : List Loan) : List (Int × Int) :=
+  pool.filterMap (weight cap)
 
 def num : List (Int × Int) → Int
   | [] => 0
@@ -60,23 +62,36 @@ structure Result where
   hi : Int
 deriving DecidableEq, Repr
 
-def wac (pool : List Loan) : Option Result :=
-  let w := weighted pool
+def wac (cap : Int) (pool : List Loan) : Option Result :=
+  let w := weighted cap pool
   match lo w, hi w with
   | some a, some z => some ⟨num w, den w, a, z⟩
   | _, _ => none
 
-theorem weighted_positive (pool : List Loan) : ∀ p ∈ weighted pool, 0 < p.1 := by
+/-- The loans averaged are exactly those with a positive balance and a rate from 0 to the cap. -/
+theorem mem_weighted (cap : Int) (pool : List Loan) (p : Int × Int) :
+    p ∈ weighted cap pool ↔ ∃ l ∈ pool, l.balance = some p.1 ∧ l.rate = some p.2 ∧
+      0 < p.1 ∧ 0 ≤ p.2 ∧ p.2 ≤ cap := by
+  simp only [weighted, List.mem_filterMap]
+  constructor
+  · rintro ⟨l, hl, hw⟩
+    refine ⟨l, hl, ?_⟩
+    unfold weight at hw
+    split at hw
+    · rename_i b r hb hr
+      split at hw
+      · cases hw
+        exact ⟨hb, hr, by omega⟩
+      · cases hw
+    · cases hw
+  · rintro ⟨l, hl, hb, hr, hpos⟩
+    refine ⟨l, hl, ?_⟩
+    simp [weight, hb, hr, hpos]
+
+theorem weighted_positive (cap : Int) (pool : List Loan) : ∀ p ∈ weighted cap pool, 0 < p.1 := by
   intro p hp
-  simp only [weighted, List.mem_filterMap] at hp
-  obtain ⟨l, _, hl⟩ := hp
-  unfold weight at hl
-  split at hl
-  · split at hl
-    · cases hl
-      assumption
-    · cases hl
-  · cases hl
+  obtain ⟨_, _, _, _, h, _⟩ := (mem_weighted cap pool p).1 hp
+  exact h
 
 theorem den_positive : ∀ (w : List (Int × Int)), w ≠ [] → (∀ p ∈ w, 0 < p.1) → 0 < den w
   | [], h, _ => absurd rfl h
@@ -190,29 +205,30 @@ theorem upper : ∀ (w : List (Int × Int)) (m : Int),
     simp only [den, num, Int.mul_add]
     omega
 
-theorem none_iff (pool : List Loan) : wac pool = none ↔ weighted pool = [] := by
+theorem none_iff (cap : Int) (pool : List Loan) : wac cap pool = none ↔ weighted cap pool = [] := by
   unfold wac
-  cases hw : weighted pool with
+  cases hw : weighted cap pool with
   | nil => simp [lo]
   | cons p rest => simp [lo, hi]
 
-theorem wac_bounds (pool : List Loan) (r : Result) (h : wac pool = some r) :
-    0 < r.den ∧ r.lo * r.den ≤ r.num ∧ r.num ≤ r.hi * r.den := by
+theorem wac_bounds (cap : Int) (pool : List Loan) (r : Result) (h : wac cap pool = some r) :
+    0 < r.den ∧ r.lo * r.den ≤ r.num ∧ r.num ≤ r.hi * r.den ∧
+      lo (weighted cap pool) = some r.lo ∧ hi (weighted cap pool) = some r.hi := by
   unfold wac at h
-  have hpos := weighted_positive pool
-  cases hlo : lo (weighted pool) with
+  have hpos := weighted_positive cap pool
+  cases hlo : lo (weighted cap pool) with
   | none => simp [hlo] at h
   | some a =>
-    cases hhi : hi (weighted pool) with
+    cases hhi : hi (weighted cap pool) with
     | none => simp [hlo, hhi] at h
     | some z =>
       simp only [hlo, hhi, Option.some.injEq] at h
       subst h
-      have hne : weighted pool ≠ [] := by
+      have hne : weighted cap pool ≠ [] := by
         intro hnil
         rw [hnil] at hlo
         simp [lo] at hlo
-      refine ⟨den_positive _ hne hpos, ?_, ?_⟩
+      refine ⟨den_positive _ hne hpos, ?_, ?_, rfl, rfl⟩
       · exact lower _ a (fun p hp => ⟨hpos p hp, lo_le _ a hlo p hp⟩)
       · exact upper _ z (fun p hp => ⟨hpos p hp, le_hi _ z hhi p hp⟩)
 

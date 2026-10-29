@@ -34,7 +34,14 @@ from cmbs.invariants.partition import (
     ],
 )
 def test_each_code_has_its_bucket(status, bucket):
-    assert bucket_of(status) is bucket
+    assert bucket_of(PoolLoan("1", status, Decimal("1.00"))) is bucket
+
+
+def test_a_loan_without_status_or_balance_is_not_outstanding():
+    assert bucket_of(PoolLoan("2", None, None)) is Bucket.NOT_OUTSTANDING
+    assert bucket_of(PoolLoan("2", None, Decimal("0.00"))) is Bucket.NOT_REPORTED
+    assert bucket_of(PoolLoan("2", "0", None)) is Bucket.CURRENT
+    assert bucket_of(PoolLoan("2", "9", None)) is Bucket.UNRECOGNIZED
 
 
 def test_codes_are_read_as_the_alerts_read_them():
@@ -47,7 +54,7 @@ def test_codes_are_read_as_the_alerts_read_them():
     ]
     assert code_of(" 6 ") == "6"
     assert code_of(None) is None
-    assert bucket_of("04") is Bucket.PERFORMING_MATURED
+    assert bucket_of(PoolLoan("1", "04", None)) is Bucket.PERFORMING_MATURED
 
 
 def test_the_code_list_has_eight_codes_and_every_bucket_is_named():
@@ -62,6 +69,7 @@ def test_the_code_list_has_eight_codes_and_every_bucket_is_named():
         "non-performing matured",
         "status not on the code list",
         "status not reported",
+        "not outstanding (no status, no balance)",
     ]
 
 
@@ -74,6 +82,7 @@ POOL = [
     PoolLoan("7", None, Decimal("9000000.00")),
     PoolLoan("8", "4", None),
     PoolLoan("9", "7", Decimal("1.25")),
+    PoolLoan("10", None, None),
 ]
 
 
@@ -90,11 +99,12 @@ def test_the_pool_split_into_buckets():
         Bucket.NON_PERFORMING_MATURED: Tally(),
         Bucket.UNRECOGNIZED: Tally(("9",), Decimal("1.25")),
         Bucket.NOT_REPORTED: Tally(("7",), Decimal("9000000.00")),
+        Bucket.NOT_OUTSTANDING: Tally(("10",), Decimal("0.00"), ("10",)),
     }
     assert found.pool == Tally(
-        ("1", "2", "3", "4", "5", "7", "8", "9"), Decimal("113000001.25"), ("8",)
+        ("1", "2", "3", "4", "5", "7", "8", "9", "10"), Decimal("113000001.25"), ("8", "10")
     )
-    assert found.pool.loans == 8
+    assert found.pool.loans == 9
     assert found.adds_up()
 
 

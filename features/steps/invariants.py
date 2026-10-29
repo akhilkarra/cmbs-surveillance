@@ -278,7 +278,7 @@ def step_buckets_are(context):
         found = (tally.loans, tally.balance)
         assert found == (int(row["loans"]), money(row["balance"])), (bucket, tally)
         assert tally.balance_not_reported == (), (bucket, tally)
-    # A bucket the scenario does not list (a performing matured balloon) must be empty.
+    # Any bucket the scenario does not list must be empty.
     for bucket in set(Bucket) - listed:
         assert buckets[bucket].loans == 0, (bucket, buckets[bucket])
 

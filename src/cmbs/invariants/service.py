@@ -41,7 +41,10 @@ def pool_loans(rows: Sequence[TapeRow]) -> list[PoolLoan]:
 
 
 def rated_loans(rows: Sequence[TapeRow]) -> list[RatedLoan]:
-    return [RatedLoan(row.loan, row.ending_balance, row.interest_rate) for row in rows]
+    return [
+        RatedLoan(row.loan, row.ending_balance, row.interest_rate, row.interest_rate_note)
+        for row in rows
+    ]
 
 
 def measure(db: Session, *, deal: str, period: Period | None, as_of: dt.date) -> Pool:

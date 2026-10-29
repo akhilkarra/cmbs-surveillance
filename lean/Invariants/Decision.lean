@@ -20,7 +20,6 @@ for all 18 combinations (3 support bands × 2 evidence results × 3 answer bands
 
 * `table_total`: exactly one row of the table matches;
 * `decide_follows_table`: `decide` gives that row's outcome and reason;
-* `one_outcome`: every combination leads to exactly one of auto-accept, review or not stated;
 * `support_low_not_stated`: without a supporting sentence the field is not stated, whatever the
   answer's probability (grill log Q87);
 * `auto_accept_needs_all_three`: nothing is auto-accepted unless support and answer are high and
@@ -45,8 +44,6 @@ inductive Outcome where
   | review
   | notStated
 deriving DecidableEq, Repr
-
-def Outcome.all : List Outcome := [.autoAccept, .review, .notStated]
 
 inductive Reason where
   | evidenceNotFound
@@ -97,10 +94,6 @@ theorem decide_follows_table (answer support : Band) (evidenceFound : Bool) :
     ∀ row ∈ table, row.matches answer support evidenceFound = true →
       decide answer support evidenceFound = row.decision := by
   cases answer <;> cases support <;> cases evidenceFound <;> simp [table, Row.matches, decide]
-
-theorem one_outcome (answer support : Band) (evidenceFound : Bool) :
-    (Outcome.all.filter (· = (decide answer support evidenceFound).outcome)).length = 1 := by
-  cases answer <;> cases support <;> cases evidenceFound <;> rfl
 
 /-- A review always says why; auto-accept and not stated never carry a reason. -/
 theorem reason_iff_review (answer support : Band) (evidenceFound : Bool) :

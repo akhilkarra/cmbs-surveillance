@@ -20,10 +20,11 @@ from fractions import Fraction
 from pathlib import Path
 from typing import IO, Any
 
-from cmbs.crosscheck.rollforward import Balances
+from cmbs.crosscheck.rollforward import Balances, Ending
 from cmbs.extraction.decision import Band
 from cmbs.invariants.partition import PoolLoan, code_of
 from cmbs.invariants.wac import RatedLoan
+from cmbs.tape.convert import RATE_LIMIT
 
 LEAN = Path(__file__).resolve().parents[3] / "lean"
 # Lean's decision table as the oracle printed it (`{"kind": "table"}`), committed so the scenario
@@ -60,6 +61,19 @@ def scaled(rate: Decimal | None, scale: int) -> int | None:
     return int(value)
 
 
+def continuity_case(beginning: Decimal | None, previous: Ending | None) -> dict[str, Any]:
+    """This month's beginning balance and last month's ending one (`previous` None when last
+    month's tape does not show the loan)."""
+    if previous is not None and previous.problem is not None:
+        raise ValueError(f"last month's ending balance could not be read: {previous.problem}")
+    return {
+        "kind": "continuity",
+        "beginning": cents(beginning),
+        "previous_row": previous is not None,
+        "previous_ending": None if previous is None else cents(previous.amount),
+    }
+
+
 def rollforward_case(balances: Balances) -> dict[str, Any]:
     """A month of the roll-forward. A month whose ending balance could not be read is not a case:
     the oracle models amounts as read."""
@@ -87,10 +101,12 @@ def partition_case(loans: Sequence[PoolLoan]) -> dict[str, Any]:
 
 
 def wac_case(loans: Sequence[RatedLoan]) -> tuple[dict[str, Any], int]:
-    """A pool for the WAC, and the scale (a power of ten) its rates were written over."""
-    scale = rate_scale(loan.rate for loan in loans)
+    """A pool for the WAC, and the scale (a power of ten) its rates and the rate limit were
+    written over."""
+    scale = rate_scale([RATE_LIMIT, *(loan.rate for loan in loans)])
     case = {
         "kind": "wac",
+        "cap": scaled(RATE_LIMIT, scale),
         "loans": [
             {"balance": cents(loan.balance), "rate": scaled(loan.rate, scale)} for loan in loans
         ],

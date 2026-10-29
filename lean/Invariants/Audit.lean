@@ -38,14 +38,16 @@ elab "#audit " names:ident* : command => do
   Invariants.Rollforward.gap_of_checked
   Invariants.Rollforward.breaks_iff
   Invariants.Rollforward.fully_reported
-  Invariants.Delinquency.exactly_one
-  Invariants.Delinquency.all_distinct
+  Invariants.Rollforward.continuity_passes_iff
+  Invariants.Rollforward.continuity_breaks_iff
+  Invariants.Delinquency.bucket_by_code
   Invariants.Delinquency.split_cons
   Invariants.Delinquency.adds_up
   Invariants.Delinquency.tally_loans
   Invariants.Delinquency.loans_add_up
   Invariants.Delinquency.balances_add_up
   Invariants.Delinquency.unreported_add_up
+  Invariants.Wac.mem_weighted
   Invariants.Wac.weighted_positive
   Invariants.Wac.den_positive
   Invariants.Wac.lo_le
@@ -58,7 +60,6 @@ elab "#audit " names:ident* : command => do
   Invariants.Wac.wac_bounds
   Invariants.Decision.table_total
   Invariants.Decision.decide_follows_table
-  Invariants.Decision.one_outcome
   Invariants.Decision.reason_iff_review
   Invariants.Decision.support_low_not_stated
   Invariants.Decision.auto_accept_needs_all_three

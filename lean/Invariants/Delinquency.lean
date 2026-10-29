@@ -4,26 +4,29 @@
 `cmbs.invariants.partition` splits a pool into buckets by each loan's Schedule AL payment status
 (`paymentStatusLoanCode`), as Python normalizes it ("01" is "1", "b" is "B"):
 
-| code        | bucket                      |
-|-------------|-----------------------------|
-| 0           | current                     |
-| A, B        | grace or late               |
-| 1           | 30 days                     |
-| 2           | 60 days                     |
-| 3           | 90 days or more             |
-| 4           | performing matured          |
-| 5           | non-performing matured      |
-| any other   | status not on the code list |
-| none        | status not reported         |
+| code                     | bucket                                  |
+|--------------------------|-----------------------------------------|
+| 0                        | current                                 |
+| A, B                     | grace or late                           |
+| 1                        | 30 days                                 |
+| 2                        | 60 days                                 |
+| 3                        | 90 days or more                         |
+| 4                        | performing matured                      |
+| 5                        | non-performing matured                  |
+| any other                | status not on the code list             |
+| none, balance reported   | status not reported                     |
+| none, balance none       | not outstanding (no status, no balance) |
 
 A performing matured balloon (4) has its own bucket: the loan is past its maturity date, so it
-is not current, but it keeps paying, so it is not delinquent by any number of days either.
+is not current, but it keeps paying, so it is not delinquent by any number of days either. A loan
+with neither a status nor an ending balance is one the tape keeps after it paid off (BANK
+2018-BNK13 keeps six, M-026), so it is not counted among outstanding loans missing a status.
 
 Balances are in integer cents; `none` is "not reported" and is counted apart, never as zero.
 
 The theorems say, for every possible pool:
 
-* `exactly_one`: every loan lands in exactly one bucket of `Bucket.all`;
+* `bucket_by_code`: each loan's bucket is the one the table above gives it;
 * `loans_add_up`, `balances_add_up`, `unreported_add_up`: the buckets' loan counts, balances
   and counts of loans without a balance add up to the pool's.
 -/
@@ -40,30 +43,39 @@ inductive Bucket where
   | nonPerformingMatured
   | unrecognized
   | notReported
+  | notOutstanding
 deriving DecidableEq, Repr
 
 /-- Every bucket, in the order a report lists them. -/
 def Bucket.all : List Bucket :=
   [.current, .graceOrLate, .days30, .days60, .days90Plus, .performingMatured,
-    .nonPerformingMatured, .unrecognized, .notReported]
+    .nonPerformingMatured, .unrecognized, .notReported, .notOutstanding]
 
-/-- The bucket of a normalized payment status code; `none` is "not reported". -/
-def bucket : Option String → Bucket
-  | none => .notReported
-  | some "0" => .current
-  | some "A" => .graceOrLate
-  | some "B" => .graceOrLate
-  | some "1" => .days30
-  | some "2" => .days60
-  | some "3" => .days90Plus
-  | some "4" => .performingMatured
-  | some "5" => .nonPerformingMatured
-  | some _ => .unrecognized
+/-- The Schedule AL payment status codes. -/
+def codes : List String := ["0", "A", "B", "1", "2", "3", "4", "5"]
+
+/-- The bucket of a reported, normalized payment status code. -/
+def codeBucket : String → Bucket
+  | "0" => .current
+  | "A" => .graceOrLate
+  | "B" => .graceOrLate
+  | "1" => .days30
+  | "2" => .days60
+  | "3" => .days90Plus
+  | "4" => .performingMatured
+  | "5" => .nonPerformingMatured
+  | _ => .unrecognized
 
 structure Loan where
   status : Option String
   balance : Option Int
 deriving Repr
+
+def bucket (l : Loan) : Bucket :=
+  match l.status, l.balance with
+  | some code, _ => codeBucket code
+  | none, some _ => .notReported
+  | none, none => .notOutstanding
 
 /-- A bucket's (or the pool's) loans, reported balance and loans without a balance. -/
 structure Tally where
@@ -79,7 +91,7 @@ def tally : List Loan → Tally
     ⟨t.loans + 1, t.balance + l.balance.getD 0, t.unreported + (if l.balance.isNone then 1 else 0)⟩
 
 def inBucket (b : Bucket) (pool : List Loan) : List Loan :=
-  pool.filter (fun l => decide (bucket l.status = b))
+  pool.filter (fun l => decide (bucket l = b))
 
 /-- The partition: each bucket with its tally, in `Bucket.all` order. -/
 def split (pool : List Loan) : List (Bucket × Tally) :=
@@ -97,23 +109,35 @@ def sumUnreported : List (Bucket × Tally) → Nat
   | [] => 0
   | (_, t) :: rest => t.unreported + sumUnreported rest
 
-theorem exactly_one (l : Loan) :
-    (Bucket.all.filter (fun b => decide (bucket l.status = b))).length = 1 := by
-  generalize bucket l.status = b
-  cases b <;> decide
-
-theorem all_distinct : Bucket.all.Nodup := by
-  decide
+/-- Each loan's bucket is the one the Schedule AL table gives it, whatever its balance. -/
+theorem bucket_by_code (balance : Option Int) :
+    bucket ⟨some "0", balance⟩ = .current ∧
+    bucket ⟨some "A", balance⟩ = .graceOrLate ∧
+    bucket ⟨some "B", balance⟩ = .graceOrLate ∧
+    bucket ⟨some "1", balance⟩ = .days30 ∧
+    bucket ⟨some "2", balance⟩ = .days60 ∧
+    bucket ⟨some "3", balance⟩ = .days90Plus ∧
+    bucket ⟨some "4", balance⟩ = .performingMatured ∧
+    bucket ⟨some "5", balance⟩ = .nonPerformingMatured ∧
+    (∀ code, code ∉ codes → bucket ⟨some code, balance⟩ = .unrecognized) ∧
+    (∀ amount, bucket ⟨none, some amount⟩ = .notReported) ∧
+    bucket ⟨none, none⟩ = .notOutstanding := by
+  refine ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, ?_, fun _ => rfl, rfl⟩
+  intro code h
+  simp only [codes, List.mem_cons, List.not_mem_nil, or_false, not_or] at h
+  obtain ⟨h0, hA, hB, h1, h2, h3, h4, h5⟩ := h
+  -- codeBucket's last equation needs code to differ from each code: the hypotheses above.
+  simp only [bucket, codeBucket]
 
 /-- Adding one loan to a pool adds it to its own bucket's tally and leaves the others alone. -/
 theorem split_cons (l : Loan) (pool : List Loan) (b : Bucket) :
     tally (inBucket b (l :: pool)) =
-      if bucket l.status = b then
+      if bucket l = b then
         let t := tally (inBucket b pool)
         ⟨t.loans + 1, t.balance + l.balance.getD 0,
           t.unreported + (if l.balance.isNone then 1 else 0)⟩
       else tally (inBucket b pool) := by
-  by_cases h : bucket l.status = b <;> simp [inBucket, h, tally]
+  by_cases h : bucket l = b <;> simp [inBucket, h, tally]
 
 theorem adds_up (pool : List Loan) :
     sumLoans (split pool) = (tally pool).loans ∧
@@ -125,7 +149,7 @@ theorem adds_up (pool : List Loan) :
     obtain ⟨hl, hb, hu⟩ := ih
     simp only [split, Bucket.all, List.map, sumLoans, sumBalance, sumUnreported] at hl hb hu ⊢
     simp only [split_cons]
-    generalize hk : bucket l.status = k
+    generalize hk : bucket l = k
     cases k <;> simp [tally] <;> omega
 
 theorem tally_loans (pool : List Loan) : (tally pool).loans = pool.length := by

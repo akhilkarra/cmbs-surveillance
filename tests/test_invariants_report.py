@@ -14,7 +14,7 @@ def test_a_wac_not_available_says_why():
     found = Wac(None, NO_RATE, rate_not_reported=("1",))
     assert wac_text(found) == (
         "weighted-average coupon: not available "
-        "(no loan with an outstanding balance reports an interest rate)"
+        "(no loan with an outstanding balance has a usable interest rate)"
     )
     assert wac_json(found) == {
         "available": False,
@@ -26,6 +26,8 @@ def test_a_wac_not_available_says_why():
         "averaged": [],
         "balance": "0.00",
         "rate_not_reported": ["1"],
+        "rate_not_readable": [],
+        "rate_out_of_range": [],
         "balance_not_reported": [],
         "zero_rate": [],
     }

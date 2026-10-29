@@ -140,4 +140,63 @@ theorem fully_reported (b s u o e : Int) (loss : Option Int) (hloss : loss = non
   simp only [roll, hl, m, explained, less, missing]
   by_cases hx : b - s - u - o - e = 0 <;> simp [hx] <;> omega
 
+/-!
+## Continuity across months
+
+This month's beginning scheduled balance must equal last month's ending scheduled balance
+(Q81). `previous` is last month's tape row: `none` when last month's tape does not show the loan,
+`some none` when it shows the loan without an ending scheduled balance. The gap is last month's
+ending balance minus this month's beginning balance.
+-/
+
+/-- Why continuity is not checked, in the order `cmbs.crosscheck.rollforward.continuity` asks. -/
+inductive ContinuityReason where
+  | noPreviousRow
+  | beginningNotReported
+  | previousEndingNotReported
+deriving DecidableEq, Repr
+
+structure Continuity where
+  status : Status
+  previousEnding : Option Int := none
+  gap : Option Int := none
+  reason : Option ContinuityReason := none
+deriving Repr
+
+def continuity (beginning : Option Int) (previous : Option (Option Int)) : Continuity :=
+  match previous, beginning with
+  | none, _ => { status := .notChecked, reason := some .noPreviousRow }
+  | some _, none => { status := .notChecked, reason := some .beginningNotReported }
+  | some none, some _ => { status := .notChecked, reason := some .previousEndingNotReported }
+  | some (some e), some b =>
+    { status := if e - b = 0 then .passed else .broken, previousEnding := some e,
+      gap := some (e - b) }
+
+theorem continuity_passes_iff (beginning : Option Int) (previous : Option (Option Int)) :
+    (continuity beginning previous).status = .passed ↔
+      ∃ b, beginning = some b ∧ previous = some (some b) := by
+  unfold continuity
+  split <;> simp
+  rename_i e b
+  constructor
+  · intro h
+    by_cases hx : e - b = 0
+    · omega
+    · simp [hx] at h
+  · intro h
+    simp [show e - b = 0 by omega]
+
+theorem continuity_breaks_iff (beginning : Option Int) (previous : Option (Option Int)) :
+    (continuity beginning previous).status = .broken ↔
+      ∃ b e, beginning = some b ∧ previous = some (some e) ∧ b ≠ e ∧
+        (continuity beginning previous).gap = some (e - b) := by
+  unfold continuity
+  split <;> simp
+  rename_i e b
+  by_cases hx : e - b = 0
+  · simp [hx]
+    omega
+  · simp [hx]
+    omega
+
 end Invariants.Rollforward

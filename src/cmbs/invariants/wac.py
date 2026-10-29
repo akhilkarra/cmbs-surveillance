@@ -2,8 +2,9 @@
 
     WAC = Σ (ending balance × interest rate) / Σ ending balance
 
-over the loans that report a positive ending balance and an interest rate (Schedule AL's
-`reportPeriodInterestRatePercentage`, a fraction: 0.03768 is 3.768%).
+over the loans that report a positive ending balance and a usable interest rate (Schedule AL's
+`reportPeriodInterestRatePercentage`, a fraction: 0.03768 is 3.768%): one from 0 to
+`RATE_LIMIT` (0.25).
 
 **Exact.** Balances and rates are Decimals as reported; the sums and the quotient are taken as
 fractions, so the WAC is exact (5.025% is 5.025%, not 5.02499999...). `format_rate` prints it
@@ -15,6 +16,11 @@ average and listed, and so is a loan whose balance is not reported; neither is a
 zero. A loan with a zero balance (paid off, or a balance not yet funded) has no weight and is
 left out as well.
 
+**A rate the tape loader could not use is listed, not averaged.** A rate that is not a number is
+stored as null with a note (`interest_rate_note`), and the loan is listed as "rate not
+readable"; a rate outside 0 to 0.25 (a percent written for a fraction, M-028) is stored as
+reported and listed as "rate out of range".
+
 **A reported zero rate counts as zero.** Real tapes write `0.00` on loans that no longer accrue:
 BANK 2018-BNK13's September 2026 tape reports 0.00 only for its six paid-off loans, which report
 no ending balance and so never enter the average. A loan with a positive balance and a reported
@@ -23,10 +29,10 @@ collateral, so its tape rate is the note rate, not zero, and a zero on an outsta
 what the servicer reported. `zero_rate` lists such loans so a reader can see them.
 
 **Not available** when no loan has a positive balance (every balance is zero or not reported),
-or when no loan with a positive balance reports a rate.
+or when no loan with a positive balance has a usable rate.
 
-`lean/Invariants/Wac.lean` proves, for every pool, that when the WAC is available it lies between
-the lowest and the highest rate of the loans averaged.
+`lean/Invariants/Wac.lean` proves, for every pool, which loans are averaged and that the WAC lies
+between the lowest and the highest rate of the loans it averages.
 """
 
 from collections.abc import Iterable
@@ -34,8 +40,10 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from fractions import Fraction
 
+from cmbs.tape.convert import RATE_LIMIT
+
 NO_BALANCE = "no loan has an outstanding balance"
-NO_RATE = "no loan with an outstanding balance reports an interest rate"
+NO_RATE = "no loan with an outstanding balance has a usable interest rate"
 ZERO = Decimal("0.00")
 # Places of a percent shown when a WAC has no finite decimal expansion.
 SHOWN_PLACES = 6
@@ -46,6 +54,8 @@ class RatedLoan:
     loan: str
     balance: Decimal | None
     rate: Decimal | None
+    # The tape loader's note on the rate (cmbs.tape.convert.read_rate), when it has one.
+    rate_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +69,8 @@ class Wac:
     averaged: tuple[str, ...] = ()
     balance: Decimal = ZERO
     rate_not_reported: tuple[str, ...] = ()
+    rate_not_readable: tuple[str, ...] = ()
+    rate_out_of_range: tuple[str, ...] = ()
     balance_not_reported: tuple[str, ...] = ()
     zero_rate: tuple[str, ...] = ()
 
@@ -69,23 +81,34 @@ class Wac:
 
 def wac(loans: Iterable[RatedLoan]) -> Wac:
     averaged: list[tuple[str, Decimal, Decimal]] = []
-    rate_not_reported: list[str] = []
-    balance_not_reported: list[str] = []
+    left_out: dict[str, list[str]] = {
+        "rate_not_reported": [],
+        "rate_not_readable": [],
+        "rate_out_of_range": [],
+        "balance_not_reported": [],
+    }
     for loan in loans:
         if loan.balance is None:
-            balance_not_reported.append(loan.loan)
+            left_out["balance_not_reported"].append(loan.loan)
         elif loan.balance <= 0:
             continue
         elif loan.rate is None:
-            rate_not_reported.append(loan.loan)
+            why = "rate_not_reported" if loan.rate_note is None else "rate_not_readable"
+            left_out[why].append(loan.loan)
+        elif not 0 <= loan.rate <= RATE_LIMIT:
+            left_out["rate_out_of_range"].append(loan.loan)
         else:
             averaged.append((loan.loan, loan.balance, loan.rate))
+    listed = {name: tuple(loans) for name, loans in left_out.items()}
     if not averaged:
+        no_rate = any(listed[name] for name in listed if name.startswith("rate_"))
         return Wac(
             None,
-            NO_RATE if rate_not_reported else NO_BALANCE,
-            rate_not_reported=tuple(rate_not_reported),
-            balance_not_reported=tuple(balance_not_reported),
+            NO_RATE if no_rate else NO_BALANCE,
+            rate_not_reported=listed["rate_not_reported"],
+            rate_not_readable=listed["rate_not_readable"],
+            rate_out_of_range=listed["rate_out_of_range"],
+            balance_not_reported=listed["balance_not_reported"],
         )
     weighted = sum(
         (Fraction(balance) * Fraction(rate) for _, balance, rate in averaged), Fraction()
@@ -98,8 +121,10 @@ def wac(loans: Iterable[RatedLoan]) -> Wac:
         highest=max(rates),
         averaged=tuple(loan for loan, _, _ in averaged),
         balance=balance,
-        rate_not_reported=tuple(rate_not_reported),
-        balance_not_reported=tuple(balance_not_reported),
+        rate_not_reported=listed["rate_not_reported"],
+        rate_not_readable=listed["rate_not_readable"],
+        rate_out_of_range=listed["rate_out_of_range"],
+        balance_not_reported=listed["balance_not_reported"],
         zero_rate=tuple(loan for loan, _, rate in averaged if rate == 0),
     )
 
