@@ -11,8 +11,8 @@ does, through refreshes that replay the synthetic EDGAR in tests/fixtures/refres
 - on 2026-10-28 at 09:00 run 43 refreshes the book: it loads September 2026 of both deals and
   builds their alerts;
 - at 10:00 the same day a quant extracts loan 2's September comment, replaying the synthetic
-  model recording in tests/fixtures/model/ (or, when a scenario says the workout strategy is
-  waiting for review, the same recording with that one answer unsettled);
+  model recording in tests/fixtures/model/ (a scenario that puts the workout strategy in review
+  uses the shared step in features/steps/export.py);
 - the dashboard is read at noon.
 Loan 2's tapes also carry its beginning and ending scheduled balances and zero principal, so the
 scheduled balance roll-forward (`cmbs.crosscheck`, grill log Q81) passes in both months.
@@ -65,7 +65,6 @@ from cmbs.refresh import service as refresh
 from cmbs.refresh.sources import ArchiveReplay, FirstRecorded, Sources
 from cmbs.testing.bdd import in_session
 from cmbs.testing.world import FIXTURE_CIKS, set_next_run_number
-from tests.fixtures.model.synthetic import LOAN_2_SEPTEMBER, loan_2_september_comment, recording
 from tests.fixtures.model.synthetic import load as load_recordings
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -126,8 +125,6 @@ SEPTEMBER_TAPE: dict[tuple[str, str], dict[str, str]] = {
 }
 # The sentence loan 2's September comment adds to August's.
 ADDED_SENTENCE = "The special servicer is evaluating the request."
-# Loan 2's workout strategy with an answer inside the abstention band (0.30 to 0.70).
-UNSETTLED_WORKOUT = ("modification", 0.55, 0.92, 4)
 CLOSE_NOTE = "Transfer confirmed with the special servicer; loan is on the watch list."
 
 
@@ -275,19 +272,14 @@ def ensure_book(context) -> None:
     context.book_loaded = True
 
 
-def ensure_extracted(context, *, unsettled_workout: bool = False) -> None:
+def ensure_extracted(context) -> None:
     """Loan 2's September comment extracted by a quant, replaying a synthetic recording."""
     if getattr(context, "extracted", False):
-        assert not unsettled_workout, "the comment was extracted before the scenario changed it"
         return
     ensure_world(context)
 
     def extract(db):
-        if unsettled_workout:
-            answers = {**LOAN_2_SEPTEMBER, "workout_strategy": UNSETTLED_WORKOUT}
-            DbRecordings(db).put(recording(loan_2_september_comment(), answers))
-        else:
-            load_recordings(DbRecordings(db))
+        load_recordings(DbRecordings(db))
         client = ModelClient(
             DbRecordings(db), provider=None, replay_only=True, allow_synthetic=True
         )
@@ -611,14 +603,6 @@ def step_count_and_first(context, count, loan, deal):
 
 
 # ---------------------------------------------------------------------------- the loan view
-
-
-@given('loan "{loan:DashName}"\'s workout strategy is waiting for review')
-def step_workout_waiting(context, loan):
-    assert loan == "2", "only loan 2's comment is recorded"
-    ensure_extracted(context, unsettled_workout=True)
-    view = in_session(lambda db: comment_view(db, "pat", deal=F1, loan=loan, period=SEPTEMBER))
-    assert view is not None and view.fields["workout_strategy"].status == "needs review", view
 
 
 @when('"{user:DashName}" opens loan "{loan:DashName}" of "{deal:DashName}"')
