@@ -29,6 +29,7 @@ from cmbs.deals.service import by_name
 from cmbs.domain import Period, format_money
 from cmbs.errors import Refused
 from cmbs.panel import service as panel
+from cmbs.refresh.plan import deal_lines
 from cmbs.runs.tables import RUN_STATUSES, Run
 from cmbs.tape.service import LOAD_ACTION
 
@@ -84,10 +85,17 @@ def finish_run(db: Session, run: Run, *, status: str, summary: dict[str, Any]) -
 
 
 def abandon(db: Session, run: Run, reason: str) -> Run:
-    """Finish a run that stopped without finishing as failed, keeping what it recorded."""
+    """Finish a run that stopped without finishing as failed, keeping what it recorded and
+    where it last said it was (the `at` its progress records)."""
     _locked_running(db, run)
     summary = dict(run.summary or {})
-    summary["stopped"] = {**(summary.get("stopped") or {}), "error": reason}
+    at = summary.get("at") or {}
+    summary["stopped"] = {
+        "deal": at.get("deal"),
+        "period": at.get("period"),
+        "error": reason,
+        "detail": None,
+    }
     return finish_run(db, run, status=FAILED, summary=summary)
 
 
@@ -158,16 +166,7 @@ class RunView:
             line = f"stopped at {where}: {error}" if where else f"stopped: {error}"
             lines.append(f"{line} ({detail})" if detail else line)
         for deal in self.summary.get("deals", []):
-            head = f"{deal['deal']}: {deal['outcome']}"
-            if deal.get("reason"):
-                head += f", {deal['reason']}"
-            lines.append(head)
-            for month in deal.get("months", []):
-                if month["outcome"] == "loaded":
-                    lines.append(f"  {month['period']}: loaded, {month['loan_rows']} loan rows")
-                else:
-                    line = f"  {month['period']}: {month['outcome']}, {month['reason']}"
-                    lines.append(f"{line} ({month['detail']})" if month.get("detail") else line)
+            lines += deal_lines(deal)
         return "\n".join(lines)
 
 

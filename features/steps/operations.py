@@ -178,6 +178,12 @@ def _set_next_run(number: int) -> None:
     in_session(lambda db: set_next_run_number(db, number))
 
 
+def _register(deal: str) -> int:
+    """A refresh or backfill of one deal needs the deal registered (with its CIK, as filing
+    discovery would register it); the scenarios name only known deals."""
+    return in_session(lambda db: get_or_create(db, deal, cik=_cik(deal)).id)
+
+
 # ---------------------------------------------------------------------------- batch refresh
 
 
@@ -225,9 +231,8 @@ def step_summary_lists_deals(context):
 @given('"{deal:OpsName}" has no months loaded')
 def step_no_months_loaded(context, deal):
     context.deal = deal
-    deal_id = _deal_id(deal)
-    if deal_id is not None:
-        assert not in_session(lambda db: refresh.loaded_months(db, deal_id))
+    deal_id = _register(deal)
+    assert not in_session(lambda db: refresh.loaded_months(db, deal_id))
 
 
 @when('"{user:OpsName}" backfills "{deal:OpsName}" from {start:OpsMonth} to {end:OpsMonth}')
@@ -274,6 +279,7 @@ def step_alerts_per_month(context):
 @given('the {period:OpsMonth} ABS-EE for "{deal:OpsName}" loads but its 10-D fails to parse')
 def step_report_fails(context, period, deal):
     context.deal, context.period = deal, period
+    _register(deal)
     _fail_report(context, deal, period)
     # The month is the newest with both filings two days after they were filed.
     context.today = _at(dt.date(period.year, period.month, 29) + dt.timedelta(days=2))
@@ -428,6 +434,7 @@ def step_history_shows(context, number, user, day, start, end, refreshed, skippe
 def step_run_fails(context, number, period, deal):
     """A backfill of the month before and the month itself; the month's 10-D cannot be read."""
     context.deal, context.failed_at = deal, (deal, period)
+    _register(deal)
     _set_next_run(number)
     _fail_report(context, deal, period)
     clock.set_now(_at(dt.date(period.year, period.month, 29) + dt.timedelta(days=1)))
@@ -494,6 +501,7 @@ def step_it_shows(context, text):
 @given("run {number:d} was made on {day:OpsDay}")
 def step_run_made_on(context, number, day):
     """A refresh of the fixture deal that day, by the operator."""
+    _register(FIXTURE_DEAL)
     _set_next_run(number)
     clock.set_now(_at(day))
     _run(context, lambda: refresh.refresh_deal(OPERATOR, FIXTURE_DEAL, sources=_sources(context)))

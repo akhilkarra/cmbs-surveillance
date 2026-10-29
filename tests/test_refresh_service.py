@@ -13,19 +13,20 @@ import pytest
 from sqlalchemy import func, select
 
 from cmbs import clock
+from cmbs.absee.schedule_al import MalformedTape
 from cmbs.access.roles import Role
 from cmbs.access.service import Actor, PermissionRefused
 from cmbs.audit.tables import AuditEntry
 from cmbs.book.service import PositionLine, load_positions
 from cmbs.db import engine
 from cmbs.deals.service import by_name, get_or_create
-from cmbs.distribution.service import load_report
+from cmbs.distribution.service import WrongPeriod, load_report
 from cmbs.distribution.tables import DistributionReport
 from cmbs.domain import Period, money
 from cmbs.edgar.archives import filing_base_url
-from cmbs.edgar.replay import Replay
+from cmbs.edgar.replay import MissingRecording, Replay
 from cmbs.errors import Refused
-from cmbs.panel.service import UnknownDeal
+from cmbs.panel.service import UnknownDeal as PanelUnknownDeal
 from cmbs.refresh import service
 from cmbs.refresh.claims import (
     ABANDONED,
@@ -35,8 +36,17 @@ from cmbs.refresh.claims import (
     holders,
     record_claims,
 )
-from cmbs.refresh.plan import FilingRef, MonthFilings
-from cmbs.refresh.service import BadRange, EmptyBook, MonthNotLoaded, build_alerts, month_status
+from cmbs.refresh.plan import FilingRef, MonthFilings, MonthOutcome, MonthResult
+from cmbs.refresh.service import (
+    BadRange,
+    EmptyBook,
+    MonthNotLoaded,
+    Stage,
+    UnknownDeal,
+    build_alerts,
+    month_status,
+    not_loaded,
+)
 from cmbs.refresh.sources import ArchiveReplay, Fetched, FirstRecorded, Sources
 from cmbs.refresh.tables import RunClaim, RunMonth
 from cmbs.runs import service as runs
@@ -108,6 +118,48 @@ def book(seeded):
     return seeded
 
 
+@pytest.fixture
+def registered(seeded):
+    """The two fixture deals registered, as a refresh or backfill of one deal needs."""
+    for name, cik in CIKS.items():
+        get_or_create(seeded, name, cik=cik)
+    seeded.commit()
+    return seeded
+
+
+class Edited:
+    """Discovery answers with some of a deal's filings hidden and others added."""
+
+    COLUMNS = ("accessionNumber", "filingDate", "form", "primaryDocument", "reportDate")
+
+    def __init__(self, upstream, *, hidden=(), added=()) -> None:
+        self.upstream, self.hidden, self.added = upstream, set(hidden), list(added)
+
+    def get_json(self, url: str):
+        data = self.upstream.get_json(url)
+        if "/submissions/" not in url:
+            return data
+        recent = data["filings"]["recent"]
+        rows = [
+            dict(zip(self.COLUMNS, values, strict=True))
+            for values in zip(*(recent[c] for c in self.COLUMNS), strict=True)
+        ]
+        rows = [row for row in rows if row["accessionNumber"] not in self.hidden] + self.added
+        edited = {column: [row[column] for row in rows] for column in self.COLUMNS}
+        return {**data, "filings": {**data["filings"], "recent": edited}}
+
+
+def amendment(deal: str, period: Period, form: str, number: int) -> dict[str, str]:
+    filed = dt.date(period.year, period.month, 29) + dt.timedelta(days=3)
+    return {
+        "accessionNumber": f"{CIKS[deal]:010d}-{filed.year % 100:02d}-{900 + number:06d}",
+        "filingDate": filed.isoformat(),
+        "form": form,
+        "primaryDocument": "amendment.htm",
+        "reportDate": dt.date(period.year, period.month, 17).isoformat(),
+    }
+
+
 def deal_id(db, name: str) -> int:
     deal = by_name(db, name)
     assert deal is not None
@@ -153,10 +205,15 @@ def test_a_book_refresh_loads_the_newest_month_of_each_public_deal(book, sources
         14,
     )
     assert summary["alerts_raised"] is None  # cmbs.alerts is not installed
-    assert report.text().splitlines()[:2] == [
+    assert report.text().splitlines() == [
         "run 1: olly, 2026-10-28 09:00 to 09:00, 2 deals refreshed, 1 skipped, "
         "14 loan rows loaded, alerts not built",
         "refresh book, succeeded",
+        f"{F1}: refreshed",
+        "  September 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
+        f"{F2}: refreshed",
+        "  September 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
+        f"{HYT}: skipped, not publicly reported",
     ]
     db = book
     db.expire_all()
@@ -196,11 +253,10 @@ def test_a_second_refresh_finds_nothing_new_then_the_next_month(book, sources, a
     assert months_of(again) == []
     assert again.run.summary["loan_rows"] == 0
     assert again.text().splitlines()[2:] == [
-        f"{F1}: refreshed",
-        f"{F2}: refreshed",
+        f"{F1}: refreshed, nothing new to load",
+        f"{F2}: refreshed, nothing new to load",
         f"{HYT}: skipped, not publicly reported",
     ]
-    assert [d.text() for d in again.deals][:1] == [f"{F1}: refreshed, nothing new to load"]
     clock.set_now(dt.datetime(2026, 10, 30, 9, 0, tzinfo=dt.UTC))
     later = service.refresh_book("olly", sources=sources)
     assert months_of(later) == [
@@ -275,6 +331,8 @@ def test_a_book_refresh_skips_a_deal_another_run_holds(book, sources):
         (F2, "skipped", f"run {holder} is already refreshing {F2}"),
         (HYT, "skipped", "not publicly reported"),
     ]
+    # Another run holding a deal is a problem worth seeing; a private deal is not.
+    assert report.run.status == "completed with problems"
     book.expire_all()
     assert holders(book) == {deal_id(book, F2): holder}  # the holder's claim is left alone
 
@@ -282,13 +340,20 @@ def test_a_book_refresh_skips_a_deal_another_run_holds(book, sources):
 def test_a_claim_without_its_lock_was_left_by_a_dead_run(seeded, sources):
     clock.set_now(TODAY)
     claims, dead = hold(seeded, F1)
+    at = {"deal": F1, "period": "September 2026"}
+    runs.record_progress(seeded, seeded.get_one(Run, dead), {"loan_rows": 0, "at": at})
+    seeded.commit()
     claims.close()  # the process died: its locks went with its connection; its row stayed
     report = service.refresh_deal("quinn", F1, sources=sources)
     assert report.run.status == "succeeded"
     seeded.expire_all()
     old = seeded.get_one(Run, dead)
     assert old.status == "failed"
-    assert old.summary == {"stopped": {"error": ABANDONED}}
+    assert old.summary == {
+        "loan_rows": 0,
+        "at": at,
+        "stopped": {"deal": F1, "period": "September 2026", "error": ABANDONED, "detail": None},
+    }
     assert count(seeded, RunClaim) == 0
 
 
@@ -315,6 +380,7 @@ def test_a_tape_for_another_month_than_planned_is_not_loaded(seeded, archive):
     """A filing registered without a period cannot be told apart by the registry."""
     actor = Actor("quinn", Role.QUANT)
     deal = get_or_create(seeded, F2, cik=CIKS[F2])
+    seeded.commit()
     planned = MonthFilings(
         AUG,
         FilingRef(accession(F2, SEP, "ABS-EE"), CIKS[F2], "ABS-EE", dt.date(2026, 9, 29), AUG),
@@ -344,12 +410,72 @@ def test_a_tape_for_another_month_than_planned_is_not_loaded(seeded, archive):
         f"ABS-EE reports another month: {accession(F2, SEP, 'ABS-EE')} reports September 2026"
     )
     assert str(MonthNotLoaded("no detail")) == "no detail"
+    seeded.rollback()
+
+    # The loaders' own refusals are translated by stage (`not_loaded`).
+    month = MonthFilings(
+        SEP,
+        FilingRef(accession(F2, SEP, "ABS-EE"), CIKS[F2], "ABS-EE", dt.date(2026, 9, 29), SEP),
+        FilingRef(accession(F2, SEP, "10-D"), CIKS[F2], "10-D", dt.date(2026, 9, 29), SEP),
+    )
+    args = {"actor": actor, "run_id": 1, "deal": deal, "month": month, "on": TODAY.date()}
+    garbage = Fetched(accession(F2, SEP, "ABS-EE"), "x.xml", b"not xml")
+    with pytest.raises(MonthNotLoaded) as unreadable:
+        service.load_month(seeded, tape=garbage, report=fetched("10-D"), **args)
+    assert unreadable.value.reason == "ABS-EE failed to parse"
+    seeded.rollback()
+    report = fetched("10-D")
+    load_report(
+        seeded,
+        user="quinn",
+        deal=F2,
+        accession=report.accession,
+        cik=CIKS[F2],
+        filing_date=dt.date(2026, 9, 29),
+        file_name="another-name.htm",
+        content=report.content,
+        period=SEP,
+    )
+    with pytest.raises(MonthNotLoaded) as refused_report:
+        service.load_month(seeded, tape=fetched("ABS-EE"), report=report, **args)
+    assert (refused_report.value.reason, refused_report.value.detail) == (
+        "10-D was refused",
+        f"{report.accession} was already parsed from another-name.htm, not {report.file_name}",
+    )
+
+
+# ---------------------------------------------------------------------------- one deal by name
+
+
+def test_a_refresh_or_backfill_of_an_unknown_deal_is_refused(registered, sources):
+    clock.set_now(TODAY)
+    with pytest.raises(UnknownDeal, match="^no deal named 'Fixture Trust 2026-F9'$"):
+        service.refresh_deal("quinn", "Fixture Trust 2026-F9", sources=sources)
+    with pytest.raises(UnknownDeal, match="^no deal named 'Fixture Trust 2026-F9'$"):
+        service.backfill("quinn", "Fixture Trust 2026-F9", AUG, SEP, sources=sources)
+    db = registered
+    db.expire_all()
+    assert by_name(db, "Fixture Trust 2026-F9") is None  # a typo registers nothing
+    assert count(db, Run) == 0
+    refused = db.scalars(
+        select(AuditEntry.action).where(
+            AuditEntry.outcome == "refused",
+            AuditEntry.reason == "no deal named 'Fixture Trust 2026-F9'",
+        )
+    ).all()
+    assert refused == ["refresh deal", "backfill"]
+    # A deal's other names reach it.
+    from cmbs.deals.tables import DealAlias
+
+    db.add(DealAlias(name="FT 2026-F2", deal_id=deal_id(db, F2)))
+    db.commit()
+    assert service.refresh_deal("quinn", "FT 2026-F2", sources=sources).deals[0].deal == F2
 
 
 # ---------------------------------------------------------------------------- backfill
 
 
-def test_a_backfill_loads_its_months_oldest_first(seeded, sources):
+def test_a_backfill_loads_its_months_oldest_first(registered, sources):
     clock.set_now(TODAY)
     report = service.backfill("quinn", F1, Period(2025, 11), Period(2026, 2), sources=sources)
     assert report.run.kind == "backfill"
@@ -359,8 +485,8 @@ def test_a_backfill_loads_its_months_oldest_first(seeded, sources):
         "January 2026",
         "February 2026",
     ]
-    seeded.expire_all()
-    assert service.loaded_months(seeded, deal_id(seeded, F1)) == {
+    registered.expire_all()
+    assert service.loaded_months(registered, deal_id(registered, F1)) == {
         Period(2025, 11),
         Period(2025, 12),
         Period(2026, 1),
@@ -371,141 +497,180 @@ def test_a_backfill_loads_its_months_oldest_first(seeded, sources):
     assert months_of(again) == [(F1, "March 2026", "loaded", None)]
 
 
-def test_a_backfill_past_the_filings_records_the_missing_months(seeded, sources):
+def test_a_backfill_stops_at_a_month_with_no_filings(registered, sources):
     clock.set_now(TODAY)
     report = service.backfill("quinn", F2, Period(2026, 7), AUG, sources=sources)
     assert months_of(report) == [
         (F2, "July 2026", "not loaded", "no ABS-EE or 10-D filed for July 2026"),
-        (F2, "August 2026", "loaded", None),
     ]
     assert report.run.status == "completed with problems"
-    seeded.expire_all()
-    found = month_status(seeded, deal_id=deal_id(seeded, F2), period=Period(2026, 7))
+    db = registered
+    db.expire_all()
+    found = month_status(db, deal_id=deal_id(db, F2), period=Period(2026, 7))
     assert (found.status, found.reason, found.run) == (
         "not loaded",
         "no ABS-EE or 10-D filed for July 2026",
         report.run.number,
     )
-    assert month_status(seeded, deal_id=deal_id(seeded, F2), period=AUG).status == "loaded"
-    never = month_status(seeded, deal_id=deal_id(seeded, F2), period=OCT)
+    never = month_status(db, deal_id=deal_id(db, F2), period=AUG)
     assert (never.status, never.reason, never.run) == ("not loaded", None, None)
 
 
-def test_a_backfill_that_ends_before_it_starts_is_refused(seeded, sources):
+def test_a_backfill_that_ends_before_it_starts_is_refused(registered, sources):
     with pytest.raises(BadRange, match="^a backfill from September 2026 to August 2026 ends"):
         service.backfill("quinn", F1, SEP, AUG, sources=sources)
-    seeded.expire_all()
-    assert count(seeded, Run) == 0
+    registered.expire_all()
+    assert count(registered, Run) == 0
     with pytest.raises(PermissionRefused):
         service.backfill("pat", F1, SEP, AUG, sources=sources)
+
+
+# ---------------------------------------------------------------------------- gaps and amendments
+
+
+def test_a_month_missing_a_filing_stops_the_deal_until_it_is_filed(registered, sources):
+    """August complete, September's 10-D not filed yet, October complete."""
+    db = registered
+    clock.set_now(dt.datetime(2026, 9, 1, 9, 0, tzinfo=dt.UTC))
+    first = service.refresh_deal("quinn", F2, sources=sources)
+    assert months_of(first) == [(F2, "August 2026", "loaded", None)]
+
+    late = Edited(
+        sources.edgar,
+        hidden={accession(F2, SEP, "10-D")},
+        added=[
+            amendment(F2, AUG, "ABS-EE/A", 1),
+            amendment(F2, OCT, "10-D/A", 2),
+        ],
+    )
+    clock.set_now(dt.datetime(2026, 11, 3, 9, 0, tzinfo=dt.UTC))
+    waiting = service.refresh_deal("quinn", F2, sources=Sources(late, sources.archive))
+    assert months_of(waiting) == [
+        (F2, "September 2026", "not loaded", "no 10-D filed for September 2026"),
+    ]
+    assert waiting.run.status == "completed with problems"
+    # August, loaded before, has an amendment the run does not load: the deal says so.
+    assert waiting.deals[0].notes == ("August 2026 has an ABS-EE/A that runs do not load yet",)
+    db.expire_all()
+    f2 = deal_id(db, F2)
+    assert service.loaded_months(db, f2) == {AUG}
+    assert month_status(db, deal_id=f2, period=AUG).status == "loaded"
+    assert month_status(db, deal_id=f2, period=SEP).reason == "no 10-D filed for September 2026"
+
+    # September's 10-D arrives: the next refresh loads September, then October.
+    filed = Edited(sources.edgar, added=[amendment(F2, OCT, "10-D/A", 2)])
+    caught_up = service.refresh_deal("quinn", F2, sources=Sources(filed, sources.archive))
+    assert months_of(caught_up) == [
+        (F2, "September 2026", "loaded", None),
+        (F2, "October 2026", "loaded", None),
+    ]
+    october = caught_up.run.summary["deals"][0]["months"][1]
+    assert october["notes"] == ["October 2026 has a 10-D/A that runs do not load yet"]
+    # The amendment registered by the run before stays in the registry, and is still not loaded.
+    assert caught_up.text().splitlines()[-3:] == [
+        "  October 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
+        "    October 2026 has a 10-D/A that runs do not load yet",
+        "  August 2026 has an ABS-EE/A that runs do not load yet",
+    ]
+    db.expire_all()
+    recorded = db.scalars(
+        select(RunMonth.detail).where(
+            RunMonth.run_id == caught_up.run.number, RunMonth.period == OCT.first_day
+        )
+    ).one()
+    assert recorded == "October 2026 has a 10-D/A that runs do not load yet"
 
 
 # ---------------------------------------------------------------------------- months that fail
 
 
-def failing_backfill(sources, archive, url: str, content: bytes | None):
-    if content is None:
-        archive.recorded.responses.pop(url)
-    else:
-        archive.replaced[url] = content
+def test_a_month_that_fails_stops_its_deal_and_leaves_nothing(registered, sources, archive):
+    archive.replaced[exhibit_url(F2, SEP, "10-D")] = NOT_A_REPORT
     clock.set_now(TODAY)
-    return service.backfill("quinn", F2, AUG, OCT, sources=sources)
-
-
-@pytest.mark.parametrize(
-    ("form", "content", "reason", "detail"),
-    [
-        (
-            "10-D",
-            NOT_A_REPORT,
-            "10-D failed to parse",
-            "the report's certificate administrator is not recognised",
-        ),
-        (
-            "ABS-EE",
-            b"not xml",
-            "ABS-EE failed to parse",
-            "the file is not XML: syntax error: line 1, column 0",
-        ),
-        ("10-D", None, "10-D could not be fetched", None),
-        ("ABS-EE", None, "ABS-EE could not be fetched", None),
-    ],
-)
-def test_a_month_that_fails_stops_its_deal(seeded, sources, archive, form, content, reason, detail):
-    report = failing_backfill(sources, archive, exhibit_url(F2, SEP, form), content)
+    report = service.backfill("quinn", F2, AUG, OCT, sources=sources)
+    detail = "the report's certificate administrator is not recognised"
     assert months_of(report) == [
         (F2, "August 2026", "loaded", None),
-        (F2, "September 2026", "not loaded", reason),
+        (F2, "September 2026", "not loaded", "10-D failed to parse"),
     ]
-    month = report.run.summary["deals"][0]["months"][1]
-    if detail is not None:
-        assert month["detail"] == detail
-    else:
-        assert month["detail"].startswith("no recording of https://www.sec.gov/Archives/")
     assert report.run.status == "failed"
     assert report.run.stopped == {
         "deal": F2,
         "period": "September 2026",
-        "error": reason,
-        "detail": month["detail"],
+        "error": "10-D failed to parse",
+        "detail": detail,
     }
-    seeded.expire_all()
-    f2 = deal_id(seeded, F2)
-    assert count(seeded, LoanTape, deal_id=f2, period=SEP.first_day) == 0
-    assert count(seeded, DistributionReport, deal_id=f2, period=SEP.first_day) == 0
-    assert count(seeded, LoanTape, deal_id=f2, period=AUG.first_day) == 1
-    assert month_status(seeded, deal_id=f2, period=SEP).reason == reason
-    # October was never tried: it waits for September.
-    assert count(seeded, RunMonth, period=OCT.first_day) == 0
-
-
-def test_a_report_for_another_month_is_not_loaded(seeded, sources, archive):
-    august = archive.recorded.get_bytes(exhibit_url(F2, AUG, "10-D"))
-    report = failing_backfill(sources, archive, exhibit_url(F2, SEP, "10-D"), august)
-    assert months_of(report)[1] == (
-        F2,
-        "September 2026",
-        "not loaded",
-        "10-D reports another month",
-    )
+    db = registered
+    db.expire_all()
+    f2 = deal_id(db, F2)
+    # The tape loaded before the report failed; it rolled back with the month.
+    assert count(db, LoanTape, deal_id=f2, period=SEP.first_day) == 0
+    assert count(db, DistributionReport, deal_id=f2, period=SEP.first_day) == 0
+    assert count(db, LoanTape, deal_id=f2, period=AUG.first_day) == 1
+    assert month_status(db, deal_id=f2, period=SEP).reason == "10-D failed to parse"
     assert (
-        report.run.summary["stopped"]["detail"]
-        == "the report is for August 2026, not September 2026"
+        db.scalars(select(RunMonth.detail).where(RunMonth.period == SEP.first_day)).one() == detail
     )
+    # October was never tried: it waits for September.
+    assert count(db, RunMonth, period=OCT.first_day) == 0
 
 
-def test_a_tape_for_another_month_is_refused(seeded, sources, archive):
-    august = archive.recorded.get_bytes(exhibit_url(F2, AUG, "ABS-EE"))
-    report = failing_backfill(sources, archive, exhibit_url(F2, SEP, "ABS-EE"), august)
-    assert months_of(report)[1] == (F2, "September 2026", "not loaded", "ABS-EE was refused")
-    assert report.run.summary["stopped"]["detail"] == (
-        f"{accession(F2, SEP, 'ABS-EE')} already has period "
-        "datetime.date(2026, 9, 1), not datetime.date(2026, 8, 1)"
-    )
+@pytest.mark.parametrize(
+    ("stage", "error", "reason"),
+    [
+        (Stage.FETCH_TAPE, MissingRecording("gone"), "ABS-EE could not be fetched"),
+        (Stage.FETCH_REPORT, OSError("gone"), "10-D could not be fetched"),
+        (Stage.LOAD_TAPE, MalformedTape("gone"), "ABS-EE failed to parse"),
+        (Stage.LOAD_TAPE, Refused("gone"), "ABS-EE was refused"),
+        (Stage.READ_REPORT, WrongPeriod("gone"), "10-D reports another month"),
+        (Stage.READ_REPORT, Refused("gone"), "10-D failed to parse"),
+        (Stage.READ_REPORT, ValueError("gone"), "10-D failed to parse"),
+        (Stage.LOAD_REPORT, Refused("gone"), "10-D was refused"),
+        (Stage.LOAD_REPORT, WrongPeriod("gone"), "10-D was refused"),
+        (Stage.BUILD_ALERTS, Refused("gone"), "alerts could not be built"),
+    ],
+)
+def test_each_failure_reads_in_the_run_summarys_words(stage, error, reason):
+    found = not_loaded(stage, error)
+    assert (found.reason, found.detail, str(found)) == (reason, "gone", f"{reason}: gone")
 
 
-def test_a_report_the_loader_refuses_is_not_loaded(seeded, sources, archive):
-    load_report(
-        seeded,
-        user="quinn",
-        deal=F2,
-        accession=accession(F2, SEP, "10-D"),
-        cik=CIKS[F2],
-        filing_date=dt.date(2026, 9, 29),
-        file_name="another-name.htm",
-        content=archive.recorded.get_bytes(exhibit_url(F2, SEP, "10-D")),
-        period=SEP,
+class Missing:
+    """An archive that recorded everything but the files of one filing."""
+
+    def __init__(self, archive: Archive, accession: str) -> None:
+        self.archive, self.accession = archive, accession
+
+    def get_bytes(self, url: str) -> bytes:
+        if self.accession.replace("-", "") in url:
+            raise MissingRecording(f"no recording of {url}")
+        return self.archive.get_bytes(url)
+
+
+@pytest.mark.parametrize(
+    ("form", "reason"),
+    [("ABS-EE", "ABS-EE could not be fetched"), ("10-D", "10-D could not be fetched")],
+)
+def test_a_filing_that_cannot_be_fetched_is_named(archive, form, reason):
+    month = MonthFilings(
+        SEP,
+        FilingRef(accession(F2, SEP, "ABS-EE"), CIKS[F2], "ABS-EE", dt.date(2026, 9, 29), SEP),
+        FilingRef(accession(F2, SEP, "10-D"), CIKS[F2], "10-D", dt.date(2026, 9, 29), SEP),
     )
-    seeded.commit()
-    clock.set_now(TODAY)
-    report = service.refresh_deal("quinn", F2, sources=sources)
-    assert months_of(report) == [(F2, "September 2026", "not loaded", "10-D was refused")]
-    assert report.run.summary["stopped"]["detail"] == (
-        f"{accession(F2, SEP, '10-D')} was already parsed from another-name.htm, "
-        "not fixture-trust-2026-f2_ex991-202609.htm"
-    )
-    seeded.expire_all()
-    assert count(seeded, LoanTape, deal_id=deal_id(seeded, F2)) == 0  # the tape rolled back
+    edgar = FirstRecorded(*(Replay(d) for d in EDGAR))
+    sources = Sources(edgar, Missing(archive, accession(F2, SEP, form)))
+    with pytest.raises(MonthNotLoaded) as failed:
+        service._fetch(sources, month)
+    assert failed.value.reason == reason
+    assert failed.value.detail is not None
+    assert failed.value.detail.startswith("no recording of https://www.sec.gov/Archives/")
+
+
+def test_run_month_detail_joins_the_error_and_the_notes():
+    plain = MonthResult(SEP, MonthOutcome.LOADED)
+    assert service.run_month_detail(plain) is None
+    noted = MonthResult(SEP, MonthOutcome.NOT_LOADED, "r", "the error", notes=("a", "b"))
+    assert service.run_month_detail(noted) == "the error; a; b"
 
 
 def test_a_failing_deal_fails_the_run_but_the_others_are_refreshed(book, sources, archive):
@@ -527,6 +692,8 @@ def test_a_failing_deal_fails_the_run_but_the_others_are_refreshed(book, sources
 
 
 def test_a_deal_discovery_cannot_find_fails_without_a_month(seeded, sources):
+    get_or_create(seeded, "Unrecorded Trust 2026-X")
+    seeded.commit()
     clock.set_now(TODAY)
     report = service.refresh_deal("quinn", "Unrecorded Trust 2026-X", sources=sources)
     assert report.run.status == "failed"
@@ -631,7 +798,7 @@ def test_loaded_months_get_their_alert_counts(book, sources, monkeypatch):
     assert [m.alerts for m in book.scalars(select(RunMonth))] == [2, 2]
 
 
-def test_a_month_whose_alerts_are_refused_is_not_loaded(seeded, sources, monkeypatch):
+def test_a_month_whose_alerts_are_refused_is_not_loaded(registered, sources, monkeypatch):
     class NoEarlierMonth(Refused):
         pass
 
@@ -647,8 +814,8 @@ def test_a_month_whose_alerts_are_refused_is_not_loaded(seeded, sources, monkeyp
     assert report.run.summary["stopped"]["detail"] == (
         "no month before September 2026 to compare with"
     )
-    seeded.expire_all()
-    assert count(seeded, LoanTape) == 0  # the month rolled back with its alerts
+    registered.expire_all()
+    assert count(registered, LoanTape) == 0  # the month rolled back with its alerts
 
 
 # ---------------------------------------------------------------------------- tracing
@@ -670,7 +837,7 @@ def test_a_loaded_value_traces_to_its_run(book, sources):
             NotLoaded, match=f"^no August 2026 values of loan 7 of {F1} by 2026-10-27$"
         ):
             runs.trace(db, "pat", deal=F1, loan="7", period=AUG)
-        with pytest.raises(UnknownDeal, match="^no deal named 'Nobody'$"):
+        with pytest.raises(PanelUnknownDeal, match="^no deal named 'Nobody'$"):
             runs.trace(db, "pat", deal="Nobody", loan="7", period=SEP)
         with pytest.raises(PermissionRefused, match="^operator may not read the panel$"):
             runs.trace(db, "olly", deal=F1, loan="7", period=SEP)

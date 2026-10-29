@@ -12,6 +12,7 @@ from cmbs import clock
 from cmbs.api.app import create_app
 from cmbs.book.service import PositionLine, load_positions
 from cmbs.cli import app as cli
+from cmbs.deals.service import get_or_create
 from cmbs.domain import money
 from cmbs.refresh.sources import ARCHIVE_REPLAY_ENV, EDGAR_REPLAY_ENV
 from tests.conftest import needs_db
@@ -56,9 +57,9 @@ def test_the_cli_refreshes_and_reads_runs(book):
         "14 loan rows loaded, alerts not built",
         "refresh book, succeeded",
         f"{F1}: refreshed",
-        "  September 2026: loaded, 7 loan rows",
+        "  September 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
         f"{F2}: refreshed",
-        "  September 2026: loaded, 7 loan rows",
+        "  September 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
         f"{HYT}: skipped, not publicly reported",
     ]
     listed = cli_run(
@@ -90,6 +91,9 @@ def test_the_cli_refreshes_and_reads_runs(book):
 
 
 def test_the_cli_backfills_and_a_failed_run_exits_1(seeded):
+    for name, cik in ((F2, 9_900_002), ("Unrecorded Trust 2026-X", None)):
+        get_or_create(seeded, name, cik=cik)
+    seeded.commit()
     clock.set_now(dt.datetime(2026, 10, 28, 9, 0, tzinfo=dt.UTC))
     done = cli_run(
         "refresh",
@@ -106,15 +110,17 @@ def test_the_cli_backfills_and_a_failed_run_exits_1(seeded):
     assert done.output.splitlines()[1:] == [
         "backfill, succeeded",
         f"{F2}: refreshed",
-        "  August 2026: loaded, 7 loan rows",
-        "  September 2026: loaded, 7 loan rows",
+        "  August 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
+        "  September 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
     ]
     failed = cli_run("refresh", "deal", "Unrecorded Trust 2026-X", "--user", "quinn")
     assert failed.exit_code == 1
     assert failed.output.splitlines()[1] == "refresh deal, failed"
+    unknown = cli_run("refresh", "deal", "Fixture Trust 2026-F9", "--user", "quinn")
+    assert (unknown.exit_code, unknown.output) == (1, "no deal named 'Fixture Trust 2026-F9'\n")
     deal = cli_run("refresh", "deal", F2, "--user", "quinn")
     assert deal.exit_code == 0
-    assert deal.output.splitlines()[2] == f"{F2}: refreshed"
+    assert deal.output.splitlines()[2] == f"{F2}: refreshed, nothing new to load"
     refused = cli_run("refresh", "book", "--user", "pat")
     assert (refused.exit_code, refused.output) == (1, "pm may not run refreshes and backfills\n")
     bad = cli_run(

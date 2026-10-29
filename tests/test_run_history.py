@@ -88,7 +88,13 @@ def test_the_text_lists_where_it_stopped_and_every_deal():
                 "outcome": "failed",
                 "reason": None,
                 "months": [
-                    {"period": "September 2026", "outcome": "loaded", "loan_rows": 7},
+                    {
+                        "period": "September 2026",
+                        "outcome": "loaded",
+                        "loan_rows": 7,
+                        "quarantined": 1,
+                        "flags": 2,
+                    },
                     {
                         "period": "October 2026",
                         "outcome": "not loaded",
@@ -110,7 +116,7 @@ def test_the_text_lists_where_it_stopped_and_every_deal():
         "refresh book, failed",
         "stopped at Fixture Trust 2026-F2, October 2026: 10-D failed to parse (not a report)",
         "Fixture Trust 2026-F2: failed",
-        "  September 2026: loaded, 7 loan rows",
+        "  September 2026: loaded, 7 loan rows, 1 loan quarantined, 2 reconciliation flags",
         "  October 2026: not loaded, 10-D failed to parse (not a report)",
         "  November 2026: not loaded, no ABS-EE filed for November 2026",
         "HYT 2024-RGCY: skipped, not publicly reported",
@@ -163,14 +169,28 @@ def test_progress_then_finish(seeded):
 @needs_db
 def test_abandon_keeps_what_the_run_recorded(seeded):
     run = started(seeded, dt.datetime(2026, 10, 27, 9, 0, tzinfo=UTC))
-    runs.record_progress(seeded, run, {"loan_rows": 7, "stopped": None})
+    at = {"deal": "Fixture Trust 2026-F2", "period": "October 2026"}
+    runs.record_progress(seeded, run, {"loan_rows": 7, "stopped": None, "at": at})
     runs.abandon(seeded, run, "stopped without finishing")
     assert run.status == "failed"
-    assert run.summary == {"loan_rows": 7, "stopped": {"error": "stopped without finishing"}}
+    assert run.summary == {
+        "loan_rows": 7,
+        "at": at,
+        "stopped": {
+            "deal": "Fixture Trust 2026-F2",
+            "period": "October 2026",
+            "error": "stopped without finishing",
+            "detail": None,
+        },
+    }
+    assert RunView.of(run).text().splitlines()[2] == (
+        "stopped at Fixture Trust 2026-F2, October 2026: stopped without finishing"
+    )
     other = started(seeded, dt.datetime(2026, 10, 27, 9, 0, tzinfo=UTC))
-    runs.record_progress(seeded, other, {"stopped": {"deal": "F1", "error": "old"}})
-    runs.abandon(seeded, other, "gone")
-    assert other.summary == {"stopped": {"deal": "F1", "error": "gone"}}
+    runs.abandon(seeded, other, "gone")  # it never recorded where it was
+    assert other.summary == {
+        "stopped": {"deal": None, "period": None, "error": "gone", "detail": None}
+    }
     with pytest.raises(RunAlreadyFinished):
         runs.abandon(seeded, other, "again")
 

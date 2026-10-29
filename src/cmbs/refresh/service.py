@@ -1,22 +1,25 @@
 """Refresh the book, one deal or a range of months, as a numbered run.
 
 A run, in order:
-1. checks the user may run refreshes, and finds its deals (the book's, or the one named);
+1. checks the user may run refreshes, and finds its deals: the book's, or the one named, which
+   must be a registered deal (a name that is not is refused, so a typo registers nothing);
 2. claims each deal (`cmbs.refresh.claims`). A deal another run holds refuses a run of that one
    deal, and is skipped by a book refresh, which still refreshes the rest;
 3. per deal, runs filing discovery as of today and registers what it found, under the run;
 4. skips a deal whose filings are not public monthly loan tapes (its coverage class says why,
    e.g. "not publicly reported");
-5. loads the months the plan names, oldest first (`cmbs.refresh.plan`).
+5. loads the months the plan names, oldest first, until one is not loaded
+   (`cmbs.refresh.plan`).
 
 A month loads completely or not at all. Its two files are fetched with no transaction open, then
 the loan tape and the distribution report are loaded, the report reconciled with the tape, and
 the month's alerts built, all in one transaction with the month's run record. If any of it
-fails, nothing of the month is stored and the month is recorded as not loaded, saying why.
+fails, nothing of the month is stored and the month is recorded as not loaded, saying why in
+the words of `not_loaded`.
 
-The run's summary is saved after each deal, so a run that stops early still shows what it did.
-An unexpected error (a bug, a lost database) finishes the run as failed, saying where it was,
-and is raised again.
+The run's summary is saved as it goes, with the deal and month it is on, so a run that stops
+early still shows what it did and where it was. An unexpected error (a bug, a lost database)
+finishes the run as failed, saying where it was, and is raised again.
 
 EDGAR is reached through `cmbs.refresh.sources`; tests replay recorded answers.
 """
@@ -26,6 +29,7 @@ import importlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from enum import StrEnum
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -39,7 +43,7 @@ from cmbs.book.service import book_as_of
 from cmbs.coverage.rules import Coverage
 from cmbs.coverage.service import classify_deal
 from cmbs.db import engine
-from cmbs.deals.service import get_or_create
+from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
 from cmbs.distribution.parse import parse_report
 from cmbs.distribution.reconcile import reconcile
@@ -98,6 +102,10 @@ class BadRange(Refused):
     """A backfill that ends before it starts."""
 
 
+class UnknownDeal(Refused):
+    """A refresh or backfill names a deal that is not registered."""
+
+
 class MonthNotLoaded(Exception):
     """The month could not be loaded: why, in the run summary's words, and the error behind it."""
 
@@ -105,6 +113,38 @@ class MonthNotLoaded(Exception):
         super().__init__(reason if detail is None else f"{reason}: {detail}")
         self.reason = reason
         self.detail = detail
+
+
+class Stage(StrEnum):
+    """The steps of loading a month that can fail for a reason that is not a bug."""
+
+    FETCH_TAPE = "fetch tape"
+    FETCH_REPORT = "fetch report"
+    LOAD_TAPE = "load tape"
+    READ_REPORT = "read report"
+    LOAD_REPORT = "load report"
+    BUILD_ALERTS = "build alerts"
+
+
+_REASONS = {
+    Stage.FETCH_TAPE: "ABS-EE could not be fetched",
+    Stage.FETCH_REPORT: "10-D could not be fetched",
+    Stage.LOAD_TAPE: "ABS-EE was refused",
+    Stage.READ_REPORT: "10-D failed to parse",
+    Stage.LOAD_REPORT: "10-D was refused",
+    Stage.BUILD_ALERTS: "alerts could not be built",
+}
+
+
+def not_loaded(stage: Stage, error: Exception) -> MonthNotLoaded:
+    """A failure at one stage of a month's load, in the run summary's words."""
+    if stage is Stage.LOAD_TAPE and isinstance(error, MalformedTape):
+        reason = "ABS-EE failed to parse"
+    elif stage is Stage.READ_REPORT and isinstance(error, WrongPeriod):
+        reason = "10-D reports another month"
+    else:
+        reason = _REASONS[stage]
+    return MonthNotLoaded(reason, str(error))
 
 
 @dataclass(frozen=True)
@@ -168,20 +208,16 @@ def load_month(
             actor=actor,
             run_id=run_id,
         )
-    except MalformedTape as error:
-        raise MonthNotLoaded("ABS-EE failed to parse", str(error)) from error
     except Refused as error:
-        raise MonthNotLoaded("ABS-EE was refused", str(error)) from error
+        raise not_loaded(Stage.LOAD_TAPE, error) from error
     if loaded.period != month.period:
         raise MonthNotLoaded(
             "ABS-EE reports another month", f"{tape.accession} reports {loaded.period}"
         )
     try:
         report_period(parse_report(report.content), month.period)
-    except WrongPeriod as error:
-        raise MonthNotLoaded("10-D reports another month", str(error)) from error
     except (Refused, ValueError) as error:
-        raise MonthNotLoaded("10-D failed to parse", str(error)) from error
+        raise not_loaded(Stage.READ_REPORT, error) from error
     try:
         load_report(
             db,
@@ -196,24 +232,31 @@ def load_month(
             run_id=run_id,
         )
     except Refused as error:
-        raise MonthNotLoaded("10-D was refused", str(error)) from error
+        raise not_loaded(Stage.LOAD_REPORT, error) from error
     reconciliation = reconcile(db, deal_id=deal.id, period=month.period, as_of=on)
     try:
         alerts = build_alerts(db, deal_id=deal.id, period=month.period, actor=actor, run_id=run_id)
     except Refused as error:
-        raise MonthNotLoaded("alerts could not be built", str(error)) from error
+        raise not_loaded(Stage.BUILD_ALERTS, error) from error
     return MonthResult(
         period=month.period,
         outcome=MonthOutcome.LOADED,
         loan_rows=0 if loaded.already_loaded else loaded.loans_loaded,
         quarantined=len(loaded.quarantined),
-        flags=len(reconciliation.disagreements),
+        flags=reconciliation.flags_raised,
         alerts=alerts,
+        notes=month.notes(),
     )
 
 
+def run_month_detail(result: MonthResult) -> str | None:
+    """What `app.run_month.detail` holds: the error behind a failure, then the month's notes."""
+    parts = [part for part in (result.detail, *result.notes) if part]
+    return "; ".join(parts) or None
+
+
 def _record_month(
-    db: Session, run_id: int, deal_id: int, month: MonthFilings | None, result: MonthResult
+    db: Session, run_id: int, deal_id: int, month: MonthFilings, result: MonthResult
 ) -> None:
     db.add(
         RunMonth(
@@ -222,9 +265,9 @@ def _record_month(
             period=result.period.first_day,
             outcome=result.outcome.value,
             reason=result.reason,
-            detail=result.detail,
-            tape_accession=month.tape.accession if month and month.tape else None,
-            report_accession=month.report.accession if month and month.report else None,
+            detail=run_month_detail(result),
+            tape_accession=month.tape.accession if month.tape else None,
+            report_accession=month.report.accession if month.report else None,
             loan_rows=result.loan_rows,
             alerts=result.alerts,
             at=clock.now(),
@@ -269,11 +312,32 @@ def month_status(db: Session, *, deal_id: int, period: Period) -> MonthStatus:
 
 @dataclass
 class Progress:
-    """Where the run is, for the summary of a run that stops on an unexpected error."""
+    """What the run has done and where it is, saved to the run as it goes."""
 
+    run_id: int
     deal: str | None = None
     period: Period | None = None
     done: list[DealResult] = field(default_factory=list)
+
+    def at(self, deal: str | None, period: Period | None) -> None:
+        self.deal, self.period = deal, period
+        self.save()
+
+    def finished(self, result: DealResult) -> None:
+        self.done.append(result)
+        self.save()
+
+    def summary(self) -> dict:
+        summary = plan.summary(self.done)
+        summary["at"] = {
+            "deal": self.deal,
+            "period": self.period.label if self.period else None,
+        }
+        return summary
+
+    def save(self) -> None:
+        with engine.session() as db:
+            runs.record_progress(db, db.get_one(Run, self.run_id), self.summary())
 
 
 def _filing_refs(db: Session, deal_id: int, on: dt.date) -> list[FilingRef]:
@@ -312,7 +376,7 @@ def _fetch(sources: Sources, month: MonthFilings) -> tuple[Fetched, Fetched]:
             sources.archive, cik=month.tape.cik, accession=month.tape.accession, exhibit="EX-102"
         )
     except FETCH_ERRORS as error:
-        raise MonthNotLoaded("ABS-EE could not be fetched", str(error)) from error
+        raise not_loaded(Stage.FETCH_TAPE, error) from error
     try:
         report = fetch_exhibit(
             sources.archive,
@@ -321,52 +385,24 @@ def _fetch(sources: Sources, month: MonthFilings) -> tuple[Fetched, Fetched]:
             exhibit="EX-99.1",
         )
     except FETCH_ERRORS as error:
-        raise MonthNotLoaded("10-D could not be fetched", str(error)) from error
+        raise not_loaded(Stage.FETCH_REPORT, error) from error
     return tape, report
 
 
-def _not_loaded(period: Period, error: MonthNotLoaded) -> MonthResult:
-    return MonthResult(period, MonthOutcome.NOT_LOADED, error.reason, error.detail, failed=True)
-
-
-def refresh_one(
+def _try_month(
     *,
     actor: Actor,
     run_id: int,
     deal: Deal,
-    planner: Planner,
+    month: MonthFilings,
     sources: Sources,
     on: dt.date,
-    progress: Progress,
-) -> DealResult:
-    """Discover, classify and load one claimed deal. Each step commits on its own."""
-    progress.deal, progress.period = deal.name, None
-    try:
-        found = discover(sources.edgar, deal.name, on)
-    except FETCH_ERRORS as error:
-        return DealResult(deal.name, DealOutcome.FAILED, f"filing discovery failed: {error}")
-    try:
-        with engine.session() as db:
-            _register(db, found, actor, run_id)
-            registered = db.get_one(Deal, deal.id, populate_existing=True)
-            coverage = classify_deal(db, registered, on)
-            available = plan.monthly_filings(_filing_refs(db, deal.id, on))
-            months = planner(available, loaded_months(db, deal.id))
-    except Refused as error:
-        return DealResult(deal.name, DealOutcome.FAILED, f"filing discovery failed: {error}")
-    if coverage.coverage is not Coverage.FULL:
-        return DealResult(deal.name, DealOutcome.SKIPPED, coverage.coverage.value)
-    results: list[MonthResult] = []
-    for period in months:
-        progress.period = period
-        month = available.get(period, MonthFilings(period))
-        missing = month.missing()
-        if missing is not None:
-            result = MonthResult(period, MonthOutcome.NOT_LOADED, missing)
-            with engine.session() as db:
-                _record_month(db, run_id, deal.id, month, result)
-            results.append(result)
-            continue
+) -> MonthResult:
+    """One month, loaded or not, with its run record written either way."""
+    missing = month.missing()
+    if missing is not None:
+        result = MonthResult(month.period, MonthOutcome.NOT_LOADED, missing, notes=month.notes())
+    else:
         try:
             tape, report = _fetch(sources, month)
             with engine.session() as db:
@@ -381,14 +417,66 @@ def refresh_one(
                     on=on,
                 )
                 _record_month(db, run_id, deal.id, month, result)
+            return result
         except MonthNotLoaded as error:
-            result = _not_loaded(period, error)
-            with engine.session() as db:
-                _record_month(db, run_id, deal.id, month, result)
-            results.append(result)
-            break  # later months wait for this one: see cmbs.refresh.plan
+            result = MonthResult(
+                month.period,
+                MonthOutcome.NOT_LOADED,
+                error.reason,
+                error.detail,
+                failed=True,
+                notes=month.notes(),
+            )
+    with engine.session() as db:
+        _record_month(db, run_id, deal.id, month, result)
+    return result
+
+
+def refresh_one(
+    *,
+    actor: Actor,
+    run_id: int,
+    deal: Deal,
+    planner: Planner,
+    sources: Sources,
+    on: dt.date,
+    progress: Progress,
+) -> DealResult:
+    """Discover, classify and load one claimed deal. Each step commits on its own."""
+    progress.at(deal.name, None)
+    try:
+        found = discover(sources.edgar, deal.name, on)
+    except FETCH_ERRORS as error:
+        return DealResult(deal.name, DealOutcome.FAILED, f"filing discovery failed: {error}")
+    try:
+        with engine.session() as db:
+            _register(db, found, actor, run_id)
+            registered = db.get_one(Deal, deal.id, populate_existing=True)
+            coverage = classify_deal(db, registered, on)
+            available = plan.monthly_filings(_filing_refs(db, deal.id, on))
+            loaded = loaded_months(db, deal.id)
+    except Refused as error:
+        return DealResult(deal.name, DealOutcome.FAILED, f"filing discovery failed: {error}")
+    if coverage.coverage is not Coverage.FULL:
+        return DealResult(deal.name, DealOutcome.SKIPPED, coverage.coverage.value)
+    results: list[MonthResult] = []
+    for period in planner(available, loaded):
+        progress.at(deal.name, period)
+        month = available.get(period, MonthFilings(period))
+        result = _try_month(
+            actor=actor, run_id=run_id, deal=deal, month=month, sources=sources, on=on
+        )
         results.append(result)
-    return plan.deal_outcome(deal.name, results)
+        if result.outcome is MonthOutcome.NOT_LOADED:
+            break  # the deal's months load in order: later ones wait for this one
+    tried = {result.period for result in results}
+    notes = [
+        note
+        for period, month in available.items()
+        if period in loaded and period not in tried
+        for note in month.notes()
+    ]
+    return plan.deal_outcome(deal.name, results, notes)
 
 
 # ---------------------------------------------------------------------------- runs
@@ -400,6 +488,14 @@ def _book_deals(db: Session, on: dt.date) -> list[Deal]:
         raise EmptyBook(f"no positions file is dated on or before {on.isoformat()}")
     ids = sorted({held.deal_id for held in book.positions})
     return sorted((db.get_one(Deal, deal_id) for deal_id in ids), key=lambda d: d.name)
+
+
+def _named(db: Session, name: str) -> list[Deal]:
+    """The registered deal a name refers to, by its own name or an alias; never a new one."""
+    deal = by_name(db, name)
+    if deal is None:
+        raise UnknownDeal(f"no deal named {name!r}")
+    return [deal]
 
 
 def _run(
@@ -436,7 +532,9 @@ def _run(
                 )
         with engine.session() as db:
             skipped = {
-                deal.id: DealResult(deal.name, DealOutcome.SKIPPED, held_message(db, deal))
+                deal.id: DealResult(
+                    deal.name, DealOutcome.SKIPPED, held_message(db, deal), problem=True
+                )
                 for deal in held
             }
             run = runs.start_run(db, kind=kind, started_by=user)
@@ -451,23 +549,23 @@ def _run(
                 subject_key=str(run.id),
                 detail={"kind": kind, "deals": [deal.name for deal in deals]},
             )
-        progress = Progress()
+        progress = Progress(run.id)
         try:
             for deal in deals:
-                result = skipped.get(deal.id) or refresh_one(
-                    actor=actor,
-                    run_id=run.id,
-                    deal=deal,
-                    planner=planner,
-                    sources=sources,
-                    on=on,
-                    progress=progress,
+                progress.finished(
+                    skipped.get(deal.id)
+                    or refresh_one(
+                        actor=actor,
+                        run_id=run.id,
+                        deal=deal,
+                        planner=planner,
+                        sources=sources,
+                        on=on,
+                        progress=progress,
+                    )
                 )
-                progress.done.append(result)
-                with engine.session() as db:
-                    runs.record_progress(db, db.get_one(Run, run.id), plan.summary(progress.done))
         except BaseException as error:
-            _crashed(run.id, progress, error)
+            _crashed(progress, error)
             raise
         with engine.session() as db:
             finished = runs.finish_run(
@@ -483,7 +581,7 @@ def _run(
     return RunReport(view, tuple(progress.done))
 
 
-def _crashed(run_id: int, progress: Progress, error: BaseException) -> None:
+def _crashed(progress: Progress, error: BaseException) -> None:
     """Finish the run as failed, saying where it was, then let the error go on."""
     summary = plan.summary(progress.done)
     summary["stopped"] = {
@@ -493,7 +591,7 @@ def _crashed(run_id: int, progress: Progress, error: BaseException) -> None:
         "detail": None,
     }
     with engine.session() as db:
-        run = db.get_one(Run, run_id)
+        run = db.get_one(Run, progress.run_id)
         runs.finish_run(db, run, status=runs.FAILED, summary=summary)
         release_claims(db, run)
 
@@ -511,11 +609,11 @@ def refresh_book(user: str, *, sources: Sources | None = None) -> RunReport:
 
 
 def refresh_deal(user: str, deal: str, *, sources: Sources | None = None) -> RunReport:
-    """Bring one deal up to date. A name not registered yet is registered, as positions are."""
+    """Bring one registered deal up to date."""
     return _run(
         user,
         kind=REFRESH_DEAL,
-        pick=lambda db: [get_or_create(db, deal)],
+        pick=lambda db: _named(db, deal),
         planner=plan.refresh_months,
         sources=sources,
         one_deal=True,
@@ -525,7 +623,8 @@ def refresh_deal(user: str, deal: str, *, sources: Sources | None = None) -> Run
 def backfill(
     user: str, deal: str, start: Period, end: Period, *, sources: Sources | None = None
 ) -> RunReport:
-    """Load every month of a deal from `start` to `end` that is not loaded yet, oldest first."""
+    """Load every month of a registered deal from `start` to `end` that is not loaded yet,
+    oldest first."""
     if end < start:
         with engine.session() as db:
             actor = authorize(db, user, Action.RUN_REFRESH)
@@ -541,7 +640,7 @@ def backfill(
     return _run(
         user,
         kind=BACKFILL,
-        pick=lambda db: [get_or_create(db, deal)],
+        pick=lambda db: _named(db, deal),
         planner=lambda _available, loaded: plan.backfill_months(start, end, loaded),
         sources=sources,
         one_deal=True,
