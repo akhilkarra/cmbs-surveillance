@@ -23,7 +23,6 @@ from cmbs.alerts.rules import (
     format_threshold,
     missing,
     new_loan,
-    normalize,
     paid_through,
     payment_status,
     sentences,
@@ -422,10 +421,6 @@ def test_sentences_keep_dates_decimals_and_percentages_whole():
 )
 def test_sentence_boundaries(text, expected):
     assert sentences(text) == expected
-
-
-def test_normalize_collapses_whitespace():
-    assert normalize("  a \n\t b  ") == "a b"
 
 
 def test_added_sentences_are_the_new_ones_in_order_each_once():
