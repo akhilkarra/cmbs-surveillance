@@ -56,7 +56,14 @@ export function commentValue(changes: Partial<CommentValue> = {}): CommentValue 
       { label: "evidence checked", outcome: "passed" },
     ],
     review_reason: null,
+    model_value: "maturity extension",
     decided_by: null,
+    decided_at: null,
+    overridden_by: null,
+    overridden_at: null,
+    override_reason: null,
+    declined_reason: null,
+    decision: null,
     ...changes,
   };
 }

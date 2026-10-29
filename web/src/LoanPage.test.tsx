@@ -140,8 +140,10 @@ describe("LoanContent", () => {
       <LoanContent
         data={loanPage({
           flags: [
-            { check: "reconciliation", message: "paid-through date differs" },
-            { check: "text vs tape", message: "transfer date differs" },
+            { id: 3, check: "reconciliation", message: "paid-through date differs" },
+            { id: 9, check: "text vs tape", message: "transfer date differs" },
+            // The same check can flag the same words twice (two loads): still two flags.
+            { id: 11, check: "text vs tape", message: "transfer date differs" },
           ],
           alerts: [
             {
@@ -158,7 +160,11 @@ describe("LoanContent", () => {
       within(screen.getByTestId("flags"))
         .getAllByRole("listitem")
         .map((item) => item.textContent),
-    ).toEqual(["reconciliation paid-through date differs", "text vs tape transfer date differs"]);
+    ).toEqual([
+      "reconciliation paid-through date differs",
+      "text vs tape transfer date differs",
+      "text vs tape transfer date differs",
+    ]);
     const [alert] = within(screen.getByTestId("loan-alerts")).getAllByRole("listitem");
     expect(alert?.textContent).toBe(
       "medium workout strategy changed: to be determined to full payoff new",
@@ -182,15 +188,116 @@ describe("LoanContent", () => {
     const request = row("comment-values", "borrower_request");
     expect(within(request).queryByTestId("sentence-number")).toBeNull();
   });
+
+  function withValues(...values: ReturnType<typeof commentValue>[]) {
+    const page = loanPage();
+    return { ...page, comment: page.comment && { ...page.comment, values } };
+  }
+
+  it("shows an override as a person's decision: who, when, why and what the model read", () => {
+    const decision =
+      'overridden by alex on 2026-10-02: new terms, not only time; the model read "maturity extension"';
+    render(
+      <LoanContent
+        data={withValues(
+          commentValue({
+            status: "overridden",
+            value: "loan modification",
+            overridden_by: "alex",
+            overridden_at: "2026-10-02T09:30:00Z",
+            override_reason: "new terms, not only time",
+            checks: [
+              { label: "overridden", outcome: "decided" },
+              { label: "evidence checked", outcome: "passed" },
+            ],
+            decision,
+          }),
+        )}
+      />,
+    );
+    const request = row("comment-values", "borrower_request");
+    expect(within(request).getByTestId("value").textContent).toBe("loan modification");
+    expect(within(request).getByTestId("decision").textContent).toBe(decision);
+    expect(within(request).getByTestId("decision").className).toBe("decision");
+    expect(checks(request)).toEqual([
+      ["overridden", "decided"],
+      ["evidence checked", "passed"],
+    ]);
+  });
+
+  it("shows who reviewed a value and when", () => {
+    render(
+      <LoanContent
+        data={withValues(
+          commentValue({
+            status: "human-reviewed",
+            decided_by: "alex",
+            decided_at: "2026-10-02T09:30:00Z",
+            decision: "human-reviewed by alex on 2026-10-02",
+          }),
+        )}
+      />,
+    );
+    const request = row("comment-values", "borrower_request");
+    expect(within(request).getByTestId("decision").textContent).toBe(
+      "human-reviewed by alex on 2026-10-02",
+    );
+  });
+
+  it("shows a declined field as not determinable, with who and why", () => {
+    const decision = "declined as not determinable by alex on 2026-10-02: no strategy named";
+    render(
+      <LoanContent
+        data={withValues(
+          commentValue({
+            field: "workout_strategy",
+            status: "not determinable",
+            value: null,
+            sentence: null,
+            evidence: null,
+            checks: [],
+            decided_by: "alex",
+            declined_reason: "no strategy named",
+            decision,
+          }),
+        )}
+      />,
+    );
+    const workout = row("comment-values", "workout_strategy");
+    expect(within(workout).getByTestId("status").textContent).toBe("not determinable");
+    expect(within(workout).queryByTestId("value")).toBeNull();
+    expect(within(workout).getByTestId("decision").textContent).toBe(decision);
+  });
+
+  it("shows no decision line for a value nobody settled by hand", () => {
+    render(<LoanContent data={withValues(commentValue())} />);
+    expect(within(row("comment-values", "borrower_request")).queryByTestId("decision")).toBeNull();
+  });
 });
 
 describe("FinancialsBlock", () => {
-  it("shows the end date and the age at period end", () => {
+  it("shows the end date and the API's words for their age", () => {
     render(<FinancialsBlock financials={loanPage().financials} />);
     expect(screen.getByTestId("financials-end").textContent).toBe("2024-12-31");
-    expect(screen.getByTestId("financials-age").textContent).toBe("619 days old at period end");
     expect(screen.getByTestId("financials").textContent).toBe(
-      "Most recent financialsThrough 2024-12-31, 619 days old at period end",
+      "Most recent financialsThrough 2024-12-31: 619 days old at period end, 637 days old at filing",
+    );
+  });
+
+  it("shows financials ending after the period end as the API words it, without arithmetic", () => {
+    render(
+      <FinancialsBlock
+        financials={{
+          start: "2026-01-01",
+          end: "2026-12-31",
+          days_at_period_end: -111,
+          days_at_filing: null,
+          status: "financials end 2026-12-31, after the period end",
+        }}
+      />,
+    );
+    expect(screen.getByTestId("financials-age").textContent).toBe(
+      "financials end 2026-12-31, after the period end",
     );
   });
 

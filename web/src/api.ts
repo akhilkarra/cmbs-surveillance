@@ -40,10 +40,11 @@ export interface BookPageData {
   note: string | null;
 }
 
-/** One thing that verified a value; `outcome` is "passed", "failed" or "not checked". */
+/** One thing that verified a value: a check that "passed", "failed" or was "not checked", or a
+ *  person's decision ("decided"). */
 export interface Check {
   label: string;
-  outcome: "passed" | "failed" | "not checked";
+  outcome: "passed" | "failed" | "not checked" | "decided";
 }
 
 export interface FilingSource {
@@ -85,7 +86,15 @@ export interface CommentValue {
   evidence: string | null;
   checks: Check[];
   review_reason: string | null;
+  model_value: string | null;
   decided_by: string | null;
+  decided_at: string | null;
+  overridden_by: string | null;
+  overridden_at: string | null;
+  override_reason: string | null;
+  declined_reason: string | null;
+  /** Who settled the value by hand, when and why; null when nobody did. */
+  decision: string | null;
 }
 
 export interface CommentSection {
@@ -99,6 +108,7 @@ export interface CommentSection {
 }
 
 export interface LoanFlag {
+  id: number;
   check: string;
   message: string;
 }

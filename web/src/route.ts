@@ -9,8 +9,20 @@ export type Route =
   | { page: "loan"; deal: string; loan: string; month: string | null }
   | { page: "missing"; hash: string };
 
+function decoded(hash: string): string[] | null {
+  try {
+    return hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+  } catch {
+    return null; // a malformed escape such as "%E0%A4%A"
+  }
+}
+
 export function parseRoute(hash: string): Route {
-  const [page, ...rest] = hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
+  const parts = decoded(hash);
+  if (parts === null) {
+    return { page: "missing", hash };
+  }
+  const [page, ...rest] = parts;
   if ((page === "" || page === "book") && rest.length <= 1) {
     return { page: "book", month: rest[0] ?? null };
   }

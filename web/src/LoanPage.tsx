@@ -8,7 +8,7 @@ import type {
   TapeValue,
 } from "./api";
 import { loanPath } from "./api";
-import { financialsAgeLabel, formatValue } from "./format";
+import { formatValue, NOT_REPORTED } from "./format";
 import { Loadable } from "./Loadable";
 import { bookHref } from "./route";
 import { useApi } from "./useApi";
@@ -50,16 +50,14 @@ function TapeRow({ value, loaded }: { value: TapeValue; loaded: string }) {
   );
 }
 
+/** The financials' end and, in the API's words, how old they were (or why there is no age). */
 export function FinancialsBlock({ financials }: { financials: Financials }) {
-  const age = financials.days_at_period_end;
   return (
     <div className="financials" data-testid="financials">
       <h3>Most recent financials</h3>
       <p>
-        Through <span data-testid="financials-end">{financials.end ?? "not reported"}</span>,{" "}
-        <span data-testid="financials-age">
-          {age === null ? financials.status : financialsAgeLabel(age)}
-        </span>
+        Through <span data-testid="financials-end">{financials.end ?? NOT_REPORTED}</span>:{" "}
+        <span data-testid="financials-age">{financials.status}</span>
       </p>
     </div>
   );
@@ -80,6 +78,11 @@ function CommentRow({ value }: { value: CommentValue }) {
           </span>
         )}
         {value.review_reason && <span className="reason">{value.review_reason}</span>}
+        {value.decision && (
+          <span className="decision" data-testid="decision">
+            {value.decision}
+          </span>
+        )}
       </td>
       <td>
         {value.sentence !== null && (
@@ -188,7 +191,7 @@ export function LoanContent({ data }: { data: LoanPageData }) {
         ) : (
           <ul className="flags" data-testid="flags">
             {data.flags.map((flag) => (
-              <li key={`${flag.check}: ${flag.message}`}>
+              <li key={flag.id}>
                 <strong>{flag.check}</strong> {flag.message}
               </li>
             ))}

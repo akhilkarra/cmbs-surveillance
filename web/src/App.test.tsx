@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, ChooseUser, Page } from "./App";
 import { bookPage, F1, loanPage } from "./test-data";
@@ -45,11 +45,48 @@ describe("Page", () => {
   it("says when nothing lives at an address", () => {
     render(<Page hash="#/runs" user="pat" />);
     expect(screen.getByTestId("missing").textContent).toBe(
-      "No such pageNothing lives at #/runs. Open the book's alerts.",
+      "Page not foundNothing lives at #/runs. Open the book's alerts.",
     );
     expect(screen.getByRole("link", { name: "Open the book's alerts" }).getAttribute("href")).toBe(
       "#/book",
     );
+  });
+
+  it("says a malformed address is not found instead of blanking the app", () => {
+    render(<Page hash="#/loan/%E0%A4%A/2" user="pat" />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Page not found");
+  });
+});
+
+describe("App's error boundary", () => {
+  it("shows why a page failed to draw, and recovers on another page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify(
+              bookPage({ rows: [{ ...bookPage().rows[0], exposure: "lots" } as never] }),
+            ),
+          ),
+      ),
+    );
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    go("/?user=pat#/book/2026-09");
+    render(<App />);
+    const failed = await screen.findByTestId("page-error");
+    expect(within(failed).getByRole("heading").textContent).toBe("This page could not be shown");
+    expect(within(failed).getByRole("alert").textContent).toBe(
+      "not an amount in dollars and cents: lots",
+    );
+    expect(within(failed).getByRole("link").getAttribute("href")).toBe("#/book");
+    expect(screen.getByText("Reading as pat")).toBeTruthy();
+    quiet.mockRestore();
+    act(() => {
+      window.location.hash = "#/runs";
+    });
+    await waitFor(() => expect(screen.getByTestId("missing")).toBeTruthy());
+    expect(screen.queryByTestId("page-error")).toBeNull();
   });
 });
 

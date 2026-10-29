@@ -18,14 +18,6 @@ export function formatRatio(ratio: string): string {
   return `${ratio}x`;
 }
 
-/** 619 -> "619 days old at period end" */
-export function financialsAgeLabel(days: number): string {
-  if (!Number.isInteger(days) || days < 0) {
-    throw new RangeError(`financials age must be a whole number of days >= 0, got ${days}`);
-  }
-  return `${days} ${days === 1 ? "day" : "days"} old at period end`;
-}
-
 /** A value the filing does not report is "not reported", never zero. */
 export const NOT_REPORTED = "not reported";
 

@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { BookPage } from "./BookPage";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { LoanPage } from "./LoanPage";
 import { parseRoute, userFrom } from "./route";
 
@@ -43,7 +44,7 @@ export function Page({ hash, user }: { hash: string; user: string }) {
     default:
       return (
         <main className="page" data-testid="missing">
-          <h1>No such page</h1>
+          <h1>Page not found</h1>
           <p>
             Nothing lives at {route.hash}. <a href="#/book">Open the book's alerts</a>.
           </p>
@@ -69,7 +70,13 @@ export function App() {
         </a>
         {user && <span className="reader">Reading as {user}</span>}
       </header>
-      {user ? <Page hash={hash} user={user} /> : <ChooseUser onChoose={choose} />}
+      {user ? (
+        <ErrorBoundary resetKey={hash}>
+          <Page hash={hash} user={user} />
+        </ErrorBoundary>
+      ) : (
+        <ChooseUser onChoose={choose} />
+      )}
     </>
   );
 }

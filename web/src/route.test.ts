@@ -39,6 +39,9 @@ describe("parseRoute", () => {
       "#/2026-09",
       // Only a leading "#/" is a route's start.
       "book/#/2026-09",
+      // A malformed escape cannot be decoded.
+      "#/loan/%E0%A4%A/2",
+      "#/book/%",
     ]) {
       expect(parseRoute(hash)).toEqual({ page: "missing", hash });
     }
