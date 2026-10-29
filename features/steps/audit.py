@@ -2,8 +2,9 @@
 change naming its run. The log's reads and its append-only refusal are in governance.py.
 
 Loan 2's borrower request waits for review after its September 2026 comment is extracted on
-2026-10-01 (`tests/test_review_world.py`); the reviewer decides it on 2026-10-02. The refresh
-loads the fixture deal's September 2026 loan tape (tests/fixtures/schedule_al_minimal.xml).
+2026-10-01 (`tests/test_review_world.py`); the reviewer decides it on 2026-10-02. The refresh is
+`cmbs.refresh`'s backfill of September 2026, against the recorded EDGAR answers the operations
+scenarios use (tests/fixtures/refresh/).
 """
 
 import datetime as dt
@@ -12,26 +13,28 @@ from behave import given, then, use_step_matcher, when  # pyright: ignore[report
 from sqlalchemy import select
 
 from cmbs import clock
-from cmbs.access.roles import Action
-from cmbs.access.service import authorize
 from cmbs.audit.service import LOAN, loan_history, loan_key, read_log
+from cmbs.deals.service import get_or_create
 from cmbs.domain import Period
+from cmbs.edgar.replay import Replay
 from cmbs.extraction import fields
 from cmbs.extraction.service import comment_view, decide_review, open_review_items
-from cmbs.runs.service import finish_run, start_run
-from cmbs.tape.service import LOAD_ACTION, load_tape
-from cmbs.tape.tables import LoanPeriod
+from cmbs.refresh import service as refresh
+from cmbs.refresh.sources import ArchiveReplay, FirstRecorded, Sources
+from cmbs.tape.service import LOAD_ACTION
+from cmbs.tape.tables import LoanPeriod, LoanTape
 from cmbs.testing.bdd import attempt, in_session
-from cmbs.testing.world import FIXTURE_CIK, FIXTURE_DEAL, set_next_run_number
+from cmbs.testing.world import FIXTURE_CIKS, FIXTURE_DEAL, set_next_run_number
 from tests.conftest import FIXTURES
 from tests.test_review_world import SEPTEMBER, loan_two
 
 use_step_matcher("re")
 
 DECIDED_AT = dt.datetime(2026, 10, 2, 9, 30, tzinfo=dt.UTC)
-TAPE = FIXTURES / "schedule_al_minimal.xml"
-TAPE_ACCESSION = "0009900001-26-000042"
-TAPE_FILED = dt.date(2026, 9, 29)
+EDGAR = (FIXTURES / "refresh" / "edgar", FIXTURES / "edgar")
+ARCHIVE = FIXTURES / "refresh" / "archive"
+# After the September 2026 filings, before October's.
+REFRESH_TODAY = dt.datetime(2026, 10, 28, 9, tzinfo=dt.UTC)
 RISK = "rae"
 
 
@@ -90,51 +93,51 @@ def step_audit_entry_for_loan(context, loan, user, field, before, after, reason)
     r'for "(?P<deal>[^"]+)"'
 )
 def step_refresh_run_loads(context, number, user, month, deal):
-    clock.set_now(dt.datetime(2026, 9, 30, 6, tzinfo=dt.UTC))
+    clock.set_now(REFRESH_TODAY)
     context.deal = deal
+    period = Period.parse(month)
+    in_session(lambda db: get_or_create(db, deal, cik=FIXTURE_CIKS[deal]))
+    in_session(lambda db: set_next_run_number(db, int(number)))
+    sources = Sources(
+        edgar=FirstRecorded(*(Replay(directory) for directory in EDGAR)),
+        archive=FirstRecorded(ArchiveReplay(ARCHIVE)),
+    )
+    report = refresh.backfill(user, deal, period, period, sources=sources)
+    assert (report.run.number, report.run.started_by) == (int(number), user), report.run
+    assert report.run.status == "succeeded", report.text()
 
-    def refresh(db):
-        set_next_run_number(db, int(number))
-        actor = authorize(db, user, Action.RUN_REFRESH)
-        run = start_run(db, kind="refresh", started_by=user)
-        summary = load_tape(
-            db,
-            deal=deal,
-            content=TAPE.read_bytes(),
-            file_name=TAPE.name,
-            accession=TAPE_ACCESSION,
-            filing_date=TAPE_FILED,
-            cik=FIXTURE_CIK,
-            actor=actor,
-            run_id=run.id,
-        )
-        finish_run(db, run, status="succeeded", summary={"loans loaded": summary.loans_loaded})
-        return run.id, summary
+    def tape(db):
+        found = db.scalars(
+            select(LoanTape).where(
+                LoanTape.deal_id == get_or_create(db, deal).id,
+                LoanTape.period == period.first_day,
+            )
+        ).one()
+        return found.accession
 
-    context.run_id, context.loaded = in_session(refresh)
-    assert context.run_id == int(number), context.run_id
-    assert context.loaded.period == Period.parse(month), context.loaded.period
+    context.tape_accession = in_session(tape)
+    context.period = period
 
 
 @then(
     r'every loan row it writes has an audit entry naming run (?P<number>\d+) and "(?P<user>[^"]+)"'
 )
 def step_every_row_audited(context, number, user):
+    accession = context.tape_accession
     rows = in_session(
         lambda db: list(
-            db.scalars(select(LoanPeriod.loan).where(LoanPeriod.accession == TAPE_ACCESSION))
+            db.scalars(select(LoanPeriod.loan).where(LoanPeriod.accession == accession))
         )
     )
-    assert len(rows) == context.loaded.loans_loaded > 0, rows
+    assert rows, "the run wrote no loan rows"
     entries = in_session(lambda db: read_log(db, RISK, run=int(number)))
+    assert entries and {entry.user_name for entry in entries} == {user}, entries
     loaded = [entry for entry in entries if entry.action == LOAD_ACTION]
-    assert {entry.user_name for entry in entries} == {user}, entries
     assert all(entry.subject == LOAN for entry in loaded)
     keys = sorted(entry.subject_key or "" for entry in loaded)
     assert keys == sorted(loan_key(context.deal, loan) for loan in rows), keys
-    assert all(
-        entry.detail == {"accession": TAPE_ACCESSION, "period": "2026-09-01"} for entry in loaded
-    )
+    detail = {"accession": accession, "period": context.period.first_day.isoformat()}
+    assert all(entry.detail == detail for entry in loaded), [e.detail for e in loaded]
 
 
 # Leave the default matcher for the step modules loaded after this one.
