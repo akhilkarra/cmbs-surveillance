@@ -30,9 +30,8 @@ either the comment's `sentence` number and its text (`quote`) or the tape field 
 and the filing's EDGAR `url`.
 
 `uv run cmbs ask question "<question>" --deal "<deal name>" [--loan <loan>] --json --user <user>`
-gives the
-deterministic answer the panel's own rules compose. Run it when the question is a plain lookup;
-your answer must never contradict it.
+gives the deterministic answer the panel's own rules compose. Run it when the question is a
+plain lookup; your answer must never contradict it.
 
 ## Compose the answer
 
