@@ -59,7 +59,8 @@ describe("ChooseUser", () => {
     render(<ChooseUser onChoose={chosen} />);
     const field = screen.getByLabelText("User name");
     fireEvent.change(field, { target: { value: "   " } });
-    fireEvent.submit(field.closest("form") as HTMLFormElement);
+    // The form never leaves the page: submitting it is cancelled.
+    expect(fireEvent.submit(field.closest("form") as HTMLFormElement)).toBe(false);
     expect(chosen).not.toHaveBeenCalled();
     fireEvent.change(field, { target: { value: " pat " } });
     fireEvent.click(screen.getByRole("button", { name: "Open the dashboard" }));

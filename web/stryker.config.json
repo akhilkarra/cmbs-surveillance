@@ -13,5 +13,5 @@
   ],
   "reporters": ["clear-text", "progress", "html"],
   "htmlReporter": { "fileName": "reports/mutation/index.html" },
-  "thresholds": { "high": 100, "low": 90, "break": 90 }
+  "thresholds": { "high": 100, "low": 95, "break": 95 }
 }

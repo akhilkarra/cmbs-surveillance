@@ -20,10 +20,11 @@ Loan 2's tapes also carry a beginning balance and zero principal, so the balance
 **What serves the page.** Each behave process starts one HTTP server on a free local port (a
 thread): `/dashboard/*` goes to the FastAPI app in process, so it reads the scenario's own
 database and pinned clock; everything else is the built web bundle in web/dist. The bundle is
-built with `docker compose run --rm web npm run build` when it is missing or older than its
-sources (npm runs only in that container). The page is opened at that server, not at
-CMBS_WEB_URL, because only an in-process API can read each scenario's database. Set
-CMBS_DASHBOARD_SHOTS=<dir> to keep a screenshot of every page a scenario opens.
+built in the web container (`docker compose run --rm web npm run build`, after `npm ci` when its
+node_modules volume is empty) when it is missing or older than its sources; npm runs only there.
+The page is opened at that server, not at CMBS_WEB_URL, because only an in-process API can read
+each scenario's database. Set CMBS_DASHBOARD_SHOTS=<dir> to keep a screenshot of every page a
+scenario opens.
 """
 
 import datetime as dt
@@ -370,11 +371,17 @@ class _Server(ThreadingHTTPServer):
 
 
 _RUNNING: dict[str, _Server] = {}
+BUILD = "[ -x node_modules/.bin/vite ] || npm ci; npm run build"
 
 
 def _bundle_sources() -> list[Path]:
-    files = [WEB / "index.html", WEB / "package.json", WEB / "vite.config.ts"]
-    return files + [path for path in (WEB / "src").rglob("*") if path.is_file()]
+    """What the bundle is built from: the page, the config and src/ apart from its tests."""
+    files = [WEB / "index.html", WEB / "package-lock.json", WEB / "vite.config.ts"]
+    return files + [
+        path
+        for path in (WEB / "src").rglob("*")
+        if path.is_file() and ".test." not in path.name and not path.name.startswith("test-")
+    ]
 
 
 def _bundle_is_fresh() -> bool:
@@ -395,7 +402,8 @@ def ensure_bundle() -> None:
         if _bundle_is_fresh():
             return
         built = subprocess.run(
-            ["docker", "compose", "run", "--rm", "--no-deps", "web", "npm", "run", "build"],
+            # A fresh node_modules volume is installed first, from the lock file.
+            ["docker", "compose", "run", "--rm", "--no-deps", "web", "sh", "-c", BUILD],
             cwd=ROOT,
             capture_output=True,
             text=True,

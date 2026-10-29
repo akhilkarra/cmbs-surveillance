@@ -7,6 +7,8 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/test-setup.ts"],
+    // The grid test reads the page's colour tokens from styles.css.
+    css: { include: [/styles\.css/] },
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

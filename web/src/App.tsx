@@ -5,11 +5,13 @@ import { parseRoute, userFrom } from "./route";
 
 function useHash(): string {
   const [hash, setHash] = useState(window.location.hash);
+  // Stryker disable ArrayDeclaration: any constant list subscribes once, as [] does
   useEffect(() => {
     const follow = () => setHash(window.location.hash);
     window.addEventListener("hashchange", follow);
     return () => window.removeEventListener("hashchange", follow);
   }, []);
+  // Stryker restore ArrayDeclaration
   return hash;
 }
 
@@ -55,6 +57,7 @@ export function App() {
   const [user, setUser] = useState(() => userFrom(window.location.search));
   const choose = (name: string) => {
     const query = new URLSearchParams({ user: name });
+    // Stryker disable next-line StringLiteral: browsers ignore replaceState's title argument
     window.history.replaceState(null, "", `?${query.toString()}${window.location.hash}`);
     setUser(name);
   };

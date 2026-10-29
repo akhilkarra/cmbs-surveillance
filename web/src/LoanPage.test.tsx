@@ -24,9 +24,9 @@ describe("LoanContent", () => {
     render(<LoanContent data={loanPage()} />);
     expect(screen.getByTestId("loan-title").textContent).toBe(`Loan 2 of ${F1}`);
     expect(screen.getByTestId("as-of").textContent).toBe("2026-10-28");
-    expect(
-      screen.getByText(/^Lakeside Hotel Portfolio\. September 2026, as the filings/),
-    ).toBeTruthy();
+    expect(screen.getByTestId("as-of").parentElement?.textContent).toBe(
+      "Lakeside Hotel Portfolio. September 2026, as the filings stood on 2026-10-28.",
+    );
     const back = screen.getByRole("link", { name: "Open alerts on the book, September 2026" });
     expect(back.getAttribute("href")).toBe("#/book/2026-09");
   });
@@ -41,6 +41,9 @@ describe("LoanContent", () => {
     const tape = screen.getByRole("link", { name: "ABS-EE 0009900001-26-000419 on EDGAR" });
     expect(tape.getAttribute("href")).toBe(
       "https://www.sec.gov/Archives/edgar/data/9900001/000990000126000419/f1-absee.htm",
+    );
+    expect(tape.parentElement?.textContent).toBe(
+      "ABS-EE 0009900001-26-000419 on EDGAR, filed 2026-09-29.",
     );
     const balance = row("tape-values", "ending_balance");
     expect(within(balance).getByRole("rowheader").textContent).toBe("ending balance");
@@ -72,9 +75,10 @@ describe("LoanContent", () => {
     expect(filing.getAttribute("target")).toBe("_blank");
     expect(filing.getAttribute("rel")).toBe("noreferrer");
     expect(screen.getByTestId("comment-loaded").textContent).toBe("extracted by quinn");
-    expect(
-      screen.getByText(/Read by jev-1\.14\.0 with prompt version 3, settings version 7;/),
-    ).toBeTruthy();
+    expect(filing.parentElement?.textContent).toBe(
+      "10-D 0009900001-26-000418 on EDGAR, filed 2026-09-29. Read by jev-1.14.0 with prompt " +
+        "version 3, settings version 7; extracted by quinn.",
+    );
     const request = row("comment-values", "borrower_request");
     expect(request.getAttribute("data-status")).toBe("auto-accepted");
     expect(within(request).getByTestId("value").textContent).toBe("maturity extension");
@@ -131,6 +135,7 @@ describe("LoanContent", () => {
     expect(screen.getByText("No check flagged this loan for September 2026.")).toBeTruthy();
     expect(screen.getByText("No alerts on this loan for September 2026.")).toBeTruthy();
     unmount();
+    const complaints = vi.spyOn(console, "error");
     render(
       <LoanContent
         data={loanPage({
@@ -161,6 +166,9 @@ describe("LoanContent", () => {
     expect(within(alert as HTMLElement).getByText("medium").className).toBe(
       "severity severity-medium",
     );
+    // Each flag is its own list item to React: no duplicate keys.
+    expect(complaints).not.toHaveBeenCalled();
+    complaints.mockRestore();
   });
 
   it("shows a value with no sentence without evidence", () => {
@@ -181,6 +189,9 @@ describe("FinancialsBlock", () => {
     render(<FinancialsBlock financials={loanPage().financials} />);
     expect(screen.getByTestId("financials-end").textContent).toBe("2024-12-31");
     expect(screen.getByTestId("financials-age").textContent).toBe("619 days old at period end");
+    expect(screen.getByTestId("financials").textContent).toBe(
+      "Most recent financialsThrough 2024-12-31, 619 days old at period end",
+    );
   });
 
   it("shows why there is no age", () => {

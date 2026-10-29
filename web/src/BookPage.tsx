@@ -3,7 +3,6 @@ import {
   ClientSideRowModelModule,
   type ColDef,
   type ICellRendererParams,
-  ModuleRegistry,
   RowAutoHeightModule,
   themeQuartz,
 } from "ag-grid-community";
@@ -15,9 +14,8 @@ import { Loadable } from "./Loadable";
 import { bookHref } from "./route";
 import { useApi } from "./useApi";
 
-ModuleRegistry.registerModules([ClientSideRowModelModule, CellStyleModule, RowAutoHeightModule]);
-
-const THEME = themeQuartz.withParams({
+/** The grid takes its type and colours from the page's tokens, so it follows dark mode. */
+export const GRID_THEME_PARAMS = {
   fontFamily: "inherit",
   fontSize: 14,
   backgroundColor: "var(--paper)",
@@ -29,7 +27,9 @@ const THEME = themeQuartz.withParams({
   accentColor: "var(--link)",
   wrapperBorderRadius: 0,
   rowBorder: { color: "var(--rule)" },
-});
+};
+
+const THEME = themeQuartz.withParams(GRID_THEME_PARAMS);
 
 export function SeverityCell(props: ICellRendererParams<GridRow, GridRow["severity"]>) {
   return <span className={`severity severity-${props.value}`}>{props.value}</span>;
@@ -39,7 +39,7 @@ export function LoanCell(props: ICellRendererParams<GridRow, string>) {
   return <a href={props.data?.loanHref}>{props.value}</a>;
 }
 
-const COLUMNS: ColDef<GridRow>[] = [
+export const COLUMNS: ColDef<GridRow>[] = [
   {
     colId: "severity",
     field: "severity",
@@ -75,7 +75,8 @@ const COLUMNS: ColDef<GridRow>[] = [
   { colId: "state", field: "state", headerName: "State", flex: 1, minWidth: 150 },
 ];
 
-const DEFAULT_COLUMN: ColDef<GridRow> = { sortable: false, suppressMovable: true };
+// Rows and columns keep the API's order: no sorting, no moving.
+export const DEFAULT_COLUMN: ColDef<GridRow> = { sortable: false, suppressMovable: true };
 
 export function BookContent({ data }: { data: BookPageData }) {
   const rows = data.rows.map((row) => gridRow(row, data.month.key));
@@ -105,6 +106,7 @@ export function BookContent({ data }: { data: BookPageData }) {
       {data.note === null ? (
         <div className="grid">
           <AgGridReact<GridRow>
+            modules={[ClientSideRowModelModule, CellStyleModule, RowAutoHeightModule]}
             theme={THEME}
             rowData={rows}
             columnDefs={COLUMNS}

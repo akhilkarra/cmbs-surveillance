@@ -37,6 +37,8 @@ describe("parseRoute", () => {
       "#/loan/Deal/2/2026-09/extra",
       "#/runs",
       "#/2026-09",
+      // Only a leading "#/" is a route's start.
+      "book/#/2026-09",
     ]) {
       expect(parseRoute(hash)).toEqual({ page: "missing", hash });
     }
