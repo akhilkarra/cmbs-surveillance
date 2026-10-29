@@ -8,6 +8,9 @@ public or restricted, without storing a panel value (there is no store yet for r
 sources such as an investor portal).
 
 `decide_review` is a reviewer's decision: it fills the panel value, attributed and audited.
+An analyst's override (`cmbs.review`) is laid over the field when it is read: `comment_view`
+shows the latest override made by the day asked about, while the field's own row keeps the
+model's answer and any review decision.
 
 The checks that can refuse run before anything is written: who is acting, the settings in force
 (an exact model version, a prompt version this code asks), the deal and its comments, then
@@ -62,12 +65,18 @@ from cmbs.model.recordings import (
     import_recordings,
 )
 from cmbs.model.types import ModelRequest
+from cmbs.review.tables import FieldOverride
 from cmbs.settings.service import InForce, in_force
 
 EXTRACT = "extract comment"
 DECIDE = "decide review item"
 IMPORT_RECORDINGS = "import model recordings"
 NOT_STATED_DECISION = "not stated"
+# How the panel marks a field an analyst overrode, and one whose review item was declined
+# because the comment cannot settle it (Q45, Q47). Neither is stored as the field's status: the
+# field's row keeps what the model or reviewer decided, and these are laid over it when read.
+OVERRIDDEN = "overridden"
+NOT_DETERMINABLE = "not determinable"
 DEAL = "deal"
 REVIEW_ITEM = "review item"
 STATUS_OF = {
@@ -483,12 +492,24 @@ class FieldView:
     review_reason: str | None
     decided_by: str | None
     decided_at: dt.datetime | None
+    overridden_by: str | None = None
+    overridden_at: dt.datetime | None = None
+    override_reason: str | None = None
 
     @property
     def typed(self) -> str | dt.date | Decimal | None:
         if self.value is None:
             return None
         return typed_fields.typed(typed_fields.spec(self.field), self.value)
+
+    @property
+    def marked(self) -> str:
+        """'auto-accepted', 'human-reviewed by alex', 'overridden by alex', 'needs review'."""
+        if self.overridden_by is not None:
+            return f"{OVERRIDDEN} by {self.overridden_by}"
+        if self.decided_by is not None:
+            return f"{self.status} by {self.decided_by}"
+        return self.status
 
 
 @dataclass(frozen=True)
@@ -507,8 +528,20 @@ class CommentView:
     fields: dict[str, FieldView]
 
 
-def field_view(row: ExtractedField, sentences: list[str], as_of: dt.date | None) -> FieldView:
-    """A field as the panel shows it. A decision taken after `as_of` is not yet visible."""
+def field_view(
+    row: ExtractedField,
+    sentences: list[str],
+    as_of: dt.date | None,
+    *,
+    override: FieldOverride | None = None,
+    declined: bool = False,
+) -> FieldView:
+    """A field as the panel shows it. A decision taken after `as_of` is not yet visible.
+
+    `override` is the latest override the reader may see (the caller filters by date); it
+    replaces the value and sentence and marks the field overridden. `declined` marks a field
+    whose review item was declined as not determinable.
+    """
     spec = typed_fields.spec(row.field)
     hidden = (
         as_of is not None
@@ -518,6 +551,10 @@ def field_view(row: ExtractedField, sentences: list[str], as_of: dt.date | None)
     status, value, sentence = (
         (NEEDS_REVIEW, None, None) if hidden else (row.status, row.value, row.sentence)
     )
+    if declined and not hidden:
+        status = NOT_DETERMINABLE
+    if override is not None:
+        status, value, sentence = OVERRIDDEN, override.value, override.sentence
     return FieldView(
         field=row.field,
         label=spec.label,
@@ -532,6 +569,56 @@ def field_view(row: ExtractedField, sentences: list[str], as_of: dt.date | None)
         review_reason=row.review_reason,
         decided_by=None if hidden else row.decided_by,
         decided_at=None if hidden else row.decided_at,
+        overridden_by=override.overridden_by if override is not None else None,
+        overridden_at=override.overridden_at if override is not None else None,
+        override_reason=override.reason if override is not None else None,
+    )
+
+
+def latest_extraction(
+    db: Session, *, deal_id: int, loan: str, period: Period, day: dt.date
+) -> tuple[Extraction, dt.date] | None:
+    """The latest extraction of a loan's comment for a period known on `day`, with the filing
+    date: from a filing public by that day, extracted by the end of it (UTC)."""
+    found = db.execute(
+        select(Extraction, Filing.filing_date)
+        .join(Filing, Filing.accession == Extraction.accession)
+        .where(
+            Extraction.deal_id == deal_id,
+            Extraction.loan_id == canonical_loan(loan),
+            Extraction.period == period.first_day,
+            Filing.filing_date <= day,
+            Extraction.extracted_at < _end_of(day),
+        )
+        .order_by(Extraction.id.desc())
+        .limit(1)
+    ).one_or_none()
+    return None if found is None else (found[0], found[1])
+
+
+def latest_overrides(
+    db: Session, field_ids: Sequence[int], *, before: dt.datetime | None = None
+) -> dict[int, FieldOverride]:
+    """Each field's latest override, by field id: of those made before `before` when given."""
+    if not field_ids:
+        return {}
+    query = select(FieldOverride).where(FieldOverride.field_id.in_(field_ids))
+    if before is not None:
+        query = query.where(FieldOverride.overridden_at < before)
+    rows = db.scalars(query.order_by(FieldOverride.overridden_at, FieldOverride.id)).all()
+    return {row.field_id: row for row in rows}
+
+
+def declined_fields(db: Session, field_ids: Sequence[int]) -> set[int]:
+    """The fields whose review item was declined as not determinable."""
+    if not field_ids:
+        return set()
+    return set(
+        db.scalars(
+            select(ReviewItem.field_id).where(
+                ReviewItem.field_id.in_(field_ids), ReviewItem.decision == NOT_DETERMINABLE
+            )
+        )
     )
 
 
@@ -551,19 +638,7 @@ def comment_view(
     if deal_row is None:
         raise UnknownDeal(f"no deal named {deal!r}")
     day = as_of or clock.today()
-    found = db.execute(
-        select(Extraction, Filing.filing_date)
-        .join(Filing, Filing.accession == Extraction.accession)
-        .where(
-            Extraction.deal_id == deal_row.id,
-            Extraction.loan_id == canonical_loan(loan),
-            Extraction.period == period.first_day,
-            Filing.filing_date <= day,
-            Extraction.extracted_at < _end_of(day),
-        )
-        .order_by(Extraction.id.desc())
-        .limit(1)
-    ).one_or_none()
+    found = latest_extraction(db, deal_id=deal_row.id, loan=loan, period=period, day=day)
     if found is None:
         return None
     extraction, filed = found
@@ -571,6 +646,9 @@ def comment_view(
         select(ExtractedField).where(ExtractedField.extraction_id == extraction.id)
     ).all()
     by_field = {row.field: row for row in rows}
+    ids = [row.id for row in rows]
+    overrides = latest_overrides(db, ids, before=_end_of(day))
+    declined = declined_fields(db, ids)
     return CommentView(
         deal=deal_row.name,
         loan=extraction.loan_id,
@@ -584,7 +662,13 @@ def comment_view(
         settings_version=extraction.settings_version,
         model_call=extraction.model_call,
         fields={
-            spec.name: field_view(by_field[spec.name], extraction.sentences, as_of)
+            spec.name: field_view(
+                by_field[spec.name],
+                extraction.sentences,
+                as_of,
+                override=overrides.get(by_field[spec.name].id),
+                declined=by_field[spec.name].id in declined,
+            )
             for spec in typed_fields.FIELDS
             if spec.name in by_field
         },
@@ -642,6 +726,11 @@ def _review_view(db: Session, item: ReviewItem) -> ReviewView:
         decision=item.decision,
         decision_sentence=item.decision_sentence,
     )
+
+
+def review_views(db: Session, items: Sequence[ReviewItem]) -> list[ReviewView]:
+    """Review items as the queue and the API show them, in the order given."""
+    return [_review_view(db, item) for item in items]
 
 
 def review_item(db: Session, reader: str, item_id: int) -> ReviewView:
@@ -807,7 +896,9 @@ def render_view(view: CommentView) -> str:
             note += f", sentence {item.sentence}"
         if item.review_reason is not None and item.status == NEEDS_REVIEW:
             note += f": {item.review_reason}"
-        if item.decided_by is not None:
+        if item.overridden_by is not None:
+            note += f" by {item.overridden_by}: {item.override_reason}"
+        elif item.decided_by is not None:
             note += f" by {item.decided_by}"
         lines.append(f"{item.label}: {shown} ({note})")
     return "\n".join(lines) + "\n"

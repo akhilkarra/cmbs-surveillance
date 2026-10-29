@@ -63,6 +63,10 @@ def field_json(item: FieldView) -> dict[str, Any]:
         "review_reason": item.review_reason,
         "decided_by": item.decided_by,
         "decided_at": item.decided_at.isoformat() if item.decided_at else None,
+        "overridden_by": item.overridden_by,
+        "overridden_at": item.overridden_at.isoformat() if item.overridden_at else None,
+        "override_reason": item.override_reason,
+        "marked": item.marked,
     }
 
 
