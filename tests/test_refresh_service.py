@@ -26,9 +26,17 @@ from cmbs.edgar.archives import filing_base_url
 from cmbs.edgar.replay import Replay
 from cmbs.panel.service import UnknownDeal
 from cmbs.refresh import service
-from cmbs.refresh.claims import ABANDONED, AlreadyRefreshing, Claims, holders, record_claims
-from cmbs.refresh.service import BadRange, EmptyBook, build_alerts, month_status
-from cmbs.refresh.sources import ArchiveReplay, FirstRecorded, Sources
+from cmbs.refresh.claims import (
+    ABANDONED,
+    AlreadyRefreshing,
+    Claims,
+    held_message,
+    holders,
+    record_claims,
+)
+from cmbs.refresh.plan import FilingRef, MonthFilings
+from cmbs.refresh.service import BadRange, EmptyBook, MonthNotLoaded, build_alerts, month_status
+from cmbs.refresh.sources import ArchiveReplay, Fetched, FirstRecorded, Sources
 from cmbs.refresh.tables import RunClaim, RunMonth
 from cmbs.runs import service as runs
 from cmbs.runs.service import NotLoaded
@@ -282,12 +290,58 @@ def test_a_claim_without_its_lock_was_left_by_a_dead_run(seeded, sources):
     assert count(seeded, RunClaim) == 0
 
 
+def test_a_claim_left_by_a_run_that_finished_is_taken_over_quietly(seeded, sources):
+    clock.set_now(TODAY)
+    claims, earlier = hold(seeded, F1)
+    run = seeded.get_one(Run, earlier)
+    runs.finish_run(seeded, run, status="succeeded", summary={"loan_rows": 0})
+    seeded.commit()
+    claims.close()  # finished, then died before deleting its claim row
+    assert service.refresh_deal("quinn", F1, sources=sources).run.status == "succeeded"
+    seeded.expire_all()
+    old = seeded.get_one(Run, earlier)
+    assert (old.status, old.summary) == ("succeeded", {"loan_rows": 0})
+
+
 def test_another_runs_claim_message_when_the_row_is_not_written_yet(seeded):
     deal = get_or_create(seeded, F1)
     seeded.commit()
-    from cmbs.refresh.claims import held_message
-
     assert held_message(seeded, deal) == f"another run is already refreshing {F1}"
+
+
+def test_a_tape_for_another_month_than_planned_is_not_loaded(seeded, archive):
+    """A filing registered without a period cannot be told apart by the registry."""
+    actor = Actor("quinn", Role.QUANT)
+    deal = get_or_create(seeded, F2, cik=CIKS[F2])
+    planned = MonthFilings(
+        AUG,
+        FilingRef(accession(F2, SEP, "ABS-EE"), CIKS[F2], "ABS-EE", dt.date(2026, 9, 29), AUG),
+        FilingRef(accession(F2, SEP, "10-D"), CIKS[F2], "10-D", dt.date(2026, 9, 29), AUG),
+    )
+
+    def fetched(form: str) -> Fetched:
+        url = exhibit_url(F2, SEP, form)
+        return Fetched(accession(F2, SEP, form), url.rsplit("/", 1)[1], archive.get_bytes(url))
+
+    with pytest.raises(MonthNotLoaded) as refused:
+        service.load_month(
+            seeded,
+            actor=actor,
+            run_id=1,
+            deal=deal,
+            month=planned,
+            tape=fetched("ABS-EE"),
+            report=fetched("10-D"),
+            on=TODAY.date(),
+        )
+    assert (refused.value.reason, refused.value.detail) == (
+        "ABS-EE reports another month",
+        f"{accession(F2, SEP, 'ABS-EE')} reports September 2026",
+    )
+    assert str(refused.value) == (
+        f"ABS-EE reports another month: {accession(F2, SEP, 'ABS-EE')} reports September 2026"
+    )
+    assert str(MonthNotLoaded("no detail")) == "no detail"
 
 
 # ---------------------------------------------------------------------------- backfill
