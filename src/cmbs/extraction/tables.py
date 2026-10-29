@@ -34,7 +34,9 @@ FIELD_STATUSES = (AUTO_ACCEPTED, NEEDS_REVIEW, NOT_STATED, HUMAN_REVIEWED)
 
 OPEN = "open"
 DECIDED = "decided"
-REVIEW_STATUSES = (OPEN, DECIDED)
+# An open item whose extraction a newer one of the same loan and month replaced (cmbs.review).
+SUPERSEDED = "superseded"
+REVIEW_STATUSES = (OPEN, DECIDED, SUPERSEDED)
 
 PROBABILITY = Numeric(6, 5)
 
@@ -121,6 +123,10 @@ class ReviewItem(Base):
             "AND decision IS NOT NULL)",
             name="decided_is_complete",
         ),
+        CheckConstraint(
+            "(status = 'superseded') = (superseded_at IS NOT NULL AND superseded_by IS NOT NULL)",
+            name="superseded_is_complete",
+        ),
         {"schema": APP_SCHEMA},
     )
 
@@ -140,3 +146,6 @@ class ReviewItem(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision: Mapped[str | None] = mapped_column(Text)
     decision_sentence: Mapped[int | None] = mapped_column(Integer)
+    # When a newer extraction of the same loan and month replaced this item's, and which one.
+    superseded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    superseded_by: Mapped[int | None] = mapped_column(ForeignKey("silver.extraction.id"))
