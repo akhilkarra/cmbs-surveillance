@@ -237,7 +237,7 @@ def test_two_files_naming_deals_in_opposite_orders_load_together(seeded, monkeyp
         get_or_create(seeded, name)
     seeded.commit()
     barrier = threading.Barrier(2, timeout=2)
-    real = service.deal_for
+    real = service.get_or_create
     calls = threading.local()
 
     def pausing(db, name):
@@ -248,7 +248,7 @@ def test_two_files_naming_deals_in_opposite_orders_load_together(seeded, monkeyp
                 barrier.wait()
         return deal
 
-    monkeypatch.setattr(service, "deal_for", pausing)
+    monkeypatch.setattr(service, "get_or_create", pausing)
     errors: list[BaseException] = []
 
     def load(order):

@@ -25,8 +25,8 @@ from cmbs.audit.service import entries_for_subject, record
 from cmbs.audit.tables import AuditEntry
 from cmbs.checks.service import flags_for, raise_flag
 from cmbs.db import engine
-from cmbs.deals.service import ConflictingDeal, by_name, get_or_create
-from cmbs.deals.tables import Deal
+from cmbs.deals.service import ConflictingDeal, SeparateDeals, by_name, get_or_create, resolve
+from cmbs.deals.tables import Deal, DealAlias
 from cmbs.filings.service import ConflictingFiling, register_filing, store_file
 from cmbs.filings.tables import Filing
 from cmbs.runs.service import RunAlreadyFinished, finish_run, start_run
@@ -440,3 +440,37 @@ def test_names_are_compared_with_whitespace_collapsed(db):
     assert deal.name == "BANK 2018-BNK13"
     assert get_or_create(db, " BANK 2018-BNK13") is deal
     assert by_name(db, "BANK 2018-BNK13  ") is deal
+
+
+@needs_db
+def test_a_new_name_with_a_cik_another_deal_holds_becomes_its_alias(db):
+    owner = get_or_create(db, "COMM 2014-CR18", cik=1610486)
+    assert resolve(db, "COMM 2014-CCRE18", cik=1610486) is owner
+    assert db.get(DealAlias, "COMM 2014-CCRE18") is None  # resolving writes nothing
+    assert get_or_create(db, "COMM 2014-CCRE18", cik=1610486) is owner
+    assert by_name(db, "COMM 2014-CCRE18") is owner
+    assert db.scalars(select(Deal).where(Deal.cik == 1610486)).all() == [owner]
+
+
+@needs_db
+def test_a_name_registered_apart_from_the_cik_holder_is_refused(db):
+    get_or_create(db, "COMM 2014-CR18", cik=1610486)
+    separate = get_or_create(db, "COMM 2014-CCRE18")
+    message = (
+        '"COMM 2014-CCRE18" is registered apart from "COMM 2014-CR18", which already has '
+        "CIK 1610486; they are the same trust"
+    )
+    for attempt in (resolve, get_or_create):
+        with pytest.raises(SeparateDeals) as refused:
+            attempt(db, "COMM 2014-CCRE18", cik=1610486)
+        assert str(refused.value) == message
+    assert separate.cik is None
+
+
+@needs_db
+def test_resolve_refuses_a_changed_cik_and_finds_nothing_new(db):
+    get_or_create(db, "TRUST A 2026-1", cik=5)
+    with pytest.raises(ConflictingDeal, match="^TRUST A 2026-1 already has CIK 5, not 6$"):
+        resolve(db, "TRUST A 2026-1", cik=6)
+    assert resolve(db, "TRUST C 2026-1") is None
+    assert resolve(db, "TRUST C 2026-1", cik=9) is None

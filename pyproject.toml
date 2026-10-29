@@ -80,6 +80,10 @@ do_not_mutate = ["src/cmbs/db/migrations/*", "src/cmbs/testing/*"]
 pytest_add_cli_args_test_selection = ["tests"]
 # Tests of the developer tools (tests/test_mutation_tools.py) load them from tools/.
 also_copy = ["tools"]
+# Fork each mutant from a clean server process, not from mutmut's main process: the main
+# process has run the suite, which starts Polars' thread pool, and a child forked from it
+# hangs on its first Polars query (Pandera checks run one), so every such mutant timed out.
+process_isolation = "forkserver"
 
 [tool.basedpyright]
 # basedpyright is pyright with its own Node binary, so nothing is installed on the host.

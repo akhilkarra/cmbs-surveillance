@@ -23,9 +23,9 @@ from cmbs.access.roles import PERMISSIONS, Action
 from cmbs.access.service import Actor, authorize
 from cmbs.audit.service import record
 from cmbs.book.tables import Position, PositionsFile
+from cmbs.deals.service import get_or_create
 from cmbs.deals.tables import Deal
 from cmbs.domain import format_money, money
-from cmbs.edgar.service import deal_for
 from cmbs.errors import Refused
 
 COLUMNS = ("deal", "class", "face amount")
@@ -163,7 +163,7 @@ def store_positions(
     if Action.LOAD_POSITIONS not in PERMISSIONS[actor.role]:
         raise ValueError(f"an actor acting as {actor.role.value} cannot load positions")
     check_lines(lines)
-    deal_ids = {name: deal_for(db, name).id for name in sorted({line.deal for line in lines})}
+    deal_ids = {name: get_or_create(db, name).id for name in sorted({line.deal for line in lines})}
     held: dict[tuple[int, str], str] = {}
     for line in lines:
         key = (deal_ids[line.deal], line.tranche)
