@@ -11,8 +11,7 @@ version 7): above the band is high, below it low, and on or inside it unsettled.
 
 | support    | evidence  | answer         | outcome                                      |
 |------------|-----------|----------------|----------------------------------------------|
-| low        | any       | low, unsettled | not stated                                   |
-| low        | any       | high           | review: no supporting sentence               |
+| low        | any       | any            | not stated                                   |
 | unsettled  | not found | any            | review: evidence not found in source         |
 | high       | not found | any            | review: evidence not found in source         |
 | unsettled  | found     | any            | review: unsettled support                    |
@@ -20,7 +19,10 @@ version 7): above the band is high, below it low, and on or inside it unsettled.
 | high       | found     | high           | auto-accept                                  |
 
 A confident answer never passes on its own: it needs a supporting sentence that is really in
-the comment. `tests/test_extraction_decision.py` checks all 18 combinations.
+the comment. Without one (support low) the field is not stated, whatever the answer's
+probability: a choice among values always picks one, so its probability says nothing when no
+sentence states the field (grill log Q87; live Jev answers in tests/fixtures/model/live/).
+`tests/test_extraction_decision.py` checks all 18 combinations.
 """
 
 from dataclasses import dataclass
@@ -42,10 +44,9 @@ class Outcome(StrEnum):
     NOT_STATED = "not stated"
 
 
-NO_SUPPORTING_SENTENCE = "no supporting sentence"
 UNSETTLED_SUPPORT = "unsettled support"
 UNSETTLED_ANSWER = "unsettled answer"
-REVIEW_REASONS = (NO_SUPPORTING_SENTENCE, EVIDENCE_NOT_FOUND, UNSETTLED_SUPPORT, UNSETTLED_ANSWER)
+REVIEW_REASONS = (EVIDENCE_NOT_FOUND, UNSETTLED_SUPPORT, UNSETTLED_ANSWER)
 
 
 @dataclass(frozen=True)
@@ -65,8 +66,6 @@ def band(probability: Decimal, *, low: Decimal, high: Decimal) -> Band:
 
 def decide(*, answer: Band, support: Band, evidence_found: bool) -> Decision:
     if support is Band.LOW:
-        if answer is Band.HIGH:
-            return Decision(Outcome.REVIEW, NO_SUPPORTING_SENTENCE)
         return Decision(Outcome.NOT_STATED)
     if not evidence_found:
         return Decision(Outcome.REVIEW, EVIDENCE_NOT_FOUND)

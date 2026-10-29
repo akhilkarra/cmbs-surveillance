@@ -395,14 +395,16 @@ def test_an_unsettled_answer_waits_for_review_with_its_question(waiting, loaded)
     )
 
 
-def test_unsupported_answers_wait_with_the_support_question(loaded):
+def test_a_confident_answer_no_sentence_states_is_not_stated(loaded):
+    """A choice always picks a value; with support low, nothing was stated (Q87)."""
     provider = _scripted(loaded, "borrower_request", "forbearance", 0.95, 0.2, 3)
     _extract(loaded, provider=provider, replay_only=False)
-    [item] = open_review_items(loaded, "alex")
-    assert (item.reason, item.question, item.probability) == (
-        "no supporting sentence",
-        WORDING["borrower_request"].support,
-        Decimal("0.20000"),
+    assert open_review_items(loaded, "alex") == []
+    view = comment_view(loaded, "pat", deal=FIXTURE_DEAL, loan="2", period=SEPTEMBER)
+    assert view is not None
+    assert (view.fields["borrower_request"].status, view.fields["borrower_request"].value) == (
+        "not stated",
+        None,
     )
 
 
