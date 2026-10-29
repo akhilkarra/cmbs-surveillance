@@ -5,8 +5,6 @@ replace one file to make a month fail.
 """
 
 import datetime as dt
-import sys
-import types
 from pathlib import Path
 
 import pytest
@@ -16,6 +14,7 @@ from cmbs import clock
 from cmbs.absee.schedule_al import MalformedTape
 from cmbs.access.roles import Role
 from cmbs.access.service import Actor, PermissionRefused
+from cmbs.alerts.tables import AlertBuild
 from cmbs.audit.tables import AuditEntry
 from cmbs.book.service import PositionLine, load_positions
 from cmbs.db import engine
@@ -43,7 +42,6 @@ from cmbs.refresh.service import (
     MonthNotLoaded,
     Stage,
     UnknownDeal,
-    build_alerts,
     month_status,
     not_loaded,
 )
@@ -204,10 +202,11 @@ def test_a_book_refresh_loads_the_newest_month_of_each_public_deal(book, sources
         1,
         14,
     )
-    assert summary["alerts_raised"] is None  # cmbs.alerts is not installed
+    # Each deal's first loaded month has no month before it to compare with: no alerts.
+    assert summary["alerts_raised"] == 0
     assert report.text().splitlines() == [
         "run 1: olly, 2026-10-28 09:00 to 09:00, 2 deals refreshed, 1 skipped, "
-        "14 loan rows loaded, alerts not built",
+        "14 loan rows loaded, 0 alerts raised",
         "refresh book, succeeded",
         f"{F1}: refreshed",
         "  September 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
@@ -229,7 +228,12 @@ def test_a_book_refresh_loads_the_newest_month_of_each_public_deal(book, sources
         accession(F1, SEP, "ABS-EE"),
         accession(F1, SEP, "10-D"),
     )
-    assert recorded[0].alerts is None
+    assert [m.alerts for m in recorded] == [0, 0]
+    vintages = db.scalars(select(AlertBuild).order_by(AlertBuild.id)).all()
+    assert [(v.run_id, v.accession, v.compared_with) for v in vintages] == [
+        (run.number, accession(F1, SEP, "ABS-EE"), None),
+        (run.number, accession(F2, SEP, "ABS-EE"), None),
+    ]
     # Every write names the run.
     actions = db.execute(
         select(AuditEntry.action, func.count())
@@ -531,7 +535,7 @@ def test_a_backfill_that_ends_before_it_starts_is_refused(registered, sources):
 def test_a_month_missing_a_filing_stops_the_deal_until_it_is_filed(registered, sources):
     """August complete, September's 10-D not filed yet, October complete."""
     db = registered
-    clock.set_now(dt.datetime(2026, 9, 1, 9, 0, tzinfo=dt.UTC))
+    clock.set_now(dt.datetime(2026, 9, 20, 9, 0, tzinfo=dt.UTC))
     first = service.refresh_deal("quinn", F2, sources=sources)
     assert months_of(first) == [(F2, "August 2026", "loaded", None)]
 
@@ -687,7 +691,7 @@ def test_a_failing_deal_fails_the_run_but_the_others_are_refreshed(book, sources
     assert (
         report.text()
         .splitlines()[0]
-        .endswith("1 deals refreshed, 1 failed, 1 skipped, 7 loan rows loaded, alerts not built")
+        .endswith("1 deals refreshed, 1 failed, 1 skipped, 7 loan rows loaded, 0 alerts raised")
     )
 
 
@@ -761,59 +765,54 @@ def test_an_unexpected_error_finishes_the_run_as_failed_and_is_raised(book, sour
 # ---------------------------------------------------------------------------- alerts
 
 
-def test_alerts_are_built_once_the_alerts_feature_exists(seeded, monkeypatch):
-    actor = Actor("quinn", Role.QUANT)
-    assert build_alerts(seeded, deal_id=1, period=SEP, actor=actor, run_id=1) is None
-    calls = []
-    fake = types.ModuleType("cmbs.alerts.service")
-
-    def build(db, *, deal_id, period, actor, run_id):
-        calls.append((deal_id, period, actor, run_id))
-        return types.SimpleNamespace(raised=3)
-
-    fake.build_alerts = build  # pyright: ignore[reportAttributeAccessIssue]
-    monkeypatch.setitem(sys.modules, "cmbs.alerts.service", fake)
-    assert build_alerts(seeded, deal_id=4, period=SEP, actor=actor, run_id=9) == 3
-    assert calls == [(4, SEP, actor, 9)]
+def august_with_loan_4_current(archive: Archive) -> None:
+    """F2's August tape as if loan 4 were current then (it is 30 days late in September)."""
+    url = exhibit_url(F2, AUG, "ABS-EE")
+    tape = archive.recorded.get_bytes(url).decode()
+    archive.replaced[url] = tape.replace(
+        "<paymentStatusLoanCode>1<", "<paymentStatusLoanCode>0<"
+    ).encode()
 
 
-def test_a_broken_alerts_feature_is_not_mistaken_for_a_missing_one(seeded, monkeypatch):
-    def missing_dependency(name):
-        raise ModuleNotFoundError("No module named 'somewhere'", name="somewhere")
-
-    monkeypatch.setattr(service.importlib, "import_module", missing_dependency)
-    with pytest.raises(ModuleNotFoundError):
-        build_alerts(seeded, deal_id=1, period=SEP, actor=Actor("quinn", Role.QUANT), run_id=1)
-
-
-def test_loaded_months_get_their_alert_counts(book, sources, monkeypatch):
-    fake = types.ModuleType("cmbs.alerts.service")
-    fake.build_alerts = lambda db, **kw: types.SimpleNamespace(raised=2)  # pyright: ignore[reportAttributeAccessIssue]
-    monkeypatch.setitem(sys.modules, "cmbs.alerts.service", fake)
+def test_each_month_raises_its_alerts_against_the_month_before(registered, sources, archive):
+    august_with_loan_4_current(archive)
     clock.set_now(TODAY)
-    report = service.refresh_book("olly", sources=sources)
-    assert report.run.summary["alerts_raised"] == 4
-    assert report.run.headline().endswith("14 loan rows loaded, 4 alerts raised")
-    book.expire_all()
-    assert [m.alerts for m in book.scalars(select(RunMonth))] == [2, 2]
+    report = service.backfill("quinn", F2, AUG, SEP, sources=sources)
+    months = report.run.summary["deals"][0]["months"]
+    assert [(m["period"], m["alerts"]) for m in months] == [
+        ("August 2026", 0),
+        ("September 2026", 1),
+    ]
+    assert report.run.summary["alerts_raised"] == 1
+    assert report.run.headline().endswith("14 loan rows loaded, 1 alerts raised")
+    db = registered
+    db.expire_all()
+    assert [m.alerts for m in db.scalars(select(RunMonth).order_by(RunMonth.id))] == [0, 1]
+    vintages = db.scalars(select(AlertBuild).order_by(AlertBuild.id)).all()
+    assert [(v.period, v.compared_with, v.run_id) for v in vintages] == [
+        (AUG.first_day, None, report.run.number),
+        (SEP.first_day, accession(F2, AUG, "ABS-EE"), report.run.number),
+    ]
+    raised = db.scalars(
+        select(AuditEntry).where(
+            AuditEntry.action == "raise alert", AuditEntry.run_id == report.run.number
+        )
+    ).all()
+    assert [(e.user_name, e.after) for e in raised] == [
+        ("quinn", "payment status worsened: current to 30 days")
+    ]
 
 
-def test_a_month_whose_alerts_are_refused_is_not_loaded(registered, sources, monkeypatch):
-    class NoEarlierMonth(Refused):
-        pass
-
-    def build(db, **kw):
-        raise NoEarlierMonth("no month before September 2026 to compare with")
-
-    fake = types.ModuleType("cmbs.alerts.service")
-    fake.build_alerts = build  # pyright: ignore[reportAttributeAccessIssue]
-    monkeypatch.setitem(sys.modules, "cmbs.alerts.service", fake)
-    clock.set_now(TODAY)
+def test_a_month_whose_alerts_cannot_be_built_is_not_loaded(registered, sources):
+    # Settings version 7, the first, is approved on 2026-09-15: before it no threshold is in
+    # force, so the month's alerts cannot be built and the month rolls back.
+    clock.set_now(dt.datetime(2026, 9, 1, 9, 0, tzinfo=dt.UTC))
     report = service.refresh_deal("quinn", F2, sources=sources)
-    assert months_of(report) == [(F2, "September 2026", "not loaded", "alerts could not be built")]
+    assert months_of(report) == [(F2, "August 2026", "not loaded", "alerts could not be built")]
     assert report.run.summary["stopped"]["detail"] == (
-        "no month before September 2026 to compare with"
+        "no settings approved by 2026-09-01T09:00:00+00:00"
     )
+    assert report.run.status == "failed"
     registered.expire_all()
     assert count(registered, LoanTape) == 0  # the month rolled back with its alerts
 

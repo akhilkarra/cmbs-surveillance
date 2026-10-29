@@ -54,7 +54,7 @@ def test_the_cli_refreshes_and_reads_runs(book):
     assert done.exit_code == 0, done.output
     assert done.output.splitlines() == [
         "run 1: olly, 2026-10-27 09:00 to 09:00, 2 deals refreshed, 1 skipped, "
-        "14 loan rows loaded, alerts not built",
+        "14 loan rows loaded, 0 alerts raised",
         "refresh book, succeeded",
         f"{F1}: refreshed",
         "  September 2026: loaded, 7 loan rows, 0 loans quarantined, 0 reconciliation flags",
@@ -67,7 +67,7 @@ def test_the_cli_refreshes_and_reads_runs(book):
     )
     assert listed.output == (
         "run 1: olly, 2026-10-27 09:00 to 09:00, 2 deals refreshed, 1 skipped, "
-        "14 loan rows loaded, alerts not built (refresh book, succeeded)\n"
+        "14 loan rows loaded, 0 alerts raised (refresh book, succeeded)\n"
     )
     assert cli_run("runs", "list", "--user", "rae", "--start", "2026-10-28").output == "no runs\n"
     shown = cli_run("runs", "show", "1", "--user", "olly")

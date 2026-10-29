@@ -48,15 +48,15 @@ def test_the_headline():
     )
 
 
-def test_the_headline_says_when_alerts_were_not_built_and_counts_failures():
-    summary = {**view().summary, "alerts_raised": None, "deals_failed": 1}
+def test_the_headline_counts_failures_and_reads_missing_counts_as_zero():
+    summary = {**view().summary, "alerts_raised": 0, "deals_failed": 1}
     assert view(summary=summary).headline() == (
         "run 43: olly, 2026-10-27 09:00 to 09:04, 2 deals refreshed, 1 failed, 1 skipped, "
-        "14 loan rows loaded, alerts not built"
+        "14 loan rows loaded, 0 alerts raised"
     )
     assert view(summary={}).headline() == (
         "run 43: olly, 2026-10-27 09:00 to 09:04, 0 deals refreshed, 0 skipped, "
-        "0 loan rows loaded, alerts not built"
+        "0 loan rows loaded, 0 alerts raised"
     )
 
 

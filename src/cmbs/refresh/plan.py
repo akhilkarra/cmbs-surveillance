@@ -153,7 +153,8 @@ class MonthResult:
     loan_rows: int = 0
     quarantined: int = 0
     flags: int = 0
-    alerts: int | None = None
+    # Alerts the month's build raised (`cmbs.alerts.service.build_alerts`).
+    alerts: int = 0
     # True when the month failed to load, rather than missing a filing: the run fails.
     failed: bool = False
     notes: tuple[str, ...] = ()
@@ -258,12 +259,9 @@ def run_status(deals: Sequence[DealResult]) -> str:
     return "succeeded"
 
 
-def alerts_raised(months: Iterable[MonthResult]) -> int | None:
-    """Alerts raised by the loaded months; None when alerts were not built for any of them."""
-    counts = [m.alerts for m in months if m.outcome is MonthOutcome.LOADED]
-    if not counts or any(count is None for count in counts):
-        return None
-    return sum(count for count in counts if count is not None)
+def alerts_raised(months: Iterable[MonthResult]) -> int:
+    """Alerts raised by the loaded months (`cmbs.alerts`, built as each month loads)."""
+    return sum(m.alerts for m in months if m.outcome is MonthOutcome.LOADED)
 
 
 def stopped(deals: Sequence[DealResult]) -> dict[str, Any] | None:

@@ -60,6 +60,6 @@ class RunMonth(Base):
     tape_accession: Mapped[str | None] = mapped_column(String(20))
     report_accession: Mapped[str | None] = mapped_column(String(20))
     loan_rows: Mapped[int] = mapped_column(Integer, default=0)
-    # None until alerts are built for loaded months (cmbs.alerts).
+    # Alerts the month's build raised (cmbs.alerts); a month not loaded raised none.
     alerts: Mapped[int | None] = mapped_column(Integer)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

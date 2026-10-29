@@ -140,16 +140,15 @@ class RunView:
 
     def headline(self) -> str:
         """'run 43: olly, 2026-10-27 09:00 to 09:04, 2 deals refreshed, 1 skipped, 14 loan rows
-        loaded, 3 alerts raised'. Alerts not built read 'alerts not built'."""
+        loaded, 3 alerts raised'."""
         s = self.summary
-        alerts = s.get("alerts_raised")
         parts = [
             f"run {self.number}: {self.started_by}",
             self.period(),
             f"{s.get('deals_refreshed', 0)} deals refreshed",
             f"{s.get('deals_skipped', 0)} skipped",
             f"{s.get('loan_rows', 0)} loan rows loaded",
-            "alerts not built" if alerts is None else f"{alerts} alerts raised",
+            f"{s.get('alerts_raised') or 0} alerts raised",
         ]
         if s.get("deals_failed"):
             parts.insert(3, f"{s['deals_failed']} failed")

@@ -210,7 +210,7 @@ def test_month_as_json():
         "loan_rows": 0,
         "quarantined": 0,
         "flags": 0,
-        "alerts": None,
+        "alerts": 0,
         "failed": True,
         "notes": [],
     }
@@ -271,12 +271,12 @@ def test_run_status():
     assert run_status([DealResult("F2", DealOutcome.FAILED, "discovery")]) == "failed"
 
 
-def test_alerts_raised_counts_loaded_months_once_alerts_are_built():
+def test_alerts_raised_counts_the_loaded_months():
     assert alerts_raised([loaded(AUG, alerts=1), loaded(SEP, alerts=2), missing(OCT)]) == 3
-    assert alerts_raised([loaded(AUG, alerts=0)]) == 0
-    assert alerts_raised([loaded(AUG, alerts=1), loaded(SEP)]) is None
-    assert alerts_raised([missing(OCT)]) is None
-    assert alerts_raised([]) is None
+    assert alerts_raised([loaded(AUG, alerts=0), loaded(SEP)]) == 0
+    # A month not loaded rolled its alerts back with it.
+    assert alerts_raised([MonthResult(OCT, MonthOutcome.NOT_LOADED, "r", alerts=4)]) == 0
+    assert alerts_raised([]) == 0
 
 
 def test_stopped_names_the_first_failure():

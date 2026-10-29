@@ -12,6 +12,7 @@ traced to "run 43" is loaded by that same refresh when nothing was loaded before
 """
 
 import datetime as dt
+import re
 from contextlib import suppress
 from pathlib import Path
 
@@ -22,6 +23,8 @@ from sqlalchemy import func, select
 from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
+from cmbs.alerts.service import latest_vintage
+from cmbs.audit.tables import AuditEntry
 from cmbs.book.service import PositionLine, book_as_of, load_positions
 from cmbs.deals.service import by_name, get_or_create
 from cmbs.distribution.tables import DistributionReport
@@ -55,6 +58,12 @@ OPERATOR = "olly"
 TODAY = dt.datetime(2026, 10, 28, 9, 0, tzinfo=dt.UTC)
 # The run the run-history scenarios call "run 43".
 STORY_RUN = 43
+# What September 2026 changed since August as the story's earlier refresh loaded it.
+STORY_ALERTS = [
+    (FIXTURE_DEAL, "2", "servicer comment changed: 1 sentence added"),
+    (FIXTURE_DEAL, "4", "payment status worsened: current to 30 days"),
+    (SECOND_DEAL, "4", "payment status worsened: current to 30 days"),
+]
 NOT_A_REPORT = b"<html><body><p>This page is not a distribution report.</p></body></html>"
 
 
@@ -113,14 +122,23 @@ def _cik(deal: str) -> int:
     return {FIXTURE_DEAL: FIXTURE_CIK, SECOND_DEAL: SECOND_CIK}[deal]
 
 
-def _report_url(deal: str, period: Period) -> str:
-    """A fixture deal's EX-99.1 for a month, named as tests/fixtures/refresh/build.py names it."""
+def _exhibit_url(deal: str, period: Period, form: str) -> str:
+    """A fixture deal's EX-102 or EX-99.1 for a month, as tests/fixtures/refresh/build.py names
+    them."""
     filed = dt.date(period.year, period.month, 17) + dt.timedelta(days=12)
-    accession = f"{_cik(deal):010d}-{filed.year % 100:02d}-{400 + period.month * 2:06d}"
+    number = 400 + period.month * 2 + (1 if form == "ABS-EE" else 0)
+    accession = f"{_cik(deal):010d}-{filed.year % 100:02d}-{number:06d}"
     slug = deal.lower().replace(" ", "-")
-    return (
-        filing_base_url(_cik(deal), accession) + f"{slug}_ex991-{period.year}{period.month:02d}.htm"
+    name = (
+        f"{slug}_ex102-{period.year}{period.month:02d}.xml"
+        if form == "ABS-EE"
+        else (f"{slug}_ex991-{period.year}{period.month:02d}.htm")
     )
+    return filing_base_url(_cik(deal), accession) + name
+
+
+def _report_url(deal: str, period: Period) -> str:
+    return _exhibit_url(deal, period, "10-D")
 
 
 def _fail_report(context, deal: str, period: Period) -> None:
@@ -269,11 +287,27 @@ def step_months_loaded_in_order(context, count):
 
 @then("each month's alerts are built against the month before it")
 def step_alerts_per_month(context):
-    months = _months(context)
-    missing = [m["period"] for m in months if m["alerts"] is None]
-    assert not missing, (
-        f"alerts were not built for {', '.join(missing)}: cmbs.alerts.service is not installed"
-    )
+    """Each month's alert build compared it with the tape of the month before it, loaded by the
+    same backfill; the first month had no month before it to compare with."""
+    run = context.run_report.run.number
+
+    def builds(db):
+        rows = db.scalars(select(RunMonth).where(RunMonth.run_id == run).order_by(RunMonth.id))
+        found = []
+        for month in rows:
+            vintage = latest_vintage(db, month.deal_id, Period.of(month.period))
+            assert vintage is not None, f"no alerts built for {Period.of(month.period)}"
+            assert vintage.run_id == run, (Period.of(month.period), vintage.run_id)
+            found.append((month.tape_accession, vintage.accession, vintage.compared_with))
+        return found
+
+    found = in_session(builds)
+    assert found, "the backfill loaded no month"
+    previous = None
+    for tape, built_on, compared_with in found:
+        assert built_on == tape, (tape, built_on)
+        assert compared_with == previous, (tape, compared_with, previous)
+        previous = tape
 
 
 @given('the {period:OpsMonth} ABS-EE for "{deal:OpsName}" loads but its 10-D fails to parse')
@@ -375,11 +409,55 @@ def step_nothing_loaded_twice(context):
 # ---------------------------------------------------------------------------- run history
 
 
+def _august_as_it_was(context) -> None:
+    """August 2026 as the story's earlier refresh found it, three things different from September:
+    loan 4 of both deals was current (on the tape and in the 10-D), and the special servicer's
+    comment on loan 2 of Fixture Trust 2026-F1 did not yet say it was evaluating the request."""
+    august = Period(2026, 8)
+    for deal in (FIXTURE_DEAL, SECOND_DEAL):
+        tape_url = _exhibit_url(deal, august, "ABS-EE")
+        tape = context.archive.recorded.get_bytes(tape_url).decode()
+        assert tape.count("<paymentStatusLoanCode>1<") == 1, "only loan 4 is 30 days late"
+        context.archive.replaced[tape_url] = tape.replace(
+            "<paymentStatusLoanCode>1<", "<paymentStatusLoanCode>0<"
+        ).encode()
+        report_url = _exhibit_url(deal, august, "10-D")
+        report = context.archive.recorded.get_bytes(report_url).decode()
+        current = re.sub(r"<tr><td>4</td><td>\d\d/\d\d/\d{4}</td><td>1</td>.*?</tr>\n", "", report)
+        current = current.replace(
+            "<td>-</td><td>1</td><td></td></tr>", "<td>-</td><td>0</td><td></td></tr>"
+        )
+        assert current.count("<tr>") == report.count("<tr>") - 1, "loan 4's delinquency row"
+        if deal == FIXTURE_DEAL:
+            sentence = "The special servicer is evaluating the request."
+            before = current
+            current = re.sub(
+                rf"<tr><td></td><td></td><td></td><td colspan=\"2\">{sentence}</td></tr>\n",
+                "",
+                current,
+            )
+            assert current != before, "loan 2's comment"
+        context.archive.replaced[report_url] = current.encode()
+
+
 def _story_refresh(context, day: dt.date, start: dt.time) -> None:
-    """The refresh of the run-history story: the book, as run 43, one minute per exhibit."""
+    """The refresh of the run-history story: the book, as run 43, one minute per exhibit.
+
+    Refreshes of each fixture deal on 2026-09-20 load August 2026 as it was then
+    (`_august_as_it_was`), so
+    the story's refresh has a month before September to compare with; September's changes raise
+    the three alerts the scenario counts.
+    """
     _ensure_book()
-    _set_next_run(STORY_RUN)
     sources = _sources(context)
+    _august_as_it_was(context)
+    clock.set_now(_at(dt.date(2026, 9, 20)))
+    for deal in (FIXTURE_DEAL, SECOND_DEAL):  # the book's positions date from 2026-09-30
+        earlier = refresh.refresh_deal(OPERATOR, deal, sources=sources)
+        loaded = [m["period"] for d in earlier.run.summary["deals"] for m in d["months"]]
+        assert loaded == ["August 2026"], earlier.text()
+    context.archive.replaced.clear()
+    _set_next_run(STORY_RUN)
     context.archive.minutes = 1
     clock.set_now(_at(day, start))
     try:
@@ -420,14 +498,24 @@ def step_history_shows(context, number, user, day, start, end, refreshed, skippe
     assert summary["deals_refreshed"] == refreshed, summary
     assert summary["deals_skipped"] == skipped, summary
     assert summary["loan_rows"] == rows, summary
-    assert summary["alerts_raised"] == alerts, (
-        f"{view.headline()} (alerts are built by cmbs.alerts, which is not installed)"
-    )
+    assert summary["alerts_raised"] == alerts, view.text()
     expected = (
         f"run {number}: {user}, {day} {start:%H:%M} to {end:%H:%M}, {refreshed} deals refreshed, "
         f"{skipped} skipped, {rows} loan rows loaded, {alerts} alerts raised"
     )
     assert view.headline() == expected, view.headline()
+    if number == STORY_RUN:
+        raised = in_session(
+            lambda db: sorted(
+                ((entry.detail or {}).get("deal"), (entry.detail or {}).get("loan"), entry.after)
+                for entry in db.scalars(
+                    select(AuditEntry).where(
+                        AuditEntry.run_id == number, AuditEntry.action == "raise alert"
+                    )
+                )
+            )
+        )
+        assert raised == STORY_ALERTS, raised
 
 
 @given('run {number:d} fails while loading {period:OpsMonth} for "{deal:OpsName}"')

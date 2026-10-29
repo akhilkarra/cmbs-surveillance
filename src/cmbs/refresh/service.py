@@ -25,7 +25,6 @@ EDGAR is reached through `cmbs.refresh.sources`; tests replay recorded answers.
 """
 
 import datetime as dt
-import importlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -38,6 +37,7 @@ from cmbs import clock
 from cmbs.absee.schedule_al import MalformedTape
 from cmbs.access.roles import Action
 from cmbs.access.service import Actor, authorize
+from cmbs.alerts import service as alerts
 from cmbs.audit.service import record, refuse
 from cmbs.book.service import book_as_of
 from cmbs.coverage.rules import Coverage
@@ -159,25 +159,6 @@ class RunReport:
 # ---------------------------------------------------------------------------- the month
 
 
-def build_alerts(
-    db: Session, *, deal_id: int, period: Period, actor: Actor, run_id: int
-) -> int | None:
-    """Build the month's alerts against the month before; None while `cmbs.alerts` is absent.
-
-    The alerts feature provides `cmbs.alerts.service.build_alerts`, which returns a summary
-    with the number raised. It is looked up when called, so the month's load needs no change
-    when that feature arrives.
-    """
-    try:
-        alerts = importlib.import_module("cmbs.alerts.service")
-    except ModuleNotFoundError as missing:
-        if missing.name not in ("cmbs.alerts", "cmbs.alerts.service"):
-            raise
-        return None
-    built = alerts.build_alerts(db, deal_id=deal_id, period=period, actor=actor, run_id=run_id)
-    return built.raised
-
-
 def load_month(
     db: Session,
     *,
@@ -235,7 +216,9 @@ def load_month(
         raise not_loaded(Stage.LOAD_REPORT, error) from error
     reconciliation = reconcile(db, deal_id=deal.id, period=month.period, as_of=on)
     try:
-        alerts = build_alerts(db, deal_id=deal.id, period=month.period, actor=actor, run_id=run_id)
+        built = alerts.build_alerts(
+            db, deal_id=deal.id, period=month.period, actor=actor, run_id=run_id
+        )
     except Refused as error:
         raise not_loaded(Stage.BUILD_ALERTS, error) from error
     return MonthResult(
@@ -244,7 +227,7 @@ def load_month(
         loan_rows=0 if loaded.already_loaded else loaded.loans_loaded,
         quarantined=len(loaded.quarantined),
         flags=reconciliation.flags_raised,
-        alerts=alerts,
+        alerts=built.raised,
         notes=month.notes(),
     )
 
