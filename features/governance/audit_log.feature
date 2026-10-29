@@ -1,4 +1,4 @@
-@draft @layer:data @surface:api @surface:ui
+@approved @layer:data @surface:api @surface:ui
 Feature: Audit log
   Every change to the panel is recorded: who, when, what changed from what to what, and why
   when a reason was required. The log is append-only. Nothing in it can be edited or deleted.

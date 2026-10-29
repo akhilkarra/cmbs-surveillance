@@ -1,4 +1,4 @@
-@draft @layer:ui @surface:ui
+@approved @layer:ui @surface:ui
 Feature: Surveillance dashboard
   A PM opens one page to see what changed across the book this month, opens a loan, and
   checks any value against its source in one click.

@@ -1,4 +1,4 @@
-@draft @layer:data @surface:cli @surface:api @surface:ui
+@approved @layer:data @surface:cli @surface:api @surface:ui
 Feature: The book
   The panel knows what the fund holds, so every alert carries the exposure behind it.
   Positions are supplied as a file of deal, class and face amount. Exposure to a loan-level

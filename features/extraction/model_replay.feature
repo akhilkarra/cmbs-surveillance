@@ -1,4 +1,4 @@
-@draft @layer:model @surface:cli
+@approved @layer:model @surface:cli
 Feature: Model replay
   Model answers are recorded once and replayed, so tests and reruns give identical results,
   and a change of model can never slip in unnoticed.

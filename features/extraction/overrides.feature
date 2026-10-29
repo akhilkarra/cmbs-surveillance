@@ -1,4 +1,4 @@
-@draft @layer:logic @surface:api @surface:ui
+@approved @layer:logic @surface:api @surface:ui
 Feature: Overriding an extracted value
   An analyst who knows better can replace a value the model produced, whether it was
   auto-accepted or reviewed. The model's answer is kept, the override is attributed, and a
