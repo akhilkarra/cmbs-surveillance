@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 
 from cmbs import clock
 from cmbs.access.service import PermissionRefused
+from cmbs.audit.service import loan_history
 from cmbs.audit.tables import AuditEntry
 from cmbs.extraction.fields import InvalidValue
 from cmbs.extraction.service import (
@@ -367,3 +368,30 @@ def test_history_of_an_unknown_deal_is_refused(accepted):
     with pytest.raises(UnknownDeal, match="^no deal named 'No Such Trust'$"):
         override_history(accepted, "pat", deal="No Such Trust", loan="2", period=SEPTEMBER)
     assert override_history(accepted, "pat", deal=FIXTURE_DEAL, loan="7", period=SEPTEMBER) == []
+
+
+def test_audit_keys_name_the_registered_deal_and_the_stored_loan(accepted):
+    """A loan typed '02' or a deal typed with odd spacing is audited under the loan's own key,
+    so the loan's history finds it; an unknown deal is keyed on the name with spacing
+    collapsed."""
+    with pytest.raises(ReasonRequired):
+        _override(accepted, loan="02", reason=None)
+    accepted.rollback()
+    with pytest.raises(UnknownDeal):
+        _override(accepted, deal="No   Such Trust", loan="002")
+    accepted.rollback()
+    _override(accepted, deal="Fixture  Trust 2026-F1", loan="02")
+    accepted.commit()
+    entries = accepted.scalars(
+        select(AuditEntry).where(AuditEntry.action.in_(["override value", "override values"]))
+    ).all()
+    assert sorted((e.outcome, e.subject_key) for e in entries) == [
+        ("done", f"{FIXTURE_DEAL}/2"),
+        ("refused", f"{FIXTURE_DEAL}/2"),
+        ("refused", "No Such Trust/2"),
+    ]
+    history = loan_history(accepted, "pat", deal=FIXTURE_DEAL, loan="2")
+    assert [e.outcome for e in history if e.action == "override value"] == ["done", "refused"]
+    [stored] = accepted.scalars(select(FieldOverride)).all()
+    assert (stored.loan_id, stored.field) == ("2", "borrower_request")
+    assert override_history(accepted, "pat", deal=FIXTURE_DEAL, loan="02", period=SEPTEMBER)

@@ -82,6 +82,7 @@ def override_json(made: OverrideView) -> dict[str, Any]:
         "display": made.display,
         "sentence": made.sentence,
         "evidence": made.evidence,
+        "accession": made.accession,
         "reason": made.reason,
         "by": made.by,
         "at": made.at.isoformat(),

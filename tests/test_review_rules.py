@@ -12,6 +12,7 @@ from cmbs.extraction import fields
 from cmbs.extraction.service import NoSuchSentence, ReviewView
 from cmbs.extraction.tables import ExtractedField
 from cmbs.review.service import (
+    LabelCandidate,
     NoSentence,
     QueueEntry,
     QueueSummary,
@@ -21,16 +22,17 @@ from cmbs.review.service import (
     UnknownField,
     WaitingForReview,
     business_days,
-    candidate,
     clean_reason,
     end_of_day,
     exposure_to,
     field_spec,
     is_overdue,
+    latest_per_field,
     override_problem,
     queue_order,
     render_queue,
     render_queue_summary,
+    review_choice,
     shown,
     summarize,
     waiting_text,
@@ -312,7 +314,7 @@ def test_what_the_panel_shows_before_an_override():
     assert shown(declined, None, declined=True) == Shown("not determinable", None, None)
 
 
-def test_label_candidates_come_from_people():
+def test_review_choices_come_from_reviewers():
     reviewed = _row(status="human-reviewed", value="forbearance", decided_by="alex", decided_at=AT)
     not_stated = _row(
         status="not stated", value=None, sentence=None, decided_by="morgan", decided_at=AT
@@ -320,28 +322,40 @@ def test_label_candidates_come_from_people():
     declined = _row(
         status="not stated", value=None, sentence=None, decided_by="alex", decided_at=AT
     )
-    assert candidate(_row(), None, declined=False) is None
-    assert candidate(reviewed, None, declined=False) == ("review", "forbearance", 3, "alex", AT)
-    assert candidate(not_stated, None, declined=False) == (
-        "review",
-        "not stated",
-        None,
-        "morgan",
-        AT,
+    assert review_choice(_row(), declined=False) is None
+    assert review_choice(_row(decided_by="alex"), declined=False) is None  # no time: not decided
+    assert review_choice(reviewed, declined=False) == ("forbearance", 3, "alex", AT)
+    assert review_choice(not_stated, declined=False) == ("not stated", None, "morgan", AT)
+    assert review_choice(declined, declined=True) is None
+
+
+def _candidate(source, at, loan="2", field="borrower_request", extraction_id=1):
+    return LabelCandidate(
+        deal="D",
+        loan=loan,
+        period=Period(2026, 9),
+        accession="a",
+        extraction_id=extraction_id,
+        field=field,
+        label=fields.spec(field).label,
+        value=source,
+        sentence=3,
+        source=source,
+        by="alex",
+        at=at,
+        model_value=None,
     )
-    assert candidate(declined, None, declined=True) is None
-    later = _override(value="loan modification", sentence=2, overridden_by="morgan")
-    assert candidate(declined, later, declined=True) == (
-        "override",
-        "loan modification",
-        2,
-        "morgan",
-        AT,
-    )
-    assert candidate(_row(), _override(), declined=False) == (
-        "override",
-        "forbearance",
-        3,
-        "alex",
-        AT,
-    )
+
+
+def test_the_latest_candidate_per_field_wins_and_an_override_wins_a_tie():
+    early = _candidate("review", AT)
+    late = _candidate("override", AT + dt.timedelta(hours=1))
+    tie = _candidate("review", AT + dt.timedelta(hours=1))
+    other_loan = _candidate("review", AT - dt.timedelta(hours=1), loan="7")
+    other_field = _candidate("review", AT, field="dscr", extraction_id=2)
+    assert latest_per_field([early, late, other_loan]) == [other_loan, late]
+    assert latest_per_field([late, early]) == [late]
+    assert latest_per_field([tie, late]) == [late]
+    assert latest_per_field([late, tie]) == [late]
+    assert latest_per_field([other_field, early]) == [early, other_field]
+    assert latest_per_field([]) == []

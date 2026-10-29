@@ -5,7 +5,8 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 
 from cmbs import clock
 from cmbs.access.service import PermissionRefused
@@ -235,3 +236,36 @@ def test_the_summary_for_risk(seeded, items):
         0,
         dt.date(2026, 10, 1),
     )
+
+
+def test_a_past_days_queue_shows_items_as_they_stood_then(seeded, items):
+    planned = QUEUE["B"]
+    decide_review(seeded, "alex", items["B"], value=planned.answer, sentence=planned.sentence)
+    seeded.commit()
+    [then] = [
+        entry.item
+        for entry in queue(seeded, "alex", on=dt.date(2026, 10, 5))
+        if entry.item.id == items["B"]
+    ]
+    stood = (then.status, then.decided_by, then.decided_at, then.decision, then.decision_sentence)
+    assert stood == ("open", None, None, None, None)
+    now = review_item(seeded, "alex", items["B"])
+    assert (now.status, now.decided_by, now.decision) == ("decided", "alex", "forbearance")
+
+
+def test_overrides_and_declines_are_append_only(seeded, items):
+    """The tables refuse every change that goes around the service, as the audit log does."""
+    decline(seeded, "alex", items["A"], reason=REASON)
+    seeded.commit()
+    for statement, message in [
+        ("UPDATE app.review_decline SET reason = 'x'", "review declines are append-only"),
+        ("DELETE FROM app.review_decline", "review declines are append-only"),
+        ("TRUNCATE app.review_decline", "review declines are append-only"),
+        ("UPDATE silver.field_override SET reason = 'x'", "overrides are append-only"),
+        ("DELETE FROM silver.field_override", "overrides are append-only"),
+        ("TRUNCATE silver.field_override", "overrides are append-only"),
+    ]:
+        with pytest.raises(DBAPIError, match=message):
+            seeded.execute(text(statement))
+        seeded.rollback()
+    assert declined_reason(seeded, "pat", items["A"]) == REASON

@@ -8,9 +8,14 @@ public or restricted, without storing a panel value (there is no store yet for r
 sources such as an investor portal).
 
 `decide_review` is a reviewer's decision: it fills the panel value, attributed and audited.
-An analyst's override (`cmbs.review`) is laid over the field when it is read: `comment_view`
-shows the latest override made by the day asked about, while the field's own row keeps the
-model's answer and any review decision.
+An analyst's override (`cmbs.review`) belongs to a loan's field for a month, not to one
+extraction, and is laid over the field when it is read: `comment_view` shows the latest override
+made by the day asked about, while the field's own row keeps the model's answer and any review
+decision. It stays on top when the same comment is read again (a new model or prompt). When the
+comment itself changed (an amended 10-D), the override is not applied: storing the new
+extraction opens a review item for the field ("an earlier override no longer matches the
+comment"), opened then rather than on read so that reading never writes. Storing a newer
+extraction of a loan's month also marks the open review items of older ones superseded.
 
 The checks that can refuse run before anything is written: who is acting, the settings in force
 (an exact model version, a prompt version this code asks), the deal and its comments, then
@@ -24,7 +29,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import NoReturn
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -32,6 +37,7 @@ from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import Actor, authorize
 from cmbs.audit.service import LOAN, loan_key, record, refuse
+from cmbs.audit.service import REVIEW_ITEM as AUDITED_REVIEW_ITEM
 from cmbs.deals import service as deals
 from cmbs.deals.tables import Deal
 from cmbs.distribution.service import canonical_loan
@@ -50,6 +56,7 @@ from cmbs.extraction.tables import (
     NEEDS_REVIEW,
     NOT_STATED,
     OPEN,
+    SUPERSEDED,
     ExtractedField,
     Extraction,
     ReviewItem,
@@ -77,8 +84,9 @@ NOT_STATED_DECISION = "not stated"
 # field's row keeps what the model or reviewer decided, and these are laid over it when read.
 OVERRIDDEN = "overridden"
 NOT_DETERMINABLE = "not determinable"
+OVERRIDE_CONFLICT = "an earlier override no longer matches the comment"
 DEAL = "deal"
-REVIEW_ITEM = "review item"
+REVIEW_ITEM = AUDITED_REVIEW_ITEM  # the loan's audit history finds refusals by it
 STATUS_OF = {
     Outcome.AUTO_ACCEPT: AUTO_ACCEPTED,
     Outcome.REVIEW: NEEDS_REVIEW,
@@ -253,6 +261,48 @@ def _review_question(judgment: Judgment, reason: str) -> tuple[str, Decimal]:
     return judgment.support_question, judgment.support_probability
 
 
+def review_reason_for(result: FieldResult, *, conflict: bool) -> tuple[str, str, Decimal] | None:
+    """(reason, question, probability) of the review item a field's result opens; None when it
+    opens none. A field whose earlier override no longer matches the comment always goes to
+    review, asking the field's own question; the conflict comes first in the reason. Pure."""
+    judgment = result.judgment
+    if judgment is None:
+        return None
+    if result.decision.outcome is Outcome.REVIEW:
+        reason = result.decision.reason or ""
+        question, probability = _review_question(judgment, reason)
+        return (f"{OVERRIDE_CONFLICT}; {reason}" if conflict else reason), question, probability
+    if conflict:
+        return OVERRIDE_CONFLICT, judgment.value_question, judgment.answer_probability
+    return None
+
+
+def supersede_items(
+    db: Session, *, deal_id: int, loan: str, period: Period, by: int, at: dt.datetime
+) -> list[int]:
+    """Mark the open review items of a loan's month that belong to extractions other than `by`
+    superseded by it; returns their ids. They leave the queue and are kept."""
+    older = (
+        select(ExtractedField.id)
+        .join(Extraction, Extraction.id == ExtractedField.extraction_id)
+        .where(
+            Extraction.deal_id == deal_id,
+            Extraction.loan_id == loan,
+            Extraction.period == period.first_day,
+            Extraction.id != by,
+        )
+    )
+    # An UPDATE re-checks `status` after waiting on a row another session holds, so an item a
+    # reviewer decided meanwhile stays decided.
+    found = db.scalars(
+        update(ReviewItem)
+        .where(ReviewItem.status == OPEN, ReviewItem.field_id.in_(older))
+        .values(status=SUPERSEDED, superseded_at=at, superseded_by=by)
+        .returning(ReviewItem.id)
+    ).all()
+    return sorted(found)
+
+
 def _field_row(extraction_id: int, result: FieldResult) -> ExtractedField:
     judgment = result.judgment
     accepted = result.decision.outcome is Outcome.AUTO_ACCEPT and judgment is not None
@@ -318,13 +368,24 @@ def _store(
         if existing is None:  # pragma: no cover - the conflict guarantees the row
             raise RuntimeError("extraction vanished after a conflicting insert")
         return _extracted(db, existing, replayed=True)
+    period = Period.of(comment.period)
+    overridden = latest_overrides(db, deal_id=comment.deal_id, loan=comment.loan_id, period=period)
+    conflicts = sorted(name for name, (_, cited) in overridden.items() if cited != comment.comment)
+    superseded = supersede_items(
+        db,
+        deal_id=comment.deal_id,
+        loan=comment.loan_id,
+        period=period,
+        by=extraction_id,
+        at=now,
+    )
     for result in reading.results.values():
         row = _field_row(extraction_id, result)
         db.add(row)
         db.flush()
-        if result.decision.outcome is Outcome.REVIEW and result.judgment is not None:
-            reason = result.decision.reason or ""
-            question, probability = _review_question(result.judgment, reason)
+        item = review_reason_for(result, conflict=result.field in conflicts)
+        if item is not None and result.judgment is not None:
+            reason, question, probability = item
             db.add(
                 ReviewItem(
                     field_id=row.id,
@@ -357,6 +418,8 @@ def _store(
             "model_call": reading.answered.recording.call_id,
             "replayed": reading.answered.replayed,
             "outcomes": outcomes,
+            "superseded_review_items": superseded,
+            "override_conflicts": conflicts,
         },
     )
     return Extracted(
@@ -597,16 +660,36 @@ def latest_extraction(
 
 
 def latest_overrides(
-    db: Session, field_ids: Sequence[int], *, before: dt.datetime | None = None
-) -> dict[int, FieldOverride]:
-    """Each field's latest override, by field id: of those made before `before` when given."""
-    if not field_ids:
-        return {}
-    query = select(FieldOverride).where(FieldOverride.field_id.in_(field_ids))
+    db: Session,
+    *,
+    deal_id: int,
+    loan: str,
+    period: Period,
+    before: dt.datetime | None = None,
+) -> dict[str, tuple[FieldOverride, str]]:
+    """Each field's latest override of a loan's comment for a month (of those made before
+    `before`, when given), by field name, with the comment text its sentence cites."""
+    query = (
+        select(FieldOverride, Extraction.comment)
+        .join(ExtractedField, ExtractedField.id == FieldOverride.field_id)
+        .join(Extraction, Extraction.id == ExtractedField.extraction_id)
+        .where(
+            FieldOverride.deal_id == deal_id,
+            FieldOverride.loan_id == canonical_loan(loan),
+            FieldOverride.period == period.first_day,
+        )
+    )
     if before is not None:
         query = query.where(FieldOverride.overridden_at < before)
-    rows = db.scalars(query.order_by(FieldOverride.overridden_at, FieldOverride.id)).all()
-    return {row.field_id: row for row in rows}
+    rows = db.execute(query.order_by(FieldOverride.overridden_at, FieldOverride.id)).all()
+    return {made.field: (made, cited) for made, cited in rows}
+
+
+def applicable(found: tuple[FieldOverride, str] | None, comment: str) -> FieldOverride | None:
+    """The override, when the comment its sentence cites is `comment`; None otherwise."""
+    if found is None or found[1] != comment:
+        return None
+    return found[0]
 
 
 def declined_fields(db: Session, field_ids: Sequence[int]) -> set[int]:
@@ -647,7 +730,13 @@ def comment_view(
     ).all()
     by_field = {row.field: row for row in rows}
     ids = [row.id for row in rows]
-    overrides = latest_overrides(db, ids, before=_end_of(day))
+    overrides = latest_overrides(
+        db,
+        deal_id=deal_row.id,
+        loan=extraction.loan_id,
+        period=Period.of(extraction.period),
+        before=_end_of(day),
+    )
     declined = declined_fields(db, ids)
     return CommentView(
         deal=deal_row.name,
@@ -666,7 +755,7 @@ def comment_view(
                 by_field[spec.name],
                 extraction.sentences,
                 as_of,
-                override=overrides.get(by_field[spec.name].id),
+                override=applicable(overrides.get(spec.name), extraction.comment),
                 declined=by_field[spec.name].id in declined,
             )
             for spec in typed_fields.FIELDS
@@ -698,6 +787,8 @@ class ReviewView:
     decided_at: dt.datetime | None
     decision: str | None
     decision_sentence: int | None
+    superseded_at: dt.datetime | None = None
+    superseded_by: int | None = None
 
 
 def _review_view(db: Session, item: ReviewItem) -> ReviewView:
@@ -725,6 +816,8 @@ def _review_view(db: Session, item: ReviewItem) -> ReviewView:
         decided_at=item.decided_at,
         decision=item.decision,
         decision_sentence=item.decision_sentence,
+        superseded_at=item.superseded_at,
+        superseded_by=item.superseded_by,
     )
 
 
@@ -784,6 +877,17 @@ def _decision(
     return chosen
 
 
+def closed_problem(item: ReviewItem) -> Refused | None:
+    """Why an item can no longer be decided or declined; None while it is open. Pure."""
+    if item.status == SUPERSEDED:
+        return AlreadyDecided(
+            f"review item {item.id} was superseded by a newer extraction ({item.superseded_by})"
+        )
+    if item.status != OPEN:
+        return AlreadyDecided(f"review item {item.id} was already decided by {item.decided_by}")
+    return None
+
+
 def _end_of(day: dt.date) -> dt.datetime:
     return dt.datetime.combine(day + dt.timedelta(days=1), dt.time(), dt.UTC)
 
@@ -798,8 +902,8 @@ def decide_review(
     item = db.get(ReviewItem, item_id, with_for_update=True, populate_existing=True)
     if item is None:
         _refuse_item(db, UnknownItem(f"there is no review item {item_id}"), actor, item_id)
-    if item.status != OPEN:
-        error = AlreadyDecided(f"review item {item_id} was already decided by {item.decided_by}")
+    error = closed_problem(item)
+    if error is not None:
         _refuse_item(db, error, actor, item_id)
     row = db.get(ExtractedField, item.field_id, with_for_update=True, populate_existing=True)
     extraction = db.get(Extraction, row.extraction_id) if row is not None else None

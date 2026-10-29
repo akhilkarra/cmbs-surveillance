@@ -26,7 +26,7 @@ quality report proposes for the golden set.
 import datetime as dt
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import NoReturn
 
@@ -40,6 +40,7 @@ from cmbs.audit.service import LOAN, loan_key, record, refuse
 from cmbs.book.service import Book, book_as_of, holding, whole_loan_notes, whole_loans_of
 from cmbs.deals import service as deals
 from cmbs.deals.tables import Deal
+from cmbs.distribution.service import canonical_loan
 from cmbs.domain import Period, format_money
 from cmbs.errors import Refused
 from cmbs.extraction import fields as typed_fields
@@ -48,12 +49,13 @@ from cmbs.extraction.service import (
     NOT_STATED_DECISION,
     OVERRIDDEN,
     REVIEW_ITEM,
-    AlreadyDecided,
     FieldView,
     NoSuchSentence,
     ReviewView,
     UnknownDeal,
     UnknownItem,
+    applicable,
+    closed_problem,
     declined_fields,
     field_view,
     latest_extraction,
@@ -214,14 +216,32 @@ def _linked_deals(db: Session, deal_id: int, loan: str) -> list[int]:
 
 
 def _open_on(db: Session, day: dt.date) -> Sequence[ReviewItem]:
-    """Items created by the end of `day` and not decided or declined by then."""
+    """Items created by the end of `day` and not decided, declined or superseded by then."""
     end = end_of_day(day)
     return db.scalars(
         select(ReviewItem).where(
             ReviewItem.created_at < end,
-            or_(ReviewItem.status == OPEN, ReviewItem.decided_at >= end),
+            or_(
+                ReviewItem.status == OPEN,
+                ReviewItem.decided_at >= end,
+                ReviewItem.superseded_at >= end,
+            ),
         )
     ).all()
+
+
+def as_it_stood_open(view: ReviewView) -> ReviewView:
+    """An item as it stood while still open: no decision and not superseded. Pure."""
+    return replace(
+        view,
+        status=OPEN,
+        decided_by=None,
+        decided_at=None,
+        decision=None,
+        decision_sentence=None,
+        superseded_at=None,
+        superseded_by=None,
+    )
 
 
 def queue(db: Session, reader: str, *, on: dt.date | None = None) -> list[QueueEntry]:
@@ -236,7 +256,9 @@ def queue(db: Session, reader: str, *, on: dt.date | None = None) -> list[QueueE
         since = view.created_at.astimezone(dt.UTC).date()
         entries.append(
             QueueEntry(
-                item=view,
+                # The queue lists only items open at the end of `day`; one decided since is
+                # shown as it stood then.
+                item=as_it_stood_open(view),
                 exposure=exposure_to(book, _linked_deals(db, item.deal_id, item.loan_id)),
                 waiting_since=since,
                 waited=business_days(since, day),
@@ -291,9 +313,9 @@ def decline(db: Session, user: str, item_id: int, *, reason: str | None) -> Fiel
         _refuse(
             db, UnknownItem(f"there is no review item {item_id}"), actor, DECLINE, REVIEW_ITEM, key
         )
-    if item.status != OPEN:
-        error = AlreadyDecided(f"review item {item_id} was already decided by {item.decided_by}")
-        _refuse(db, error, actor, DECLINE, REVIEW_ITEM, key)
+    closed = closed_problem(item)
+    if closed is not None:
+        _refuse(db, closed, actor, DECLINE, REVIEW_ITEM, key)
     row = db.get(ExtractedField, item.field_id, with_for_update=True, populate_existing=True)
     if row is None:  # pragma: no cover - foreign key
         raise RuntimeError(f"review item {item_id} lost its field")
@@ -368,14 +390,16 @@ def override_problem(
     sentence: int | None,
     sentences: int,
     current: Shown,
+    waiting: bool = False,
 ) -> Refused | None:
     """Why `value` citing `sentence` cannot override the field showing `current`, given a
-    comment of `sentences` sentences; None if it can. Pure; `value` is already canonical."""
+    comment of `sentences` sentences and whether an open review item waits on the field; None
+    if it can. Pure; `value` is already canonical."""
     if sentence is None:
         return NoSentence(f"an override cites the sentence that supports the {spec.label}")
     if not 1 <= sentence <= sentences:
         return NoSuchSentence(f"sentence {sentence} does not exist in this comment")
-    if current.status == NEEDS_REVIEW:
+    if waiting or current.status == NEEDS_REVIEW:
         return WaitingForReview(
             f"loan {loan}'s {spec.label} is waiting for review; decide its review item instead"
         )
@@ -409,7 +433,10 @@ def override(
     right to override values (an analyst; a PM may not). Refusals are audited.
     """
     actor = authorize(db, user, Action.OVERRIDE_VALUE)
-    subject_key = loan_key(" ".join(deal.split()), loan)
+    loan_id = canonical_loan(loan)
+    # Until the deal resolves, a refusal is keyed on the name as typed, whitespace collapsed:
+    # there is no registered name to use, and the key still reads as what was asked.
+    subject_key = loan_key(" ".join(deal.split()), loan_id)
     try:
         spec = field_spec(field)
         chosen = typed_fields.canonical(spec, value)
@@ -417,13 +444,13 @@ def override(
         deal_row = deals.by_name(db, deal)
         if deal_row is None:
             raise UnknownDeal(f"no deal named {deal!r}")
-        subject_key = loan_key(deal_row.name, loan)
+        subject_key = loan_key(deal_row.name, loan_id)
         found = latest_extraction(
             db, deal_id=deal_row.id, loan=loan, period=period, day=clock.today()
         )
         if found is None:
             raise NoExtraction(
-                f"loan {loan} of {deal_row.name} has no extracted comment for {period}"
+                f"loan {loan_id} of {deal_row.name} has no extracted comment for {period}"
             )
         extraction, _ = found
         # Locked and re-read: overrides of one field take turns, and each sees the last.
@@ -435,10 +462,16 @@ def override(
         ).one_or_none()
         if row is None:
             raise NoExtraction(
-                f"loan {loan}'s {spec.label} was not extracted from {extraction.accession}"
+                f"loan {loan_id}'s {spec.label} was not extracted from {extraction.accession}"
             )
         declined = row.id in declined_fields(db, [row.id])
-        current = shown(row, latest_overrides(db, [row.id]).get(row.id), declined=declined)
+        earlier = latest_overrides(
+            db, deal_id=deal_row.id, loan=loan_id, period=Period.of(extraction.period)
+        ).get(spec.name)
+        current = shown(row, applicable(earlier, extraction.comment), declined=declined)
+        waiting = db.scalar(
+            select(ReviewItem.id).where(ReviewItem.field_id == row.id, ReviewItem.status == OPEN)
+        )
         problem = override_problem(
             spec,
             loan=extraction.loan_id,
@@ -446,6 +479,7 @@ def override(
             sentence=sentence,
             sentences=len(extraction.sentences),
             current=current,
+            waiting=waiting is not None,
         )
         if problem is not None:
             raise problem
@@ -454,6 +488,10 @@ def override(
     if sentence is None:  # pragma: no cover - override_problem refuses it
         raise RuntimeError("an override without a sentence passed the checks")
     made = FieldOverride(
+        deal_id=extraction.deal_id,
+        loan_id=extraction.loan_id,
+        period=extraction.period,
+        field=spec.name,
         field_id=row.id,
         value=chosen,
         sentence=sentence,
@@ -499,6 +537,7 @@ class OverrideView:
     display: str
     sentence: int
     evidence: str
+    accession: str
     reason: str
     by: str
     at: dt.datetime
@@ -509,33 +548,36 @@ class OverrideView:
 def override_history(
     db: Session, reader: str, *, deal: str, loan: str, period: Period
 ) -> list[OverrideView]:
-    """Every override of the latest extraction of a loan's comment for a period, oldest first."""
+    """Every override of a loan's fields for a month, oldest first, each with the sentence it
+    cites from the comment it was made against."""
     authorize(db, reader, Action.READ_PANEL)
     deal_row = deals.by_name(db, deal)
     if deal_row is None:
         raise UnknownDeal(f"no deal named {deal!r}")
-    found = latest_extraction(db, deal_id=deal_row.id, loan=loan, period=period, day=clock.today())
-    if found is None:
-        return []
-    extraction, _ = found
     rows = db.execute(
-        select(FieldOverride, ExtractedField.field)
+        select(FieldOverride, Extraction)
         .join(ExtractedField, ExtractedField.id == FieldOverride.field_id)
-        .where(ExtractedField.extraction_id == extraction.id)
+        .join(Extraction, Extraction.id == ExtractedField.extraction_id)
+        .where(
+            FieldOverride.deal_id == deal_row.id,
+            FieldOverride.loan_id == canonical_loan(loan),
+            FieldOverride.period == period.first_day,
+        )
         .order_by(FieldOverride.overridden_at, FieldOverride.id)
     ).all()
     views = []
-    for made, name in rows:
-        spec = typed_fields.spec(name)
+    for made, cited in rows:
+        spec = typed_fields.spec(made.field)
         views.append(
             OverrideView(
                 id=made.id,
-                field=name,
+                field=made.field,
                 label=spec.label,
                 value=made.value,
                 display=typed_fields.display(spec, made.value),
                 sentence=made.sentence,
-                evidence=extraction.sentences[made.sentence - 1],
+                evidence=cited.sentences[made.sentence - 1],
+                accession=cited.accession,
                 reason=made.reason,
                 by=made.overridden_by,
                 at=made.overridden_at,
@@ -568,62 +610,96 @@ class LabelCandidate:
     model_value: str | None
 
 
-def candidate(
-    row: ExtractedField, override: FieldOverride | None, *, declined: bool
-) -> tuple[str, str, int | None, str, dt.datetime] | None:
-    """(source, value, sentence, by, at) for a field a person decided; None for a field nobody
-    decided or one declined as not determinable without a later override. Pure."""
-    if override is not None:
-        return (
-            "override",
-            override.value,
-            override.sentence,
-            override.overridden_by,
-            override.overridden_at,
-        )
+def review_choice(
+    row: ExtractedField, *, declined: bool
+) -> tuple[str, int | None, str, dt.datetime] | None:
+    """(value, sentence, by, at) of a reviewer's decision; None for a field nobody decided or
+    one declined as not determinable. Pure."""
     if declined or row.decided_by is None or row.decided_at is None:
         return None
     value = row.value if row.value is not None else NOT_STATED_DECISION
-    return (REVIEW, value, row.sentence, row.decided_by, row.decided_at)
+    return value, row.sentence, row.decided_by, row.decided_at
+
+
+type CandidateKey = tuple[str, str, Period, str]
+
+
+def latest_per_field(candidates: Iterable[LabelCandidate]) -> list[LabelCandidate]:
+    """The latest candidate per deal, loan, month and field, oldest first; an override and a
+    review at the same moment keep the override. Pure."""
+    latest: dict[CandidateKey, LabelCandidate] = {}
+    for found in candidates:
+        key = (found.deal, found.loan, found.period, found.field)
+        held = latest.get(key)
+        rank = (found.at, found.source == "override")
+        if held is None or rank > (held.at, held.source == "override"):
+            latest[key] = found
+    return sorted(latest.values(), key=lambda item: (item.at, item.extraction_id, item.field))
 
 
 def label_candidates(db: Session, reader: str) -> list[LabelCandidate]:
-    """Every reviewed or overridden value, the latest per field, oldest first."""
+    """The latest value a person chose for each field of each loan's month, reviewed or
+    overridden, oldest first. Each names the comment (extraction) its sentence comes from."""
     authorize(db, reader, Action.READ_PANEL)
-    overridden = select(FieldOverride.field_id)
-    rows = db.execute(
+    found: list[LabelCandidate] = []
+    reviewed = db.execute(
         select(ExtractedField, Extraction, Deal.name)
         .join(Extraction, Extraction.id == ExtractedField.extraction_id)
         .join(Deal, Deal.id == Extraction.deal_id)
-        .where(or_(ExtractedField.decided_by.is_not(None), ExtractedField.id.in_(overridden)))
+        .where(ExtractedField.decided_by.is_not(None))
     ).all()
-    ids = [row.id for row, _, _ in rows]
-    overrides = latest_overrides(db, ids)
-    declined = declined_fields(db, ids)
-    found = []
-    for row, extraction, deal in rows:
-        chosen = candidate(row, overrides.get(row.id), declined=row.id in declined)
-        if chosen is None:
-            continue
-        source, value, sentence, by, at = chosen
+    declined = declined_fields(db, [row.id for row, _, _ in reviewed])
+    for row, extraction, deal in reviewed:
+        choice = review_choice(row, declined=row.id in declined)
+        if choice is not None:
+            found.append(_candidate(deal, extraction, row, REVIEW, *choice))
+    overridden = db.execute(
+        select(FieldOverride, ExtractedField, Extraction, Deal.name)
+        .join(ExtractedField, ExtractedField.id == FieldOverride.field_id)
+        .join(Extraction, Extraction.id == ExtractedField.extraction_id)
+        .join(Deal, Deal.id == Extraction.deal_id)
+    ).all()
+    for made, row, extraction, deal in overridden:
         found.append(
-            LabelCandidate(
-                deal=deal,
-                loan=extraction.loan_id,
-                period=Period.of(extraction.period),
-                accession=extraction.accession,
-                extraction_id=extraction.id,
-                field=row.field,
-                label=typed_fields.spec(row.field).label,
-                value=value,
-                sentence=sentence,
-                source=source,
-                by=by,
-                at=at,
-                model_value=row.model_value,
+            _candidate(
+                deal,
+                extraction,
+                row,
+                "override",
+                made.value,
+                made.sentence,
+                made.overridden_by,
+                made.overridden_at,
             )
         )
-    return sorted(found, key=lambda item: (item.at, item.extraction_id, item.field))
+    return latest_per_field(found)
+
+
+def _candidate(
+    deal: str,
+    extraction: Extraction,
+    row: ExtractedField,
+    source: str,
+    value: str,
+    sentence: int | None,
+    by: str,
+    at: dt.datetime,
+) -> LabelCandidate:
+    return LabelCandidate(
+        deal=deal,
+        loan=extraction.loan_id,
+        period=Period.of(extraction.period),
+        accession=extraction.accession,
+        extraction_id=extraction.id,
+        field=row.field,
+        label=typed_fields.spec(row.field).label,
+        value=value,
+        sentence=sentence,
+        source=source,
+        by=by,
+        at=at,
+        model_value=row.model_value,
+    )
 
 
 # Plain text for the command line.
