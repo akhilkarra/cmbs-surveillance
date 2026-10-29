@@ -13,6 +13,7 @@ from cmbs.access.service import PermissionRefused
 from cmbs.api.app import create_app
 from cmbs.ask.answer import Kind
 from cmbs.ask.service import (
+    LoanFacts,
     NoLoan,
     UnknownDeal,
     UnknownLoan,
@@ -46,6 +47,11 @@ def test_tape_values_read_as_reported():
     assert tape_value("occupancy", Decimal("0.8850")) == "88.5%"
     assert tape_value("paid_through_date", dt.date(2026, 5, 1)) == "2026-05-01"
     assert tape_value("property_type", "LO") == "LO"
+
+
+def test_loan_facts_with_none_say_so():
+    empty = LoanFacts(deal="F1", loan="2", as_of=dt.date(2026, 10, 6), facts=[])
+    assert empty.text() == "loan 2 of F1, as known on 2026-10-06: the panel holds no facts"
 
 
 @pytest.fixture

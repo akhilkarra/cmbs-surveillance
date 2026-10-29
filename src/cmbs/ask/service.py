@@ -196,7 +196,7 @@ def comment_facts(view: CommentView, cik: int) -> list[Fact]:
                 value=None if waiting else shown.display,
                 status=shown.status,
                 citation=citation,
-                set_by=getattr(shown, "overridden_by", None) or shown.decided_by,
+                set_by=shown.overridden_by or shown.decided_by,
             )
         )
     return facts

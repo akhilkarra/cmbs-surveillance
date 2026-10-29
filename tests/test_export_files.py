@@ -84,9 +84,13 @@ def test_comment_columns_cover_every_field():
     assert len(columns) == 3 + 4 * len(typed_fields.FIELDS)
 
 
-def _shown(value, status, sentence=None, decided_by=None, **extra):
+def _shown(value, status, sentence=None, decided_by=None, overridden_by=None):
     return SimpleNamespace(
-        value=value, status=status, sentence=sentence, decided_by=decided_by, **extra
+        value=value,
+        status=status,
+        sentence=sentence,
+        decided_by=decided_by,
+        overridden_by=overridden_by,
     )
 
 

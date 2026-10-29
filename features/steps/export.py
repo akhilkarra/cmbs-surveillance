@@ -116,7 +116,7 @@ def step_waiting_for_review(context, loan, label):
 def step_overridden_by(context, loan, label, user):
     """The analyst replaces the value with "forbearance", citing sentence 3 (agent D's
     `cmbs.review.service.override`)."""
-    from cmbs.review.service import override  # pyright: ignore[reportMissingImports]
+    from cmbs.review.service import override
 
     spec = fields.by_label(label)
     _ensure_extracted(context, loan)

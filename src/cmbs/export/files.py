@@ -115,7 +115,7 @@ def comment_values(view: Any | None) -> dict[str, Any]:
         values[base] = shown.value
         values[f"{base}_status"] = shown.status
         values[f"{base}_sentence"] = shown.sentence
-        values[f"{base}_by"] = getattr(shown, "overridden_by", None) or shown.decided_by
+        values[f"{base}_by"] = shown.overridden_by or shown.decided_by
     return values
 
 

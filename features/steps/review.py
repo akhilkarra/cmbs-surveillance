@@ -291,17 +291,8 @@ def step_panel_still_shows(context, value):
     assert (shown.display, shown.status) == (value, "auto-accepted"), shown
 
 
-@when(r'"(?P<user>[^"]+)" asks "(?P<question>What does the borrower of loan 2 want\?)"')
-def step_asks_borrower_request(context, user, question):
-    # The facts an answer to this question draws on: loan 2's borrower request, as the panel
-    # shows it to the asker. The ask surface (cmbs.ask) reads the same view.
-    context.fact = attempt(
-        context,
-        lambda: in_session(
-            lambda db: comment_view(db, user, deal=FIXTURE_DEAL, loan="2", period=SEPTEMBER)
-        ),
-    )
-    assert context.refusal is None, f"refused: {context.refusal}"
+# "When <user> asks <question>" is the ask surface's step (features/steps/ask.py): it keeps the
+# composed answer as `context.answer`.
 
 
 @then(
@@ -309,10 +300,19 @@ def step_asks_borrower_request(context, user, question):
     r"sentence (?P<sentence>\d+)"
 )
 def step_answer_says_overridden(context, value, user, sentence):
-    shown = context.fact.fields["borrower_request"]
-    found = (shown.display, shown.overridden_by, shown.sentence)
-    assert found == (value, user, int(sentence)), found
-    assert shown.evidence == context.fact.sentences[int(sentence) - 1]
+    answer = context.answer
+    stated = [fact for fact in answer.stated if fact.name == "borrower_request"]
+    assert len(stated) == 1, answer.text()
+    fact = stated[0]
+    assert fact.citation is not None, fact
+    found = (fact.value, fact.status, fact.set_by, fact.citation.sentence)
+    assert found == (value, "overridden", user, int(sentence)), found
+    view = in_session(
+        lambda db: comment_view(db, READER, deal=FIXTURE_DEAL, loan="2", period=SEPTEMBER)
+    )
+    assert view is not None
+    assert fact.citation.quote == view.sentences[int(sentence) - 1], fact.citation
+    assert fact.text() in answer.text(), answer.text()
 
 
 @when(r"the next quality report is built")
