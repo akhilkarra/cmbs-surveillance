@@ -51,9 +51,10 @@ from cmbs.panel import service as panel
 from cmbs.runs import service as runs
 from cmbs.tape.tables import LoanPeriod
 
-CONTRACT_PASSED = "contract passed"
-ROLLFORWARD_NOT_CHECKED = "roll-forward not checked"
-EVIDENCE_CHECKED = "evidence checked"
+# What a check found: "passed", "failed", or "not checked" (the check could not run yet).
+PASSED = "passed"
+FAILED = "failed"
+NOT_CHECKED = "not checked"
 NOT_IN_AUDIT_TRAIL = "load not in the audit trail"
 
 # How the web app formats a value; the value itself is always sent as text, so no digit is lost.
@@ -67,6 +68,19 @@ _MONTH = re.compile(r"(\d{4})-(\d{2})")
 
 class BadMonth(Refused):
     pass
+
+
+@dataclass(frozen=True)
+class Check:
+    """One thing that verified a value, as the page names it, and what it found."""
+
+    label: str
+    outcome: str
+
+
+CONTRACT_PASSED = Check("contract passed", PASSED)
+ROLLFORWARD_NOT_CHECKED = Check("roll-forward not checked", NOT_CHECKED)
+EVIDENCE_CHECKED = Check("evidence checked", PASSED)
 
 
 # ---------------------------------------------------------------------------- months
@@ -203,7 +217,7 @@ class TapeValue:
     label: str
     kind: str
     value: str | None
-    checks: tuple[str, ...]
+    checks: tuple[Check, ...]
 
 
 @dataclass(frozen=True)
@@ -232,7 +246,7 @@ class CommentValue:
     value: str | None
     sentence: int | None
     evidence: str | None
-    checks: tuple[str, ...]
+    checks: tuple[Check, ...]
     review_reason: str | None
     decided_by: str | None
 
@@ -283,17 +297,19 @@ def edgar_url(cik: int, accession: str, primary_document: str | None) -> str:
     return filing_base_url(cik, accession) + (primary_document or f"{accession}-index.htm")
 
 
-def loaded_text(run: int | None, by: str | None, at: dt.datetime | None) -> str:
+def loaded_text(run: int | None, by: str | None, at: dt.datetime | None, verb: str) -> str:
     """'run 43'; 'loaded by quinn outside a run'; or that the audit trail does not show it."""
     if at is None:
         return NOT_IN_AUDIT_TRAIL
     if run is None:
-        return f"loaded by {by} outside a run"
+        return f"{verb} by {by} outside a run"
     return f"run {run}"
 
 
-def loaded(run: int | None, by: str | None, at: dt.datetime | None) -> LoadedBy:
-    return LoadedBy(run=run, by=by, at=at, text=loaded_text(run, by, at))
+def loaded(
+    run: int | None, by: str | None, at: dt.datetime | None, verb: str = "loaded"
+) -> LoadedBy:
+    return LoadedBy(run=run, by=by, at=at, text=loaded_text(run, by, at, verb))
 
 
 def _money(value: Decimal | None) -> str | None:
@@ -308,7 +324,7 @@ def _code(codes: dict, code: str | None) -> str | None:
     return None if code is None else name_of(codes, code)
 
 
-def tape_values(row: LoanPeriod, rollforward: str) -> tuple[TapeValue, ...]:
+def tape_values(row: LoanPeriod, rollforward: Check) -> tuple[TapeValue, ...]:
     """The tape's values for the loan page, each with what verified it. A value the tape does
     not report is None ("not reported"), never zero."""
     balance_checks = (CONTRACT_PASSED, rollforward)
@@ -352,7 +368,7 @@ def tape_values(row: LoanPeriod, rollforward: str) -> tuple[TapeValue, ...]:
     )
 
 
-def rollforward_check(db: Session, *, deal_id: int, period: Period, loan: str) -> str:
+def rollforward_check(db: Session, *, deal_id: int, period: Period, loan: str) -> Check:
     """The balance roll-forward's verdict on the loan's month.
 
     The roll-forward check (`cmbs.crosscheck.rollforward`) is being built in parallel; until it
@@ -375,15 +391,16 @@ def financials(row: LoanPeriod) -> Financials:
 
 def field_checks(
     value: str | None, status: str, sentence: int | None, sentences: Sequence[str]
-) -> tuple[str, ...]:
+) -> tuple[Check, ...]:
     """What verified an extracted value: how it was accepted (its status), and "evidence
     checked" when the sentence behind it is one of the comment's. A field with no value (one
     awaiting review, or not stated) has nothing verified."""
     if value is None:
         return ()
+    accepted = Check(status, PASSED)
     if sentence is not None and 1 <= sentence <= len(sentences):
-        return (status, EVIDENCE_CHECKED)
-    return (status,)
+        return (accepted, EVIDENCE_CHECKED)
+    return (accepted,)
 
 
 def comment_value(view: FieldView, sentences: Sequence[str]) -> CommentValue:
@@ -428,7 +445,7 @@ def _comment(db: Session, view: CommentView) -> CommentSection:
     sentences = tuple(view.sentences)
     return CommentSection(
         source=_source(db, view.accession),
-        loaded=loaded(run, by, at),
+        loaded=loaded(run, by, at, "extracted"),
         sentences=sentences,
         model=view.model,
         prompt_version=view.prompt_version,

@@ -3,7 +3,14 @@
   "testRunner": "vitest",
   "checkers": ["typescript"],
   "tsconfigFile": "tsconfig.json",
-  "mutate": ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.test.ts", "!src/main.tsx"],
+  "mutate": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/main.tsx",
+    "!src/test-setup.ts"
+  ],
   "reporters": ["clear-text", "progress", "html"],
   "htmlReporter": { "fileName": "reports/mutation/index.html" },
   "thresholds": { "high": 100, "low": 90, "break": 90 }
