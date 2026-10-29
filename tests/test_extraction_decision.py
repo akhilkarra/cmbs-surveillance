@@ -10,7 +10,6 @@ from decimal import Decimal
 import pytest
 
 from cmbs.extraction.decision import (
-    NO_SUPPORTING_SENTENCE,
     REVIEW_REASONS,
     UNSETTLED_ANSWER,
     UNSETTLED_SUPPORT,
@@ -35,10 +34,10 @@ def review(reason: str) -> Decision:
 TABLE = {
     (L, False, L): NOT_STATED,
     (L, False, U): NOT_STATED,
-    (L, False, H): review(NO_SUPPORTING_SENTENCE),
+    (L, False, H): NOT_STATED,
     (L, True, L): NOT_STATED,
     (L, True, U): NOT_STATED,
-    (L, True, H): review(NO_SUPPORTING_SENTENCE),
+    (L, True, H): NOT_STATED,
     (U, False, L): review(EVIDENCE_NOT_FOUND),
     (U, False, U): review(EVIDENCE_NOT_FOUND),
     (U, False, H): review(EVIDENCE_NOT_FOUND),

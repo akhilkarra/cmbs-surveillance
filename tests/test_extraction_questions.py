@@ -5,7 +5,6 @@ from decimal import Decimal
 import pytest
 
 from cmbs.extraction.decision import (
-    NO_SUPPORTING_SENTENCE,
     UNSETTLED_ANSWER,
     UNSETTLED_SUPPORT,
     Decision,
@@ -206,10 +205,8 @@ def _judgment(**changes) -> Judgment:
     [
         ({}, Decision(Outcome.AUTO_ACCEPT)),
         ({"answer_probability": Decimal("0.70")}, Decision(Outcome.REVIEW, UNSETTLED_ANSWER)),
-        (
-            {"support_probability": Decimal("0.29")},
-            Decision(Outcome.REVIEW, NO_SUPPORTING_SENTENCE),
-        ),
+        # A confident value no sentence states (support just below the band) is not stated.
+        ({"support_probability": Decimal("0.29")}, Decision(Outcome.NOT_STATED)),
         ({"sentence": None}, Decision(Outcome.REVIEW, EVIDENCE_NOT_FOUND)),
         (
             {"support_probability": Decimal("0.1"), "answer_probability": Decimal("0.5")},
