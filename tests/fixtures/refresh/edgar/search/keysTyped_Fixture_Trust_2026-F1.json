@@ -1,0 +1,16 @@
+{
+ "hits": {
+  "hits": [
+   {
+    "_id": "9900001",
+    "_source": {
+     "entity": "Fixture Trust 2026-F1"
+    }
+   }
+  ],
+  "total": {
+   "relation": "eq",
+   "value": 1
+  }
+ }
+}

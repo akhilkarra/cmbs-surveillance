@@ -1,0 +1,9 @@
+{
+ "recorded_on": "2026-10-28",
+ "responses": {
+  "https://data.sec.gov/submissions/CIK0009900001.json": "submissions/CIK0009900001.json",
+  "https://data.sec.gov/submissions/CIK0009900002.json": "submissions/CIK0009900002.json",
+  "https://efts.sec.gov/LATEST/search-index?keysTyped=Fixture+Trust+2026-F1": "search/keysTyped_Fixture_Trust_2026-F1.json",
+  "https://efts.sec.gov/LATEST/search-index?keysTyped=Fixture+Trust+2026-F2": "search/keysTyped_Fixture_Trust_2026-F2.json"
+ }
+}

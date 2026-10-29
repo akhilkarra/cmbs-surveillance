@@ -38,7 +38,7 @@ from cmbs.panel.service import deal_named
 from cmbs.settings.service import in_force
 from cmbs.tape.service import load_tape
 from cmbs.testing.bdd import attempt, in_session
-from cmbs.testing.world import FIXTURE_CIK
+from cmbs.testing.world import FIXTURE_CIKS
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_TAPE = ROOT / "tests" / "fixtures" / "schedule_al_minimal.xml"
@@ -46,12 +46,8 @@ REPORT_TEMPLATE = ROOT / "tests" / "fixtures" / "alerts" / "fixture_10d_template
 TAPE_PERIOD = Period(2026, 9)  # the month the fixture tape reports
 URI = NAMESPACE.strip("{}")
 FILED_ON_DAY = 29
-# Synthetic issuing-entity CIKs, far above any EDGAR has assigned (cmbs.testing.world).
-CIKS = {
-    "Fixture Trust 2026-F1": FIXTURE_CIK,
-    "Fixture Trust 2026-F2": 9_900_002,
-    "Fixture Trust 2026-F3": 9_900_003,
-}
+# Synthetic issuing-entity CIKs, far above any EDGAR has assigned.
+CIKS = FIXTURE_CIKS
 LOADER = "quinn"  # a quant loads filings
 READER = "pat"  # a PM reads alerts
 BOOK_DATE = dt.date(2026, 9, 30)

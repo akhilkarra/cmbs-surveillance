@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import NoReturn
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,7 @@ from cmbs.access.roles import PERMISSIONS, Action, Role, acting_role, refusal_me
 from cmbs.access.service import Actor, UnknownUser, authorize, roles_of
 from cmbs.alerts import lifecycle
 from cmbs.alerts.lifecycle import OPEN_STATES, State, Status
+from cmbs.alerts.locks import lock_builds
 from cmbs.alerts.rules import (
     SEVERITY_ORDER,
     Comments,
@@ -68,8 +69,6 @@ ACKNOWLEDGE = "acknowledge alert"
 ASSIGN = "assign alert"
 CLOSE = "close alert"
 SUPERSEDE = "supersede alert"
-# The advisory-lock space for builds of one deal; the deal's id is the key within it.
-BUILD_LOCK_SPACE = 0x0A1E
 
 
 class NoTape(Refused):
@@ -469,11 +468,8 @@ def latest_vintage(db: Session, deal_id: int, period: Period) -> AlertBuild | No
 
 
 def _lock_builds(db: Session, deal_id: int) -> None:
-    """Builds of one deal take turns until the transaction ends."""
-    db.execute(
-        text("SELECT pg_advisory_xact_lock(CAST(:space AS integer), CAST(:deal AS integer))"),
-        {"space": BUILD_LOCK_SPACE, "deal": deal_id},
-    )
+    """Builds of one deal, and links naming it, take turns until the transaction ends."""
+    lock_builds(db, deal_id)
 
 
 def build_alerts(

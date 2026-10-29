@@ -39,6 +39,12 @@ FIXTURE_DEAL = "Fixture Trust 2026-F1"
 # The synthetic issuing-entity CIK of the fixture deal. Real CIKs are below 2,200,000, so this
 # cannot collide with one. Fixture accession numbers start with its ten-digit form, 0009900001-.
 FIXTURE_CIK = 9_900_001
+# Every synthetic fixture deal is its own trust with its own CIK (one CIK is one deal).
+FIXTURE_CIKS = {
+    FIXTURE_DEAL: FIXTURE_CIK,
+    "Fixture Trust 2026-F2": 9_900_002,
+    "Fixture Trust 2026-F3": 9_900_003,
+}
 
 
 def seed(db: Session) -> None:

@@ -168,12 +168,14 @@ def load_report(
     file_name: str,
     content: bytes,
     period: Period | None = None,
+    run_id: int | None = None,
 ) -> LoadedReport:
     """Parse a 10-D's EX-99.1 and store what it says about each loan.
 
     Every refusal after the permission check is audited on its own connection, so the record
     survives the rollback. The checks run before anything is written, and again under the lock
     on the report row, where a concurrent load of the same filing may have got there first.
+    A load made by a refresh run names the run in its audit entry.
     """
     actor = authorize(db, user, Action.RUN_REFRESH)
     try:
@@ -252,6 +254,7 @@ def load_report(
         db,
         user=actor.user,
         role=actor.role.value,
+        run_id=run_id,
         action=AUDIT_ACTION,
         subject="filing",
         subject_key=accession,
