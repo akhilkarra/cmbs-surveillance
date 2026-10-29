@@ -8,6 +8,7 @@ statuses, cents, counts, and rates as exact fractions.
 Skipped, with the reason, when Lean is not installed; CI's `lean` job installs it and runs them.
 """
 
+import os
 from collections.abc import Iterator
 from decimal import Decimal
 from fractions import Fraction
@@ -26,8 +27,12 @@ EXAMPLES = settings(max_examples=300, deadline=None, database=None)
 
 @pytest.fixture(scope="module")
 def lean() -> Iterator[oracle.Oracle]:
+    """The running oracle. Skips without Lean, except where CMBS_REQUIRE_LEAN is set (CI's
+    `lean` job), where a missing Lean is a failure."""
     executable, why = oracle.build()
     if executable is None:
+        if os.environ.get("CMBS_REQUIRE_LEAN"):
+            pytest.fail(why)
         pytest.skip(why)
     with oracle.Oracle([str(executable)]) as running:
         yield running

@@ -18,6 +18,7 @@ from cmbs.domain import Period
 from cmbs.invariants.partition import Partition, PoolLoan, partition
 from cmbs.invariants.wac import RatedLoan, Wac, wac
 from cmbs.panel import service as panel
+from cmbs.tape.convert import LoanPeriodRow
 from cmbs.tape.tables import LoanPeriod
 
 
@@ -31,11 +32,15 @@ class Pool:
     wac: Wac
 
 
-def pool_loans(rows: Sequence[LoanPeriod]) -> list[PoolLoan]:
+# What the pool reads of a loan: its silver row, or the row as the tape loader typed it.
+TapeRow = LoanPeriod | LoanPeriodRow
+
+
+def pool_loans(rows: Sequence[TapeRow]) -> list[PoolLoan]:
     return [PoolLoan(row.loan, row.payment_status, row.ending_balance) for row in rows]
 
 
-def rated_loans(rows: Sequence[LoanPeriod]) -> list[RatedLoan]:
+def rated_loans(rows: Sequence[TapeRow]) -> list[RatedLoan]:
     return [RatedLoan(row.loan, row.ending_balance, row.interest_rate) for row in rows]
 
 
