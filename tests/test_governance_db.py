@@ -30,6 +30,7 @@ from cmbs.access.service import (
 from cmbs.audit.service import (
     AppendOnly,
     BadRange,
+    UnknownDeal,
     change_entry,
     delete_entry,
     entries_for_subject,
@@ -40,6 +41,7 @@ from cmbs.audit.service import (
 )
 from cmbs.audit.tables import AuditEntry
 from cmbs.db import engine
+from cmbs.deals.service import get_or_create
 from cmbs.settings.service import (
     AlreadyDecided,
     MissingQualityReport,
@@ -563,11 +565,13 @@ def entry_on(db: Session, moment: dt.datetime, user: str, loan: str) -> int:
 
 
 def test_a_loans_history_is_newest_first_for_anyone_who_reads_the_panel(seeded):
+    get_or_create(seeded, DEAL)  # entries about a loan come from features that register its deal
     early = entry_on(seeded, dt.datetime(2026, 9, 3, tzinfo=dt.UTC), "alex", "2")
     late = entry_on(seeded, dt.datetime(2026, 9, 20, tzinfo=dt.UTC), "olly", "2")
     entry_on(seeded, dt.datetime(2026, 9, 10, tzinfo=dt.UTC), "alex", "7")
     assert [e.id for e in loan_history(seeded, "pat", deal=DEAL, loan="2")] == [late, early]
-    assert loan_history(seeded, "pat", deal="Fixture Trust 2026-F2", loan="2") == []
+    with pytest.raises(UnknownDeal, match="^no deal named 'Fixture Trust 2026-F2'$"):
+        loan_history(seeded, "pat", deal="Fixture Trust 2026-F2", loan="2")
     with pytest.raises(PermissionRefused, match="^operator may not read the panel$"):
         loan_history(seeded, "olly", deal=DEAL, loan="2")
 

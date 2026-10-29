@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from cmbs import clock
 from cmbs.api.app import create_app
 from cmbs.audit.service import loan_key, record
+from cmbs.deals.service import get_or_create
 from tests.conftest import needs_db
 
 pytestmark = needs_db
@@ -159,6 +160,7 @@ def test_settings_refusals_are_readable(seeded, client):
 
 def test_the_audit_log_is_read_by_loan_user_and_date(seeded, client):
     clock.set_now(dt.datetime(2026, 9, 30, 15, tzinfo=dt.UTC))
+    get_or_create(seeded, DEAL)
     record(
         seeded,
         user="alex",
