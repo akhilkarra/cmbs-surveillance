@@ -197,6 +197,10 @@ def test_problem_counts_in_the_order_to_act_on_them():
         "1 deal held by another run",
     ]
     assert problem_counts(summary([deal_outcome("F1", [loaded()])])) == []
+    unchecked = [
+        deal_outcome("F1", [loaded(rollforward_breaks=None), loaded(AUG, text_flags=None)])
+    ]
+    assert problem_counts(summary(unchecked)) == ["2 months not checked"]
     # A deal that failed partway is counted by its month, not again as a deal.
     failed = MonthResult(SEP, MonthOutcome.NOT_LOADED, "x", failed=True)
     assert problem_counts(summary([deal_outcome("F1", [failed])])) == ["1 month not loaded"]
@@ -250,7 +254,14 @@ def test_run_status_counts_flags_and_roll_forward_breaks_as_problems():
     assert run_status([deal_outcome("F1", [loaded(flags=1)])]) == "completed with problems"
     broken = loaded(rollforward_breaks=1)
     assert run_status([deal_outcome("F1", [broken])]) == "completed with problems"
-    assert run_status([deal_outcome("F1", [loaded(rollforward_breaks=None)])]) == "succeeded"
+    # A month whose checks did not run is not called sound.
+    unchecked = loaded(rollforward_breaks=None)
+    assert unchecked.unchecked and unchecked.problems
+    assert run_status([deal_outcome("F1", [unchecked])]) == "completed with problems"
+    assert loaded(text_flags=None).unchecked
+    assert not loaded().unchecked
+    missing = MonthResult(SEP, MonthOutcome.NOT_LOADED, "no 10-D filed for September 2026")
+    assert not missing.unchecked
     assert run_status([deal_outcome("F1", [loaded(text_flags=1)])]) == "completed with problems"
     assert loaded(text_flags=2).problems
     assert loaded(quarantined=1).problems

@@ -20,8 +20,9 @@ any of it fails, nothing of the month is stored and the month is recorded as not
 why in the words of `not_loaded`. EDGAR refusing the request (HTTP 403, which www.sec.gov answers
 to a user agent without a contact address) says how to fix it.
 
-The checks are `cmbs.crosscheck.service.run_checks`, which flags each break and disagreement;
-until that package is installed, a month is reported "roll-forward not checked".
+The checks are `cmbs.crosscheck.service.run_checks`, which flags each break and disagreement. A
+loan the roll-forward cannot check for want of data (no scheduled balance, a loss month: Q81) is
+not a problem; a loaded month whose checks did not run at all is.
 
 The run's summary is saved as it goes, with the deal and month it is on, so a run that stops
 early still shows what it did and where it was. An unexpected error (a bug, a lost database)
@@ -31,7 +32,6 @@ EDGAR is reached through `cmbs.refresh.sources`; tests replay recorded answers.
 """
 
 import datetime as dt
-import importlib
 import json
 import urllib.error
 from collections.abc import Callable, Mapping
@@ -50,6 +50,8 @@ from cmbs.audit.service import record, refuse
 from cmbs.book.service import book_as_of
 from cmbs.coverage.rules import Coverage
 from cmbs.coverage.service import classify_deal
+from cmbs.crosscheck.rules import Status as TextStatus
+from cmbs.crosscheck.service import run_checks
 from cmbs.db import engine
 from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
@@ -149,9 +151,6 @@ _REASONS = {
     Stage.CHECK: "checks could not be run",
 }
 EDGAR_FORBIDDEN = "HTTP 403 from EDGAR: set SEC_USER_AGENT to a string with a contact address"
-CROSSCHECK = "cmbs.crosscheck.service"
-# A text-versus-tape finding that disagrees (`cmbs.crosscheck.rules.Status.FLAG`), not a note.
-FLAG = "flag"
 
 
 def edgar_forbidden(error: BaseException) -> bool:
@@ -264,8 +263,8 @@ def load_month(
         notes=month.notes(),
         comments=comments,
         review_items=review_items,
-        rollforward_breaks=checked.rollforward_breaks if checked else None,
-        text_flags=checked.text_flags if checked else None,
+        rollforward_breaks=checked.rollforward_breaks,
+        text_flags=checked.text_flags,
         filings=plan.links(month),
     )
 
@@ -304,23 +303,17 @@ class Checked:
 
 def crosscheck_month(
     db: Session, *, actor: Actor, run_id: int, deal: Deal, period: Period
-) -> Checked | None:
-    """Run every check of the month (`cmbs.crosscheck.service.run_checks`) under the run; None
-    when the checks are not installed (`cmbs.crosscheck`, built in parallel)."""
+) -> Checked:
+    """Run every check of the month (`cmbs.crosscheck.service.run_checks`) under the run: its
+    roll-forward breaks, and its text-versus-tape flags (not notes)."""
     try:
-        crosscheck = importlib.import_module(CROSSCHECK)
-    except ModuleNotFoundError as error:
-        if error.name is None or not CROSSCHECK.startswith(error.name):
-            raise
-        return None
-    try:
-        summary = crosscheck.run_checks(
-            db, user=actor.user, deal=deal.name, period=period, run_id=run_id
-        )
+        summary = run_checks(db, user=actor.user, deal=deal.name, period=period, run_id=run_id)
     except Refused as error:
         raise not_loaded(Stage.CHECK, error) from error
     flags = sum(
-        finding.status == FLAG for loan in summary.text_vs_tape for finding in loan.findings
+        finding.status is TextStatus.FLAG
+        for loan in summary.text_vs_tape
+        for finding in loan.findings
     )
     return Checked(rollforward_breaks=summary.rollforward_breaks, text_flags=flags)
 

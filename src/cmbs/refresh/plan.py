@@ -189,16 +189,24 @@ class MonthResult:
     comments: int | None = None
     review_items: int = 0
     # What the month's checks flagged: balance roll-forward breaks, and comments that disagree
-    # with the tape. None when the checks did not run.
+    # with the tape. None when the checks did not run, which is itself a problem.
     rollforward_breaks: int | None = None
     text_flags: int | None = None
     filings: tuple[FilingLink, ...] = ()
 
     @property
+    def unchecked(self) -> bool:
+        """Loaded, but its checks did not run: nothing says the month is sound."""
+        return self.outcome is MonthOutcome.LOADED and (
+            self.rollforward_breaks is None or self.text_flags is None
+        )
+
+    @property
     def problems(self) -> bool:
-        """Loaded, but a check found fault: a quarantined loan, a reconciliation flag, a
-        roll-forward break or a comment that disagrees with the tape."""
-        return bool(self.quarantined or self.flags or self.rollforward_breaks or self.text_flags)
+        """Loaded, but a check found fault (a quarantined loan, a reconciliation flag, a
+        roll-forward break, a comment that disagrees with the tape) or did not run."""
+        found = self.quarantined or self.flags or self.rollforward_breaks or self.text_flags
+        return bool(found) or self.unchecked
 
     def text(self) -> str:
         return "\n".join(month_lines(self.as_json()))

@@ -5,7 +5,6 @@ The checks come from `cmbs.crosscheck` (built in parallel); these tests stand a
 module in for it that flags what they say.
 """
 
-import sys
 import types
 import urllib.error
 from typing import Any
@@ -14,6 +13,7 @@ import pytest
 from sqlalchemy import func, select
 
 from cmbs import clock
+from cmbs.crosscheck.rules import Status as TextStatus
 from cmbs.distribution.tables import DistributionReport
 from cmbs.domain import Period
 from cmbs.edgar.replay import Replay
@@ -24,7 +24,6 @@ from cmbs.model.recordings import DbRecordings
 from cmbs.refresh import service
 from cmbs.refresh.report import routine_report
 from cmbs.refresh.service import (
-    CROSSCHECK,
     EDGAR_FORBIDDEN,
     Checked,
     MonthNotLoaded,
@@ -87,8 +86,7 @@ def test_a_403_says_how_to_fix_it_whatever_the_stage():
 
 @pytest.fixture
 def crosscheck(monkeypatch):
-    """A stand-in for cmbs.crosscheck.service: its run_checks finds what a test sets."""
-    module = types.ModuleType(CROSSCHECK)
+    """Stands in for cmbs.crosscheck.service.run_checks: it finds what a test sets."""
     calls: list[dict[str, Any]] = []
     found = types.SimpleNamespace(breaks=0, findings=[], refuse=None, calls=calls)
 
@@ -97,12 +95,11 @@ def crosscheck(monkeypatch):
         if found.refuse is not None:
             raise found.refuse
         loan = types.SimpleNamespace(
-            findings=[types.SimpleNamespace(status=status) for status in found.findings]
+            findings=[types.SimpleNamespace(status=TextStatus(status)) for status in found.findings]
         )
         return types.SimpleNamespace(rollforward_breaks=found.breaks, text_vs_tape=[loan])
 
-    module.run_checks = run_checks  # pyright: ignore[reportAttributeAccessIssue]
-    monkeypatch.setitem(sys.modules, CROSSCHECK, module)
+    monkeypatch.setattr(service, "run_checks", run_checks)
     return found
 
 
@@ -112,30 +109,6 @@ DEAL = types.SimpleNamespace(name=FIXTURE_DEAL)
 
 def check(db=None):
     return crosscheck_month(db, actor=ACTOR, run_id=7, deal=DEAL, period=SEP)  # pyright: ignore[reportArgumentType]
-
-
-def test_without_the_crosscheck_package_the_month_is_not_checked(monkeypatch):
-    def missing(name: str):
-        raise ModuleNotFoundError(f"No module named {name!r}", name="cmbs.crosscheck")
-
-    monkeypatch.setattr(service.importlib, "import_module", missing)
-    assert check() is None
-
-
-def test_a_crosscheck_missing_something_else_is_a_bug(monkeypatch):
-    def broken(name: str):
-        raise ModuleNotFoundError("No module named 'numpy'", name="numpy")
-
-    monkeypatch.setattr(service.importlib, "import_module", broken)
-    with pytest.raises(ModuleNotFoundError):
-        check()
-
-    def nameless(name: str):
-        raise ModuleNotFoundError("no name")
-
-    monkeypatch.setattr(service.importlib, "import_module", nameless)
-    with pytest.raises(ModuleNotFoundError):
-        check()
 
 
 def test_the_checks_count_breaks_and_text_flags_not_notes(crosscheck):

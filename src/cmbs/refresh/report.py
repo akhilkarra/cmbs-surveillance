@@ -39,6 +39,9 @@ def problem_counts(summary: Mapping[str, Any]) -> list[str]:
     breaks = sum(m.get("rollforward_breaks") or 0 for m in loaded)
     flags = sum(m.get("flags", 0) for m in loaded)
     text = sum(m.get("text_flags") or 0 for m in loaded)
+    unchecked = sum(
+        m.get("rollforward_breaks") is None or m.get("text_flags") is None for m in loaded
+    )
     not_loaded = sum(m["outcome"] == MonthOutcome.NOT_LOADED.value for m in months)
     failed = sum(d["outcome"] == DealOutcome.FAILED.value and not d.get("months") for d in deals)
     held = sum(d["outcome"] == DealOutcome.SKIPPED.value and d.get("problem") for d in deals)
@@ -47,6 +50,7 @@ def problem_counts(summary: Mapping[str, Any]) -> list[str]:
         (breaks, counted(breaks, "roll-forward break")),
         (flags, counted(flags, "reconciliation flag")),
         (text, counted(text, "text-versus-tape flag")),
+        (unchecked, counted(unchecked, "month") + " not checked"),
         (not_loaded, counted(not_loaded, "month") + " not loaded"),
         (failed, counted(failed, "deal") + " not refreshed"),
         (held, counted(held, "deal") + " held by another run"),

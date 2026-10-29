@@ -5,7 +5,7 @@ file name, row count and SHA-256, and the settings version, model and prompt ver
 Like the audit log it is append-only: a trigger refuses updating or deleting its rows.
 
 Revision ID: 0012
-Revises: 0010
+Revises: 0011
 Create Date: 2026-10-29 00:26:10.171819
 """
 
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "0012"
-down_revision: str | Sequence[str] | None = "0010"
+down_revision: str | Sequence[str] | None = "0011"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
