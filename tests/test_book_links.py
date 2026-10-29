@@ -4,10 +4,12 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import OperationalError
 
 from cmbs import clock
 from cmbs.access.service import PermissionRefused, UnknownUser, ensure_user
+from cmbs.alerts.locks import lock_builds
 from cmbs.audit.tables import AuditEntry
 from cmbs.book.service import (
     NOTHING_HELD,
@@ -23,6 +25,7 @@ from cmbs.book.service import (
     whole_loans_of,
 )
 from cmbs.book.tables import WholeLoan
+from cmbs.db import engine
 from cmbs.deals.service import by_name
 from tests.conftest import needs_db
 from tests.test_alert_service import AUGUST, load_month
@@ -190,6 +193,23 @@ def test_a_quant_links_a_whole_loan_and_it_is_audited(tapes):
     )
     assert entry.after == f"loan 1 of {F1}; loan 3 of {F2}"
     assert entry.detail == {"notes": [{"deal": F1, "loan": "1"}, {"deal": F2, "loan": "3"}]}
+
+
+@needs_db
+def test_a_link_waits_for_an_alert_build_of_either_deal(tapes):
+    """A build reads the links and then writes alerts; a link must not land in between."""
+    seeded = tapes
+    f2 = by_name(seeded, F2)
+    assert f2 is not None
+    with engine.session() as building:
+        lock_builds(building, f2.id)  # a build of F2 is in flight
+        seeded.execute(text("SET LOCAL lock_timeout = '300ms'"))
+        with pytest.raises(OperationalError, match="lock timeout"):
+            link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
+        seeded.rollback()
+        building.rollback()  # the build ends
+    whole = link_whole_loan(seeded, user="quinn", notes=[NoteRef(F1, "1"), NoteRef(F2, "3")])
+    assert whole_loans_of(seeded, f2.id) == {"3": whole}
 
 
 @needs_db

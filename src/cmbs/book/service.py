@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from cmbs import clock
 from cmbs.access.roles import PERMISSIONS, ROLE_ORDER, Action, Role
 from cmbs.access.service import Actor, PermissionRefused, UnknownUser, authorize, roles_of
+from cmbs.alerts.locks import lock_builds
 from cmbs.audit.service import record, record_refusal, refuse
 from cmbs.book.tables import Position, PositionsFile, WholeLoan, WholeLoanNote
 from cmbs.deals.service import get_or_create, resolve
@@ -357,13 +358,22 @@ def link_whole_loan(db: Session, *, user: str, notes: Sequence[NoteRef]) -> int:
     """Record that the notes are one whole loan; returns its id. Needs a quant.
 
     Every deal must already be registered (a link never creates a deal) and every loan must be on
-    a loaded tape of its deal. Deals are locked in name order, so two links naming the same
-    deals take turns, and the existing links are read under those locks.
+    a loaded tape of its deal. The link first waits for any alert build of its deals (by deal
+    id), so a build never reads the links before a link lands and writes its alerts after; then
+    the deal rows are locked in name order, so two links naming the same deals take turns, and
+    the existing links are read under those locks.
     """
     actor = authorize_linking(db, user)
     try:
         cleaned = clean_notes(notes)
-        deal_ids = {name: _known_deal(db, name) for name in sorted({n.deal for n in cleaned})}
+        names = sorted({n.deal for n in cleaned})
+        found = {name: resolve(db, name) for name in names}
+        for name, deal in found.items():
+            if deal is None:
+                raise InvalidLink(f"no deal named {name!r}")
+        for deal_id in sorted({deal.id for deal in found.values() if deal is not None}):
+            lock_builds(db, deal_id)
+        deal_ids = {name: _locked_deal(db, name) for name in names}
         for note in cleaned:
             if not _on_a_tape(db, deal_ids[note.deal], note.loan):
                 raise InvalidLink(f"{note} is not on any loaded loan tape of that deal")
@@ -413,7 +423,7 @@ def link_whole_loan(db: Session, *, user: str, notes: Sequence[NoteRef]) -> int:
     return whole_loan_id
 
 
-def _known_deal(db: Session, name: str) -> int:
+def _locked_deal(db: Session, name: str) -> int:
     """The registered deal's id, its row locked; InvalidLink if no deal has that name."""
     deal = resolve(db, name)
     if deal is None:
