@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
-from cmbs.extraction.fields import spec
+from cmbs.extraction.fields import BY_NAME, spec
 from cmbs.quality.stats import Proportion, cohen_kappa, rounded
 
 AUTO_ACCEPT_FLOOR = Decimal("0.85")
@@ -157,6 +157,12 @@ def agreement(items: Sequence[GoldenComment], fields: Sequence[str]) -> Agreemen
         overall=Proportion(agreed, len(doubled)),
         kappa={name: cohen_kappa(found) for name, found in pairs.items()},
     )
+
+
+def labelled_fields(items: Sequence[GoldenComment]) -> list[str]:
+    """Every field some labeller answered, in the order the extraction defines fields."""
+    named = {name for item in items for answers in item.labels.values() for name in answers}
+    return [name for name in BY_NAME if name in named]
 
 
 def missing_predictions(

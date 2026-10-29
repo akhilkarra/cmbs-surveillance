@@ -264,7 +264,8 @@ def results_of(
     """Measure every predicted field and labeller agreement; the results as stored."""
     names = predictions.fields
     qualities = [measure.measure_field(golden, predictions.predictions, name) for name in names]
-    agreement = measure.agreement(golden, names)
+    # Agreement is about the labels, whatever was predicted: every field anyone labelled.
+    agreement = measure.agreement(golden, measure.labelled_fields(golden))
     shown = agreement.overall.shown()
     results = {
         "fields": {quality.field: measure.as_json(quality) for quality in qualities},
