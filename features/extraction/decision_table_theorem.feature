@@ -1,4 +1,4 @@
-@draft @layer:logic
+@approved @layer:logic
 Feature: The decision table is total
   Split from abstention_and_review.feature so the rest of that feature can be approved before
   this scenario's Lean proof exists (grill log Q4: Lean 4 proofs come later). The decision table
