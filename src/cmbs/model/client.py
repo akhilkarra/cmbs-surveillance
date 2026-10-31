@@ -2,9 +2,10 @@
 
 `ModelClient.ask` looks up the recording for the exact request first. A replay-only client
 stops there: a missing recording is refused, naming the text it was for. A live client sends
-the request to its provider, but only if the text may be sent (restricted text needs zero data
-retention, or a provider on this machine), then checks that the model it asked for answered
-every question, and records the call before using it. Nothing a provider returns is used
+the request to its provider, but only if the text may be sent to whoever reads it
+(`cmbs.model.policy.check_may_send`), then checks that the model it asked for answered every
+question (a local model with its pinned revision and reference code), and records the call
+before using it. Nothing a provider returns is used
 unrecorded, so every answer the panel holds can be replayed.
 """
 
@@ -18,6 +19,7 @@ from cmbs.model.policy import (
     check_answered_by,
     check_answers,
     check_may_send,
+    check_pin,
     check_pinned,
     key_for,
 )
@@ -84,11 +86,12 @@ class ModelClient:
         check_may_send(
             ask.classification,
             zero_data_retention=settings.values.zero_data_retention,
-            local=self.provider.local,
+            reach=self.provider.reach,
         )
         response = self.provider.ask(request)
         check_answered_by(model, response.model)
         check_answers(request, response)
+        check_pin(model, response)
         recording = make_recording(
             request=request,
             response=response,

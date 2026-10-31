@@ -5,9 +5,12 @@ features/steps/extraction.py loads it, so its "When the comment is extracted" st
 
 The local model's answers come from tests/fixtures/model/local/, recorded by running
 Clef-flash on this machine (tools/record_local_model.py). Where a scenario needs a request to
-reach the local model, the Clef provider is given a transport that stands in for the model in
-this process: it answers the `/v1/systemone` body as the reference code would, including
-Clef's own `confidence` (the top probability), and never loads weights.
+reach the local model, it goes through the real in-process path (`cmbs.model.providers.clef`
+with no server, so `cmbs.model.local.InProcess`), with the loading of the checked weights and
+the reference code replaced by a stand-in at `InProcess`'s `load` seam: the stand-in answers
+the `/v1/systemone` body as the model would, including Clef's own `confidence` (the top
+probability), and `InProcess` adds the pin's revision and reference hash as it does for the
+real model. No weights load.
 """
 
 import datetime as dt
@@ -27,9 +30,9 @@ from cmbs.extraction.sentences import split
 from cmbs.extraction.service import SourceText, extract_text
 from cmbs.extraction.tables import Extraction
 from cmbs.model.client import ModelClient
-from cmbs.model.local import CLEF_FLASH_2026_10_01, is_local_model, local_model
-from cmbs.model.policy import Classification, confidence
-from cmbs.model.providers import Clef, Jev
+from cmbs.model.local import CLEF_FLASH_2026_10_01, InProcess, is_local_model, local_model
+from cmbs.model.policy import Classification, Reach, confidence
+from cmbs.model.providers import Clef, Jev, clef
 from cmbs.model.recordings import DbRecordings, import_recordings
 from cmbs.model.scripted import ScriptedProvider, respond
 from cmbs.model.tables import ModelCall
@@ -154,9 +157,9 @@ def _request(context, model: str) -> ModelRequest:
     return ModelRequest(model=model, state=asked.state, questions=asked.questions)
 
 
-def _systemone(answers: dict[str, dict[str, Any]]):
-    """A stand-in for the model: answers `answers` where given, defaults elsewhere, as a
-    `/v1/systemone` body, under the model name it was asked for. Keeps every body sent."""
+def _in_process(answers: dict[str, dict[str, Any]]) -> tuple[Clef, list[dict[str, Any]]]:
+    """Clef in this process, its model a stand-in that answers `answers` where given and
+    defaults elsewhere, as a `/v1/systemone` body. Also returns every body it was sent."""
     sent: list[dict[str, Any]] = []
 
     def answer(body: dict[str, Any]) -> dict[str, Any]:
@@ -165,7 +168,13 @@ def _systemone(answers: dict[str, dict[str, Any]]):
         reply["answers"] |= answers
         return reply
 
-    return answer, sent
+    def load(model, path, device):
+        assert model == CLEF_FLASH_2026_10_01
+        return answer
+
+    provider = clef(CLEF_FLASH_2026_10_01.name, url="", load=load)  # no server: this process
+    assert isinstance(provider.transport, InProcess) and provider.reach is Reach.IN_PROCESS
+    return provider, sent
 
 
 @given(
@@ -186,8 +195,7 @@ def step_local_answers_request(context, first, second, third):
         "confidence": probabilities[top],
         "probabilities": probabilities,
     }
-    transport, _ = _systemone({value_name("borrower_request"): clef_answer})
-    context.local_provider = Clef(model, transport, local=True)
+    context.local_provider, _ = _in_process({value_name("borrower_request"): clef_answer})
     context.probabilities = [Decimal(first), Decimal(second), Decimal(third)]
     context.options = len(options)
 
@@ -216,7 +224,7 @@ def step_confidence_computed(context):
     # Jev's answer with the same probabilities, and Jev's own field, reads the same.
     jev_answer = context.answer.model_copy(update={"confidence": round(float(jev_measure), 2)})
     assert confidence(context.question, jev_answer) == context.confidence
-    assert Jev.local is False and context.local_provider.local is True
+    assert context.local_provider.reach is Reach.IN_PROCESS and Jev.reach is Reach.TYPESAFE
 
 
 # Data retention.
@@ -240,8 +248,7 @@ def step_restricted_portal_comment(context):
 def step_extracted_with_local_model(context):
     model = CLEF_FLASH_2026_10_01.name
     _name_local_model(model, 3)
-    transport, context.sent = _systemone({})
-    provider = Clef(model, transport, local=True)
+    provider, context.sent = _in_process({})
 
     def run(db):
         client = ModelClient(DbRecordings(db), provider=provider, replay_only=False)
@@ -260,6 +267,7 @@ def step_comment_read_locally(context):
         "clef-flash-2026-10-01",
         Classification.RESTRICTED,
     )
+    assert recording.response.revision == CLEF_FLASH_2026_10_01.revision
     assert not in_session(in_force).values.zero_data_retention
 
 
