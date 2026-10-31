@@ -48,5 +48,30 @@ describe("http", () => {
     await expect(http("/x")).rejects.toThrow(/^the server answered HTTP 500$/);
     answer(404, {});
     await expect(http("/x")).rejects.toThrow(/^the server answered HTTP 404$/);
+    answer(400, null);
+    await expect(http("/x")).rejects.toThrow(/^the server answered HTTP 400$/);
+  });
+
+  it("names the HTTP status when the refusal is not JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html>Bad Gateway</html>", { status: 502 })),
+    );
+    await expect(http("/x")).rejects.toThrow(/^the server answered HTTP 502$/);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("Internal Server Error", { status: 500 })),
+    );
+    await expect(http("/x")).rejects.toThrow(/^the server answered HTTP 500$/);
+  });
+
+  it("says plainly when the server cannot be reached", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    );
+    await expect(http("/x")).rejects.toThrow(/^the server could not be reached$/);
   });
 });
