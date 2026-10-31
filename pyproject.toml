@@ -19,6 +19,18 @@ dependencies = [
     "uvicorn>=0.38",
 ]
 
+[project.optional-dependencies]
+# Running Clef-flash in this process (cmbs.model.local): `uv sync --extra local-model`. Pinned to
+# the versions the model card was tested with; the default install stays light.
+local-model = [
+    "accelerate>=1.15.0",
+    "pillow>=12.2.0",
+    "safetensors>=0.8.0",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "transformers==5.10.2",
+]
+
 [project.scripts]
 cmbs = "cmbs.cli:main"
 
