@@ -5549,6 +5549,29 @@
         ]
       }
     },
+    "/health/ready": {
+      "get": {
+        "description": "Ready to serve: the process is up and the database answers `SELECT 1`. The api\ncontainer's healthcheck (and so `docker compose up --wait`) waits on this.",
+        "operationId": "ready_health_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "The database does not answer"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
     "/invariants/pool": {
       "get": {
         "operationId": "pool_invariants_pool_get",

@@ -38,5 +38,5 @@ RUN useradd --system --no-create-home cmbs
 USER cmbs
 EXPOSE 8000
 HEALTHCHECK --interval=5s --timeout=3s --retries=10 \
-    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
 CMD ["cmbs", "serve", "--host", "0.0.0.0", "--port", "8000"]

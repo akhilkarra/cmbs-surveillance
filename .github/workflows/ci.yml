@@ -171,7 +171,7 @@ jobs:
           DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
       - name: The dashboard page and its API answer
         run: |
-          curl -fsS http://localhost:8000/health
+          curl -fsS http://localhost:8000/health/ready
           curl -fsS "http://localhost:8000/?user=pat" | grep -q '<div id="root">'
           curl -fsS -H "X-CMBS-User: pat" http://localhost:8000/dashboard/book | grep -q '"rows":\['
       - name: Service logs

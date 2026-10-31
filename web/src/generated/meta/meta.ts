@@ -21,3 +21,19 @@ export const getHealth = async (options?: Parameters<typeof http>[1]): Promise<G
     method: "GET",
   });
 };
+
+export const getGetHealthReadyUrl = () => {
+  return `/health/ready`;
+};
+
+/**
+ * Ready to serve: the process is up and the database answers `SELECT 1`. The api
+ * container's healthcheck (and so `docker compose up --wait`) waits on this.
+ * @summary Ready
+ */
+export const getHealthReady = async (options?: Parameters<typeof http>[1]): Promise<unknown> => {
+  return http<unknown>(getGetHealthReadyUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
