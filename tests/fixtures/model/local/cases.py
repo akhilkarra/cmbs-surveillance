@@ -1,6 +1,7 @@
 """Jev's live answers paired with the local model's, comment by comment.
 
-`uv run python -m tests.fixtures.model.local.cases` prints the agreement report on them.
+`uv run python -m tests.fixtures.model.local.cases` prints the agreement report on them;
+`agreement-report.md` here is its output, which tests/test_model_local_agreement.py checks.
 
 Each `<name>.json` here is a recording (the format of `cmbs.model.recordings.Recording`) of
 Clef-flash answering the comment of `../live/<name>.json`, whose answers are Jev's. The pair
