@@ -1,7 +1,8 @@
 # Fast checks run on commit; tests with coverage run on push. `uvx pre-commit install` sets up
 # both (default_install_hook_types). CI runs the commit-stage hooks on every push (the `lint`
 # job in .github/workflows/ci.yml), so a hook skipped locally still gets checked.
-# Planned once the code exists: OpenAPI client drift, Lean build and `sorry` check.
+# OpenAPI schema and client drift (tools/export_openapi.py, npm run generate) and the Lean build
+# with its `sorry` check run in CI instead: the lint, web and lean jobs in .github/workflows/ci.yml.
 default_install_hook_types: [pre-commit, pre-push]
 default_stages: [pre-commit]
 exclude: ^(\.claude/skills/|data/samples/)

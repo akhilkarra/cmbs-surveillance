@@ -319,6 +319,25 @@ describe("FinancialsBlock", () => {
 });
 
 describe("LoanPage", () => {
+  it("reads again when the deal, the loan or the month changes", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify(loanPage())));
+    vi.stubGlobal("fetch", fetch);
+    const { rerender } = render(<LoanPage user="pat" deal={F1} loan="2" month={null} />);
+    const pages: [string, string, string | null, string][] = [
+      ["A", "2", null, "/dashboard/loan?deal=A&loan=2"],
+      ["A", "3", null, "/dashboard/loan?deal=A&loan=3"],
+      ["A", "3", "2026-08", "/dashboard/loan?deal=A&loan=3&month=2026-08"],
+    ];
+    for (const [index, [deal, loan, month, url]] of pages.entries()) {
+      rerender(<LoanPage user="pat" deal={deal} loan={loan} month={month} />);
+      await waitFor(() => expect(fetch).toHaveBeenCalledTimes(index + 2));
+      expect(fetch).toHaveBeenLastCalledWith(url, {
+        headers: { "X-CMBS-User": "pat" },
+        method: "GET",
+      });
+    }
+  });
+
   it("reads the loan as the user", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify(loanPage())));
     vi.stubGlobal("fetch", fetch);
@@ -328,6 +347,7 @@ describe("LoanPage", () => {
     await waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
     expect(fetch).toHaveBeenCalledWith("/dashboard/loan?deal=Fixture+Trust+2026-F1&loan=2", {
       headers: { "X-CMBS-User": "pat" },
+      method: "GET",
     });
   });
 });
