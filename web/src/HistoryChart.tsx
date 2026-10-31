@@ -4,6 +4,7 @@
 // values and the filing they came from; the table under the chart says the same in text.
 
 import {
+  type AutoscaleInfo,
   ColorType,
   createChart,
   createSeriesMarkers,
@@ -22,12 +23,15 @@ import {
   dscrText,
   filingText,
   lineSegments,
+  MONEY_SPAN,
   monthAt,
   type Point,
+  RATIO_SPAN,
   statusLane,
   statusMarkers,
   statusText,
   timeKey,
+  widened,
 } from "./historyData";
 
 /** The attribution TradingView Lightweight Charts' licence asks for: its NOTICE file and a link
@@ -62,6 +66,14 @@ export function useThemeChanges(): number {
   }, []);
   // Stryker restore ArrayDeclaration
   return changes;
+}
+
+/** The axis range the library computed for a measure's values, widened to the measure's span. */
+export function scaled(
+  info: AutoscaleInfo | null,
+  span: (middle: number) => number,
+): AutoscaleInfo | null {
+  return info && { ...info, priceRange: widened(info.priceRange, span) };
 }
 
 function drawChart(
@@ -101,6 +113,7 @@ function drawChart(
     segments: Point[][],
     title: string,
     formatter: (price: number) => string,
+    span: (middle: number) => number,
     pane: number,
     margins: { top: number; bottom: number },
   ) =>
@@ -118,6 +131,7 @@ function drawChart(
           lastValueVisible: last,
           priceLineVisible: last,
           priceFormat: { type: "custom", formatter },
+          autoscaleInfoProvider: (values: () => AutoscaleInfo | null) => scaled(values(), span),
         },
         pane,
       );
@@ -126,11 +140,14 @@ function drawChart(
     });
   // The balance keeps the top of its pane clear for the status lane; the DSCR keeps clear of
   // both edges of its pane, so its labels never meet the balance pane's.
-  draw(lineSegments(history.months, balanceOf), "ending balance", axisMoney, 0, {
+  draw(lineSegments(history.months, balanceOf), "ending balance", axisMoney, MONEY_SPAN, 0, {
     top: 0.32,
     bottom: 0.08,
   });
-  draw(lineSegments(history.months, dscrOf), "DSCR", axisRatio, 1, { top: 0.18, bottom: 0.18 });
+  draw(lineSegments(history.months, dscrOf), "DSCR", axisRatio, RATIO_SPAN, 1, {
+    top: 0.18,
+    bottom: 0.18,
+  });
   // The status changes hang on a lane with a point at every month, on a scale of its own across
   // the top of the balance pane, so each arrow is over its own month.
   const lane = chart.addSeries(

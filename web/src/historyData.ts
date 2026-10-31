@@ -2,6 +2,7 @@
 // Every figure shown as text is the API string, formatted; a number is made only to place a point
 // on the chart, and a value not reported is no point at all, so the line has a gap there.
 
+import type { PriceRange } from "lightweight-charts";
 import type { HistoryMonth, StatusChange } from "./api";
 import { formatValue, NOT_REPORTED } from "./format";
 
@@ -145,4 +146,24 @@ export function axisMoney(price: number): string {
 /** The DSCR axis's tick labels ("0.96x"). */
 export function axisRatio(price: number): string {
   return `${price.toFixed(2)}x`;
+}
+
+/** The least an axis spans, given the middle of its values: 2% of the balance (and at least
+ *  $1,000, for a loan paid down to nothing), 0.10x of DSCR. */
+export const MONEY_SPAN = (middle: number) => Math.max(middle * 0.02, 1000);
+export const RATIO_SPAN = () => 0.1;
+
+/** An axis range widened about its middle to at least the measure's span, so a value that never
+ *  changes (an interest-only balance, say) gets ticks with distinct labels rather than one label
+ *  repeated. A range of values none of which is negative is never widened below zero. */
+export function widened(
+  range: PriceRange | null,
+  span: (middle: number) => number,
+): PriceRange | null {
+  if (range === null) return null;
+  const middle = (range.minValue + range.maxValue) / 2;
+  const width = Math.max(range.maxValue - range.minValue, span(middle));
+  const floor = range.minValue >= 0 ? 0 : Number.NEGATIVE_INFINITY;
+  const low = Math.max(middle - width / 2, floor);
+  return { minValue: low, maxValue: low + width };
 }

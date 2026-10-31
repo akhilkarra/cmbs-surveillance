@@ -13,6 +13,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+from starlette.responses import Response
+from starlette.types import Scope
 
 from cmbs.access.service import PermissionRefused, UnknownUser
 from cmbs.db import engine
@@ -25,6 +27,20 @@ WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 def _web_dist() -> Path:
     return Path(os.environ.get("CMBS_WEB_DIST") or WEB_DIST)
+
+
+class Dashboard(StaticFiles):
+    """The built bundle. Vite names every file under `assets/` by a hash of its content, so a
+    browser may keep those for a year; any other file, `index.html` above all, is checked on every
+    load, so a rebuilt dashboard is never a cached page asking for assets that no longer exist."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        hashed = path.startswith("assets/")
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if hashed else "no-cache"
+        )
+        return response
 
 
 def database_answers() -> bool:
@@ -68,7 +84,7 @@ def create_app(*, web_dist: Path | None = None) -> FastAPI:
     dist = web_dist if web_dist is not None else _web_dist()
     if (dist / "index.html").is_file():
         # Mounted last, so every API route above is matched first.
-        app.mount("/", StaticFiles(directory=dist, html=True), name="dashboard")
+        app.mount("/", Dashboard(directory=dist, html=True), name="dashboard")
     return app
 
 
