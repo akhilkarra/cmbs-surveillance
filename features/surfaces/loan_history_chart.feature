@@ -1,4 +1,4 @@
-@draft @layer:ui @surface:ui @surface:api
+@approved @layer:ui @surface:ui @surface:api
 Feature: A loan's history as a chart
   A PM opening a loan sees how it got here: its balance, debt service coverage and payment status
   month by month, as each month was published, with the months a value was not reported left as
