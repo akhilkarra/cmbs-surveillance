@@ -611,17 +611,33 @@ def step_count_and_first(context, count, loan, deal):
 # ---------------------------------------------------------------------------- the loan view
 
 
-@when('"{user:DashName}" opens loan "{loan:DashName}" of "{deal:DashName}"')
-def step_opens_loan_of(context, user, loan, deal):
-    ensure_extracted(context)
+def open_loan(context, user: str, loan: str, deal: str, as_of: dt.date | None = None) -> None:
+    """Open the loan page, as the filings stood on `as_of` (today by default). The scenario's
+    world is the dashboard's unless its Background loaded another and set `context.loan_world`
+    to the function that ensures it (features/steps/history_chart.py)."""
+    getattr(context, "loan_world", ensure_extracted)(context)
     context.deal = deal
-    open_page(context, user, f"/loan/{quote(deal)}/{quote(loan)}", '[data-testid="loan"]')
+    route = f"/loan/{quote(deal)}/{quote(loan)}"
+    if as_of is not None:
+        route += f"?as_of={as_of.isoformat()}"
+    open_page(context, user, route, '[data-testid="loan"]')
     heading = context.page.locator('[data-testid="loan-title"]').inner_text()
     assert heading == f"Loan {loan} of {deal}", heading
-    as_of = context.page.locator('[data-testid="as-of"]').inner_text()
-    assert as_of == clock.today().isoformat(), f"the page reads the panel as of {as_of}"
+    shown = context.page.locator('[data-testid="as-of"]').inner_text()
+    day = as_of or clock.today()
+    assert shown == day.isoformat(), f"the page reads the panel as of {shown}"
     screenshot(context, f"loan-{loan}")
     assert_no_page_problems(context)
+
+
+@when('"{user:DashName}" opens loan "{loan:DashName}" of "{deal:DashName}"')
+def step_opens_loan_of(context, user, loan, deal):
+    open_loan(context, user, loan, deal)
+
+
+@when('"{user:DashName}" opens loan "{loan:DashName}" of "{deal:DashName}" as of {day:DashDay}')
+def step_opens_loan_of_as_of(context, user, loan, deal, day):
+    open_loan(context, user, loan, deal, as_of=day)
 
 
 @then(
