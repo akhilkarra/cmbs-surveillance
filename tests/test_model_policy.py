@@ -6,6 +6,7 @@ from cmbs.model.policy import (
     Classification,
     MalformedAnswer,
     ModelMismatch,
+    Reach,
     RestrictedText,
     UnpinnedModel,
     canonical,
@@ -67,15 +68,16 @@ def test_the_model_that_answered_must_be_the_one_asked():
     assert str(refused.value) == "model version mismatch: asked for jev-1.14.0, got jev-1.15.0"
 
 
-def test_public_text_may_always_be_sent():
-    check_may_send(Classification.PUBLIC, zero_data_retention=False)
-    check_may_send(Classification.PUBLIC, zero_data_retention=True)
+@pytest.mark.parametrize("reach", list(Reach))
+@pytest.mark.parametrize("zdr", [False, True])
+def test_public_text_may_always_be_sent(reach, zdr):
+    check_may_send(Classification.PUBLIC, zero_data_retention=zdr, reach=reach)
 
 
 def test_restricted_text_needs_zero_data_retention():
-    check_may_send(Classification.RESTRICTED, zero_data_retention=True)
+    check_may_send(Classification.RESTRICTED, zero_data_retention=True, reach=Reach.TYPESAFE)
     with pytest.raises(RestrictedText) as refused:
-        check_may_send(Classification.RESTRICTED, zero_data_retention=False)
+        check_may_send(Classification.RESTRICTED, zero_data_retention=False, reach=Reach.TYPESAFE)
     assert str(refused.value) == (
         "restricted text cannot be sent to the provider without zero data retention"
     )
