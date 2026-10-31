@@ -5,7 +5,7 @@
 # with its `sorry` check run in CI instead: the lint, web and lean jobs in .github/workflows/ci.yml.
 default_install_hook_types: [pre-commit, pre-push]
 default_stages: [pre-commit]
-exclude: ^(\.claude/skills/|data/samples/)
+exclude: ^(\.claude/skills/|data/samples/|src/cmbs/model/clef_reference\.py$)
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

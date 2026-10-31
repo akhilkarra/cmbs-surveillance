@@ -19,6 +19,18 @@ dependencies = [
     "uvicorn>=0.38",
 ]
 
+[project.optional-dependencies]
+# Running Clef-flash in this process (cmbs.model.local): `uv sync --extra local-model`. Pinned to
+# the versions the model card was tested with; the default install stays light.
+local-model = [
+    "accelerate>=1.15.0",
+    "pillow>=12.2.0",
+    "safetensors>=0.8.0",
+    "torch==2.11.0",
+    "torchvision==0.26.0",
+    "transformers==5.10.2",
+]
+
 [project.scripts]
 cmbs = "cmbs.cli:main"
 
@@ -45,8 +57,8 @@ packages = ["src/cmbs"]
 [tool.ruff]
 line-length = 100
 target-version = "py313"
-# Vendored skills and local-only material are not ours to lint.
-extend-exclude = [".claude", "private"]
+# Vendored skills and code, and local-only material, are not ours to lint.
+extend-exclude = [".claude", "private", "src/cmbs/model/clef_reference.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
@@ -79,7 +91,12 @@ options = "format REVISION_SCRIPT_FILENAME"
 # Migrations are declarative and tested directly against Postgres (tests/test_migrations.py).
 source_paths = ["src/cmbs"]
 # Test infrastructure (scratch databases, the fixture world) is not product logic.
-do_not_mutate = ["src/cmbs/db/migrations/*", "src/cmbs/testing/*"]
+# The vendored Clef reference code runs only with torch (the local-model extra).
+do_not_mutate = [
+    "src/cmbs/db/migrations/*",
+    "src/cmbs/testing/*",
+    "src/cmbs/model/clef_reference.py",
+]
 pytest_add_cli_args_test_selection = ["tests"]
 # Tests of the developer tools load them from tools/, the dashboard harness tests import the
 # scenario steps from features/, and the Lean tests read lean/ (its sources and decision table).
@@ -95,11 +112,14 @@ process_isolation = "forkserver"
 include = ["src", "tests", "tools", "features"]
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
+# Vendored, unmodified upstream code (its bytes are hash-checked), typed against torch.
+ignore = ["src/cmbs/model/clef_reference.py"]
 
 [tool.coverage.run]
 source = ["cmbs"]
 branch = true
-omit = ["*/cmbs/db/migrations/*"]
+# The vendored Clef reference code runs only with torch (the local-model extra).
+omit = ["*/cmbs/db/migrations/*", "*/cmbs/model/clef_reference.py"]
 
 [tool.coverage.report]
 # The floor is the score on 2026-10-28 (55.8%); raise it as tests improve.
