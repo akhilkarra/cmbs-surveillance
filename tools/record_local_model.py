@@ -7,7 +7,8 @@ Usage (with a Clef server running, see tools/clef_server.py):
 
 Each comment is asked exactly the questions prompt version 3 asks (`cmbs.extraction.questions`),
 once, through `cmbs.model.client.ModelClient` with the Clef provider, so the request is checked,
-the answering model verified and the call recorded exactly as a run records it. One recording
+the answering model and its pinned revision and reference code verified, and the call recorded
+exactly as a run records it. The comments are public, so a Clef server may read them. One recording
 file per comment is written to tests/fixtures/model/local/<name>.json, named like Jev's file.
 The settings version noted is the one the scenarios approve to name the local model (8).
 """
