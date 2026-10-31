@@ -51,6 +51,7 @@ CI (`.github/workflows/ci.yml`) runs all of the above except the dev server. Mut
 - **Python 3.13** (`.python-version`): `minify-html`, pulled in by behavex, has no 3.15 wheel.
 - **pytest below 9.2**: mutmut 3.8.0 reads `item._nodeid`, which pytest 9.2.0 removed.
 - **mutmut forks from a fork server** (`process_isolation` in `pyproject.toml`): Polars is not fork-safe, so a mutant forked from a process that has run a Polars query hangs on its next one and times out.
+- **torch 2.11.0 in the `local-model` extra**: the version Clef-flash's model card was tested with. Its three Dependabot alerts are dismissed as not reaching this project (grill log Q92); moving it means re-checking Clef-flash live against its recordings.
 - **TypeScript 6, not 7**: TypeScript 7 drops the JavaScript compiler API that Stryker calls.
 - **minimatch overridden to 11** (`overrides` in `web/package.json`): Stryker 10.1.1 pins `~10.2.4`, and the denial-of-service fix exists only from 11.0.1. Drop the override when Stryker moves to 11.
 - **Node 24 LTS** in the `web` container and CI; Dependabot skips Node majors, so moving to the next LTS is a deliberate edit to `compose.yaml` and `ci.yml` together.
