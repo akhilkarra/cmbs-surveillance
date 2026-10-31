@@ -40,7 +40,15 @@ export function Page({ hash, user }: { hash: string; user: string }) {
     case "book":
       return <BookPage user={user} month={route.month} />;
     case "loan":
-      return <LoanPage user={user} deal={route.deal} loan={route.loan} month={route.month} />;
+      return (
+        <LoanPage
+          user={user}
+          deal={route.deal}
+          loan={route.loan}
+          month={route.month}
+          asOf={route.asOf}
+        />
+      );
     default:
       return (
         <main className="page" data-testid="missing">

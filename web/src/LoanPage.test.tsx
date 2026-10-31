@@ -31,6 +31,26 @@ describe("LoanContent", () => {
     expect(back.getAttribute("href")).toBe("#/book/2026-09");
   });
 
+  it("charts the loan's history under its heading", () => {
+    render(<LoanContent data={loanPage()} />);
+    const section = screen.getByRole("region", { name: "History" });
+    const table = within(section).getByTestId("history-table");
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(within(section).getByTestId("history-legend").getAttribute("data-month")).toBe(
+      "2026-09",
+    );
+    expect(table.querySelector("caption")?.textContent).toBe(
+      "Each month as published by 2026-10-28",
+    );
+  });
+
+  it("keeps each table in a box of its own that scrolls sideways, never the page", () => {
+    render(<LoanContent data={loanPage()} />);
+    for (const table of ["tape-values", "comment-values", "history-table"]) {
+      expect(screen.getByTestId(table).parentElement?.className).toBe("table-scroll");
+    }
+  });
+
   it("names a property the tape does not", () => {
     render(<LoanContent data={loanPage({ property_name: null })} />);
     expect(screen.getByText(/^Property not named\. September 2026/)).toBeTruthy();
@@ -319,17 +339,26 @@ describe("FinancialsBlock", () => {
 });
 
 describe("LoanPage", () => {
-  it("reads again when the deal, the loan or the month changes", async () => {
+  it("reads again when the deal, the loan, the month or the day changes", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify(loanPage())));
     vi.stubGlobal("fetch", fetch);
-    const { rerender } = render(<LoanPage user="pat" deal={F1} loan="2" month={null} />);
-    const pages: [string, string, string | null, string][] = [
-      ["A", "2", null, "/dashboard/loan?deal=A&loan=2"],
-      ["A", "3", null, "/dashboard/loan?deal=A&loan=3"],
-      ["A", "3", "2026-08", "/dashboard/loan?deal=A&loan=3&month=2026-08"],
+    const { rerender } = render(
+      <LoanPage user="pat" deal={F1} loan="2" month={null} asOf={null} />,
+    );
+    const pages: [string, string, string | null, string | null, string][] = [
+      ["A", "2", null, null, "/dashboard/loan?deal=A&loan=2"],
+      ["A", "3", null, null, "/dashboard/loan?deal=A&loan=3"],
+      ["A", "3", "2026-08", null, "/dashboard/loan?deal=A&loan=3&month=2026-08"],
+      [
+        "A",
+        "3",
+        "2026-08",
+        "2026-09-01",
+        "/dashboard/loan?deal=A&loan=3&month=2026-08&as_of=2026-09-01",
+      ],
     ];
-    for (const [index, [deal, loan, month, url]] of pages.entries()) {
-      rerender(<LoanPage user="pat" deal={deal} loan={loan} month={month} />);
+    for (const [index, [deal, loan, month, asOf, url]] of pages.entries()) {
+      rerender(<LoanPage user="pat" deal={deal} loan={loan} month={month} asOf={asOf} />);
       await waitFor(() => expect(fetch).toHaveBeenCalledTimes(index + 2));
       expect(fetch).toHaveBeenLastCalledWith(url, {
         headers: { "X-CMBS-User": "pat" },
@@ -341,7 +370,7 @@ describe("LoanPage", () => {
   it("reads the loan as the user", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify(loanPage())));
     vi.stubGlobal("fetch", fetch);
-    render(<LoanPage user="pat" deal={F1} loan="2" month={null} />);
+    render(<LoanPage user="pat" deal={F1} loan="2" month={null} asOf={null} />);
     const page = screen.getByTestId("loan");
     expect(screen.getByText("Reading loan 2").className).toBe("status");
     await waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
@@ -349,5 +378,16 @@ describe("LoanPage", () => {
       headers: { "X-CMBS-User": "pat" },
       method: "GET",
     });
+  });
+
+  it("reads the loan as of a day", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify(loanPage())));
+    vi.stubGlobal("fetch", fetch);
+    render(<LoanPage user="pat" deal={F1} loan="2" month="2026-08" asOf="2026-09-01" />);
+    await screen.findByTestId("loan-title");
+    expect(fetch).toHaveBeenCalledWith(
+      "/dashboard/loan?deal=Fixture+Trust+2026-F1&loan=2&month=2026-08&as_of=2026-09-01",
+      { headers: { "X-CMBS-User": "pat" }, method: "GET" },
+    );
   });
 });

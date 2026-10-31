@@ -1099,6 +1099,76 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HistoryMonth": {
+        "description": "One month of a loan's history as the deal's current tape for it reported the loan.\n`day` is the month's first day, where the chart places it. A value the tape does not report\nis None, never zero. A month whose tape leaves the loan out (`on_tape` false), or for which\nno tape had been filed (`source` None: a deal reports every month, so a month missing\nbetween two tapes is a gap), reports nothing, and the chart leaves a gap there rather than\na line drawn across it.",
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "dscr": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dscr"
+          },
+          "ending_balance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ending Balance"
+          },
+          "month": {
+            "$ref": "#/components/schemas/MonthRef"
+          },
+          "on_tape": {
+            "title": "On Tape",
+            "type": "boolean"
+          },
+          "payment_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaymentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilingSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "month",
+          "day",
+          "on_tape",
+          "ending_balance",
+          "dscr",
+          "payment_status",
+          "source"
+        ],
+        "title": "HistoryMonth",
+        "type": "object"
+      },
       "LoadedBy": {
         "description": "Who put a value in the panel: the run, or the user outside a run.",
         "properties": {
@@ -1246,6 +1316,31 @@
         "title": "LoanFlag",
         "type": "object"
       },
+      "LoanHistory": {
+        "description": "The loan's months, oldest first, as published by the page's day, and its payment status\nchanges.",
+        "properties": {
+          "months": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryMonth"
+            },
+            "title": "Months",
+            "type": "array"
+          },
+          "status_changes": {
+            "items": {
+              "$ref": "#/components/schemas/StatusChange"
+            },
+            "title": "Status Changes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "months",
+          "status_changes"
+        ],
+        "title": "LoanHistory",
+        "type": "object"
+      },
       "LoanPage": {
         "properties": {
           "alerts": {
@@ -1295,6 +1390,9 @@
             "title": "Flags",
             "type": "array"
           },
+          "history": {
+            "$ref": "#/components/schemas/LoanHistory"
+          },
           "loan": {
             "title": "Loan",
             "type": "string"
@@ -1340,7 +1438,8 @@
           "comment",
           "comment_note",
           "flags",
-          "alerts"
+          "alerts",
+          "history"
         ],
         "title": "LoanPage",
         "type": "object"
@@ -1851,6 +1950,25 @@
         "title": "OverrideIn",
         "type": "object"
       },
+      "PaymentStatus": {
+        "description": "A payment status as the tape reports it ('A') and its name ('in grace period').",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "PaymentStatus",
+        "type": "object"
+      },
       "PositionIn": {
         "properties": {
           "class": {
@@ -2251,6 +2369,35 @@
           "summary"
         ],
         "title": "RunOut",
+        "type": "object"
+      },
+      "StatusChange": {
+        "description": "A month whose payment status differs from the last one reported before it, and the\ndelinquency bucket it moved into ('grace or late', `cmbs.invariants.partition`).",
+        "properties": {
+          "bucket": {
+            "title": "Bucket",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "month": {
+            "$ref": "#/components/schemas/MonthRef"
+          }
+        },
+        "required": [
+          "month",
+          "day",
+          "code",
+          "bucket"
+        ],
+        "title": "StatusChange",
         "type": "object"
       },
       "SummaryRow": {

@@ -36,24 +36,32 @@ describe("bookRead", () => {
 });
 
 describe("loanRead", () => {
-  it("names the loan's deal and month", () => {
-    expect(loanRead("Fixture Trust 2026-F1", "2", null).key).toBe(
+  it("names the loan's deal, month and the day it is read as of", () => {
+    expect(loanRead("Fixture Trust 2026-F1", "2", null, null).key).toBe(
       "/dashboard/loan?deal=Fixture+Trust+2026-F1&loan=2",
     );
-    expect(loanRead("A&B", "2", "2026-08").key).toBe(
+    expect(loanRead("A&B", "2", "2026-08", null).key).toBe(
       "/dashboard/loan?deal=A%26B&loan=2&month=2026-08",
+    );
+    expect(loanRead("A", "2", null, "2026-09-01").key).toBe(
+      "/dashboard/loan?deal=A&loan=2&as_of=2026-09-01",
+    );
+    expect(loanRead("A", "2", "2026-08", "2026-09-01").key).toBe(
+      "/dashboard/loan?deal=A&loan=2&month=2026-08&as_of=2026-09-01",
     );
   });
 
   it("reads the loan through the generated client, as the user", async () => {
     const fetch = answer(loanPage());
-    await expect(loanRead("A&B", "2", "2026-08").send(asUser("pat"))).resolves.toEqual(loanPage());
+    await expect(loanRead("A&B", "2", "2026-08", null).send(asUser("pat"))).resolves.toEqual(
+      loanPage(),
+    );
     expect(fetch).toHaveBeenCalledWith("/dashboard/loan?deal=A%26B&loan=2&month=2026-08", {
       headers: { "X-CMBS-User": "pat" },
       method: "GET",
     });
-    await loanRead("A&B", "2", null).send(asUser("pat"));
-    expect(fetch).toHaveBeenLastCalledWith("/dashboard/loan?deal=A%26B&loan=2", {
+    await loanRead("A&B", "2", null, "2026-09-01").send(asUser("pat"));
+    expect(fetch).toHaveBeenLastCalledWith("/dashboard/loan?deal=A%26B&loan=2&as_of=2026-09-01", {
       headers: { "X-CMBS-User": "pat" },
       method: "GET",
     });

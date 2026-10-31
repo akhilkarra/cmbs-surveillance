@@ -12,7 +12,9 @@ what it is sent and computes nothing.
   `cmbs.runs.service.trace` reads), the most recent financials and their age
   (`cmbs.analysis.staleness`), the servicer comment's extracted values with the sentence behind
   each (`cmbs.extraction.service.comment_view`), the check flags raised on the loan for the
-  month by that day, and the month's alerts on the loan.
+  month by that day, the month's alerts on the loan, and the loan's history for the chart:
+  every month as published by that day (ending balance, DSCR, payment status and the filing
+  each came from), with the months its payment status changed.
 
 Every value says what verified it:
 - a tape value passed the loan-row contract (a row that fails it is quarantined, never in the
@@ -24,7 +26,7 @@ Every value says what verified it:
 
 import datetime as dt
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final, Literal
@@ -59,6 +61,7 @@ from cmbs.extraction.service import (
 )
 from cmbs.extraction.tables import AUTO_ACCEPTED, ExtractedField, Extraction, ReviewItem
 from cmbs.filings.tables import Filing
+from cmbs.invariants.partition import PoolLoan, bucket_of, code_of
 from cmbs.panel import service as panel
 from cmbs.review.tables import ReviewDecline
 from cmbs.runs import service as runs
@@ -336,6 +339,114 @@ class LoanAlert:
 
 
 @dataclass(frozen=True)
+class PaymentStatus:
+    """A payment status as the tape reports it ('A') and its name ('in grace period')."""
+
+    code: str
+    name: str
+
+
+@dataclass(frozen=True)
+class HistoryMonth:
+    """One month of a loan's history as the deal's current tape for it reported the loan.
+    `day` is the month's first day, where the chart places it. A value the tape does not report
+    is None, never zero. A month whose tape leaves the loan out (`on_tape` false), or for which
+    no tape had been filed (`source` None: a deal reports every month, so a month missing
+    between two tapes is a gap), reports nothing, and the chart leaves a gap there rather than
+    a line drawn across it."""
+
+    month: MonthRef
+    day: dt.date
+    on_tape: bool
+    ending_balance: str | None
+    dscr: str | None
+    payment_status: PaymentStatus | None
+    source: FilingSource | None
+
+
+@dataclass(frozen=True)
+class StatusChange:
+    """A month whose payment status differs from the last one reported before it, and the
+    delinquency bucket it moved into ('grace or late', `cmbs.invariants.partition`)."""
+
+    month: MonthRef
+    day: dt.date
+    code: str
+    bucket: str
+
+
+@dataclass(frozen=True)
+class LoanHistory:
+    """The loan's months, oldest first, as published by the page's day, and its payment status
+    changes."""
+
+    months: tuple[HistoryMonth, ...]
+    status_changes: tuple[StatusChange, ...]
+
+
+def payment_status(code: str | None) -> PaymentStatus | None:
+    if code is None:
+        return None
+    return PaymentStatus(code=code.strip(), name=name_of(PAYMENT_STATUS, code))
+
+
+def history_month(
+    period: Period, source: FilingSource | None, row: LoanPeriod | None
+) -> HistoryMonth:
+    """A month of the loan's history from the tape `source` (None: no tape filed), which
+    reports the loan as `row` (None: the tape leaves the loan out)."""
+    return HistoryMonth(
+        month=month_ref(period),
+        day=period.first_day,
+        on_tape=row is not None,
+        ending_balance=None if row is None else _money(row.ending_balance),
+        dscr=None if row is None or row.dscr is None else str(row.dscr),
+        payment_status=None if row is None else payment_status(row.payment_status),
+        source=source,
+    )
+
+
+def history_months(
+    tapes: Sequence[tuple[Period, FilingSource]], rows: Mapping[str, LoanPeriod]
+) -> tuple[HistoryMonth, ...]:
+    """The loan's months from the deal's current tapes, and the loan's row on each tape that
+    reports it (by accession): every calendar month, oldest first, from the first tape that
+    reports the loan to the last. A month in between whose tape leaves the loan out, or that
+    has no tape at all, is a gap."""
+    by_period = dict(tapes)
+    reported = sorted(period for period, source in tapes if source.accession in rows)
+    if not reported:
+        return ()
+    months = [reported[0].shift(n) for n in range(reported[0].months_until(reported[-1]) + 1)]
+    return tuple(
+        history_month(
+            period,
+            by_period.get(period),
+            rows.get(by_period[period].accession) if period in by_period else None,
+        )
+        for period in months
+    )
+
+
+def status_changes(loan: str, months: Sequence[HistoryMonth]) -> tuple[StatusChange, ...]:
+    """The months whose payment status differs from the last one reported before them ('01'
+    and '1' are the same code), each with its delinquency bucket. The first status reported is
+    not a change, and a month that reports no status changes nothing: not reported is not
+    current."""
+    changes: list[StatusChange] = []
+    last: str | None = None
+    for month in months:
+        if month.payment_status is None:
+            continue
+        code = code_of(month.payment_status.code)
+        if last is not None and code != last:
+            bucket = bucket_of(PoolLoan(loan, month.payment_status.code, None))
+            changes.append(StatusChange(month.month, month.day, month.payment_status.code, bucket))
+        last = code
+    return tuple(changes)
+
+
+@dataclass(frozen=True)
 class LoanPage:
     deal: str
     loan: str
@@ -349,6 +460,7 @@ class LoanPage:
     comment_note: str | None
     flags: tuple[LoanFlag, ...]
     alerts: tuple[LoanAlert, ...]
+    history: LoanHistory
 
 
 def edgar_url(cik: int, accession: str, primary_document: str | None) -> str:
@@ -544,14 +656,17 @@ def comment_note(period: Period) -> str:
     return f"no servicer comment extracted for {period.label}"
 
 
-def _source(db: Session, accession: str) -> FilingSource:
-    filing = db.get_one(Filing, accession)
+def filing_source(filing: Filing) -> FilingSource:
     return FilingSource(
         form=filing.form,
-        accession=accession,
+        accession=filing.accession,
         filing_date=filing.filing_date,
-        url=edgar_url(filing.cik, accession, filing.primary_document),
+        url=edgar_url(filing.cik, filing.accession, filing.primary_document),
     )
+
+
+def _source(db: Session, accession: str) -> FilingSource:
+    return filing_source(db.get_one(Filing, accession))
 
 
 def _comment(db: Session, view: CommentView) -> CommentSection:
@@ -669,6 +784,31 @@ def _loan_alerts(
     )
 
 
+def loan_history(
+    db: Session, *, deal_id: int, loan: str, day: dt.date, through: Period | None = None
+) -> LoanHistory:
+    """The loan's history as published by the end of `day`, through the month `through` (every
+    month by default): each month as the deal's current tape for it on that day reports the
+    loan (`cmbs.panel.service.as_of`), so a month filed later, or an amendment filed later, is
+    not on it."""
+    tapes = [
+        tape
+        for tape in panel.current_tapes(db, day, deal_id=deal_id)
+        if through is None or Period.of(tape.period) <= through
+    ]
+    filings = {
+        filing.accession: filing_source(filing)
+        for filing in db.scalars(
+            select(Filing).where(Filing.accession.in_([tape.accession for tape in tapes]))
+        )
+    }
+    rows = {row.accession: row for row in panel.as_of(db, day, deal_id=deal_id, loan=loan)}
+    months = history_months(
+        [(Period.of(tape.period), filings[tape.accession]) for tape in tapes], rows
+    )
+    return LoanHistory(months=months, status_changes=status_changes(loan, months))
+
+
 def loan_page(
     db: Session,
     *,
@@ -706,4 +846,5 @@ def loan_page(
         comment_note=comment_note(month) if view is None else None,
         flags=_flags(db, deal_row.id, loan, month, day),
         alerts=_loan_alerts(db, deal_row.id, loan, month, day),
+        history=loan_history(db, deal_id=deal_row.id, loan=loan, day=day, through=month),
     )

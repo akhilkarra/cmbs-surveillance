@@ -9,6 +9,7 @@ import type {
 } from "./api";
 import { loanRead } from "./api";
 import { formatValue, NOT_REPORTED } from "./format";
+import { HistoryChart } from "./HistoryChart";
 import { Loadable } from "./Loadable";
 import { bookHref } from "./route";
 import { useApi } from "./useApi";
@@ -108,21 +109,23 @@ export function CommentBlock({ comment }: { comment: CommentSection }) {
         {comment.prompt_version}, settings version {comment.settings_version};{" "}
         <span data-testid="comment-loaded">{comment.loaded.text}</span>.
       </p>
-      <table className="values" data-testid="comment-values">
-        <thead>
-          <tr>
-            <th scope="col">Field</th>
-            <th scope="col">Value</th>
-            <th scope="col">Sentence behind it</th>
-            <th scope="col">Verified by</th>
-          </tr>
-        </thead>
-        <tbody>
-          {comment.values.map((value) => (
-            <CommentRow key={value.field} value={value} />
-          ))}
-        </tbody>
-      </table>
+      <div className="table-scroll">
+        <table className="values" data-testid="comment-values">
+          <thead>
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">Value</th>
+              <th scope="col">Sentence behind it</th>
+              <th scope="col">Verified by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {comment.values.map((value) => (
+              <CommentRow key={value.field} value={value} />
+            ))}
+          </tbody>
+        </table>
+      </div>
       <h3>The comment as filed</h3>
       <ol className="sentences">
         {comment.sentences.map((sentence, index) => (
@@ -150,6 +153,10 @@ export function LoanContent({ data }: { data: LoanPageData }) {
           <span data-testid="as-of">{data.as_of}</span>.
         </p>
       </header>
+      <section aria-labelledby="history-heading">
+        <h2 id="history-heading">History</h2>
+        <HistoryChart history={data.history} asOf={data.as_of} />
+      </section>
       <div className="columns">
         <section aria-labelledby="tape-heading">
           <h2 id="tape-heading">Loan tape</h2>
@@ -157,20 +164,22 @@ export function LoanContent({ data }: { data: LoanPageData }) {
             <FilingLink source={data.tape.source} testId="tape-filing" />, filed{" "}
             {data.tape.source.filing_date}.
           </p>
-          <table className="values" data-testid="tape-values">
-            <thead>
-              <tr>
-                <th scope="col">Field</th>
-                <th scope="col">Value</th>
-                <th scope="col">Verified by</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.tape.values.map((value) => (
-                <TapeRow key={value.field} value={value} loaded={data.tape.loaded.text} />
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="values" data-testid="tape-values">
+              <thead>
+                <tr>
+                  <th scope="col">Field</th>
+                  <th scope="col">Value</th>
+                  <th scope="col">Verified by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.tape.values.map((value) => (
+                  <TapeRow key={value.field} value={value} loaded={data.tape.loaded.text} />
+                ))}
+              </tbody>
+            </table>
+          </div>
           <FinancialsBlock financials={data.financials} />
         </section>
         <section aria-labelledby="comment-heading">
@@ -222,8 +231,9 @@ export function LoanPage(props: {
   deal: string;
   loan: string;
   month: string | null;
+  asOf: string | null;
 }) {
-  const resource = useApi(loanRead(props.deal, props.loan, props.month), props.user);
+  const resource = useApi(loanRead(props.deal, props.loan, props.month, props.asOf), props.user);
   return (
     <Loadable testId="loan" resource={resource} loading={`Reading loan ${props.loan}`}>
       {(data) => <LoanContent data={data} />}

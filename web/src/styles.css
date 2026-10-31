@@ -361,3 +361,47 @@ h3 {
   font: inherit;
   padding: 0.4rem 0.6rem;
 }
+
+/* The loan's history: the hovered month's values over the chart, then the chart, its credit,
+   and the same months as a table. */
+.history {
+  margin: 0 0 2rem;
+}
+
+.legend {
+  margin: 0 0 0.5rem;
+  min-height: 3em;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.legend strong,
+.legend span {
+  color: var(--ink);
+}
+
+/* Two panes of about 14rem each: room for a pane's ticks, and its last value's label, apart
+   from the other pane's. */
+.history-chart {
+  height: 30rem;
+  border: 1px solid var(--rule);
+}
+
+.chart-notes {
+  margin: 0.35rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* A wide table scrolls inside its own box, so the page never scrolls sideways. */
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.history-table caption {
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: left;
+}

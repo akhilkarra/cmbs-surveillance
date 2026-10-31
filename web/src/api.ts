@@ -19,7 +19,11 @@ export type {
   CommentValue,
   FilingSource,
   Financials,
+  HistoryMonth,
+  LoanHistory,
   LoanPage as LoanPageData,
+  PaymentStatus,
+  StatusChange,
   TapeValue,
 } from "./generated/api.schemas";
 
@@ -43,9 +47,20 @@ export function bookRead(month: string | null): ApiRead<BookPage> {
   };
 }
 
-/** A deal's loan for a month, or for the deal's latest month when none is named. */
-export function loanRead(deal: string, loan: string, month: string | null): ApiRead<LoanPage> {
-  const params = month === null ? { deal, loan } : { deal, loan, month };
+/** A deal's loan for a month, or for the deal's latest month when none is named, as the
+ *  filings stood on a day, or today when none is named. */
+export function loanRead(
+  deal: string,
+  loan: string,
+  month: string | null,
+  asOf: string | null,
+): ApiRead<LoanPage> {
+  const params = {
+    deal,
+    loan,
+    ...(month === null ? {} : { month }),
+    ...(asOf === null ? {} : { as_of: asOf }),
+  };
   return {
     key: getGetDashboardLoanUrl(params),
     send: (init) => getDashboardLoan(params, init),

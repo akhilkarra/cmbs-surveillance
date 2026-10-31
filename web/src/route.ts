@@ -2,11 +2,12 @@
 //   #/book            the latest month's book view
 //   #/book/2026-09    a month's book view
 //   #/loan/<deal>/<loan>[/2026-09]   one loan, for the deal's latest month or the one named
+//   #/loan/<deal>/<loan>?as_of=2026-09-01   the loan as the filings stood on a day (today if not)
 // The user reading the page is `?user=<name>` (the demo names users; single sign-on comes later).
 
 export type Route =
   | { page: "book"; month: string | null }
-  | { page: "loan"; deal: string; loan: string; month: string | null }
+  | { page: "loan"; deal: string; loan: string; month: string | null; asOf: string | null }
   | { page: "missing"; hash: string };
 
 function decoded(hash: string): string[] | null {
@@ -18,7 +19,11 @@ function decoded(hash: string): string[] | null {
 }
 
 export function parseRoute(hash: string): Route {
-  const parts = decoded(hash);
+  // The route's query starts at its first "?"; a route without one has an empty query.
+  const start = hash.includes("?") ? hash.indexOf("?") : hash.length;
+  const path = hash.slice(0, start);
+  const query = new URLSearchParams(hash.slice(start + 1));
+  const parts = decoded(path);
   if (parts === null) {
     return { page: "missing", hash };
   }
@@ -28,7 +33,7 @@ export function parseRoute(hash: string): Route {
   }
   const [deal, loan, month] = rest;
   if (page === "loan" && deal && loan && rest.length <= 3) {
-    return { page: "loan", deal, loan, month: month ?? null };
+    return { page: "loan", deal, loan, month: month ?? null, asOf: query.get("as_of") || null };
   }
   return { page: "missing", hash };
 }

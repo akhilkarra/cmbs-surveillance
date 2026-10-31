@@ -42,6 +42,16 @@ describe("Page", () => {
     );
   });
 
+  it("opens a loan as of a day", async () => {
+    const fetch = serve();
+    render(<Page hash="#/loan/Fixture%20Trust%202026-F1/2?as_of=2026-09-01" user="pat" />);
+    await screen.findByTestId("loan-title");
+    expect(fetch).toHaveBeenCalledWith(
+      "/dashboard/loan?deal=Fixture+Trust+2026-F1&loan=2&as_of=2026-09-01",
+      expect.anything(),
+    );
+  });
+
   it("says when nothing lives at an address", () => {
     render(<Page hash="#/runs" user="pat" />);
     expect(screen.getByTestId("missing").textContent).toBe(

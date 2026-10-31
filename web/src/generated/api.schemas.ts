@@ -340,6 +340,32 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+/**
+ * A payment status as the tape reports it ('A') and its name ('in grace period').
+ */
+export interface PaymentStatus {
+  code: string;
+  name: string;
+}
+
+/**
+ * One month of a loan's history as the deal's current tape for it reported the loan.
+ * `day` is the month's first day, where the chart places it. A value the tape does not report
+ * is None, never zero. A month whose tape leaves the loan out (`on_tape` false), or for which
+ * no tape had been filed (`source` None: a deal reports every month, so a month missing
+ * between two tapes is a gap), reports nothing, and the chart leaves a gap there rather than
+ * a line drawn across it.
+ */
+export interface HistoryMonth {
+  day: string;
+  dscr: string | null;
+  ending_balance: string | null;
+  month: MonthRef;
+  on_tape: boolean;
+  payment_status: PaymentStatus | null;
+  source: FilingSource | null;
+}
+
 export type LoanAlertSeverity = (typeof LoanAlertSeverity)[keyof typeof LoanAlertSeverity];
 
 export const LoanAlertSeverity = {
@@ -373,6 +399,26 @@ export interface LoanFlag {
   message: string;
 }
 
+/**
+ * A month whose payment status differs from the last one reported before it, and the
+ * delinquency bucket it moved into ('grace or late', `cmbs.invariants.partition`).
+ */
+export interface StatusChange {
+  bucket: string;
+  code: string;
+  day: string;
+  month: MonthRef;
+}
+
+/**
+ * The loan's months, oldest first, as published by the page's day, and its payment status
+ * changes.
+ */
+export interface LoanHistory {
+  months: HistoryMonth[];
+  status_changes: StatusChange[];
+}
+
 export type TapeValueKind = (typeof TapeValueKind)[keyof typeof TapeValueKind];
 
 export const TapeValueKind = {
@@ -404,6 +450,7 @@ export interface LoanPage {
   deal: string;
   financials: Financials;
   flags: LoanFlag[];
+  history: LoanHistory;
   loan: string;
   month: MonthRef;
   property_name: string | null;
