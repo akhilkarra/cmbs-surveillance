@@ -234,6 +234,17 @@ describe("axis ranges", () => {
     expect(widened(flat, MONEY_SPAN)).toEqual({ minValue: 37125000, maxValue: 37875000 });
   });
 
+  it("widen a paid-off balance to $1,000 above zero", () => {
+    expect(widened({ minValue: 0, maxValue: 0 }, MONEY_SPAN)).toEqual({
+      minValue: 0,
+      maxValue: 1000,
+    });
+    expect(widened({ minValue: 40000, maxValue: 40000 }, MONEY_SPAN)).toEqual({
+      minValue: 39500,
+      maxValue: 40500,
+    });
+  });
+
   it("widen a DSCR that never changes to 0.10x, never below zero", () => {
     expect(widened({ minValue: 1.25, maxValue: 1.25 }, RATIO_SPAN)).toEqual({
       minValue: 1.2,

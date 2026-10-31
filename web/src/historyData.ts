@@ -148,8 +148,9 @@ export function axisRatio(price: number): string {
   return `${price.toFixed(2)}x`;
 }
 
-/** The least an axis spans, given the middle of its values: 2% of the balance, 0.10x of DSCR. */
-export const MONEY_SPAN = (middle: number) => middle * 0.02;
+/** The least an axis spans, given the middle of its values: 2% of the balance (and at least
+ *  $1,000, for a loan paid down to nothing), 0.10x of DSCR. */
+export const MONEY_SPAN = (middle: number) => Math.max(middle * 0.02, 1000);
 export const RATIO_SPAN = () => 0.1;
 
 /** An axis range widened about its middle to at least the measure's span, so a value that never
