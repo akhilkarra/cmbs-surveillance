@@ -20,8 +20,10 @@ import {
   changeIn,
   dscrOf,
   dscrText,
-  linePoints,
+  lineSegments,
   monthAt,
+  type Point,
+  segmentMarkers,
   statusMarkers,
   statusText,
   timeKey,
@@ -59,20 +61,41 @@ function drawChart(
     handleScroll: false,
     handleScale: false,
   });
-  const line = { color: token("--link"), lineWidth: 2, pointMarkersVisible: true } as const;
-  const balance = chart.addSeries(
-    LineSeries,
-    { ...line, title: "ending balance", priceFormat: { type: "custom", formatter: axisMoney } },
-    0,
-  );
-  balance.setData(linePoints(history.months, balanceOf));
-  const dscr = chart.addSeries(
-    LineSeries,
-    { ...line, title: "DSCR", priceFormat: { type: "custom", formatter: axisRatio } },
-    1,
-  );
-  dscr.setData(linePoints(history.months, dscrOf));
-  createSeriesMarkers(balance, statusMarkers(history.status_changes, token("--medium")));
+  const color = token("--link");
+  // A measure is drawn as one line per run of months reporting it, in its own pane; only the
+  // last line names the measure and shows its latest value on the axis. A run of one month is
+  // its point alone: the library draws a lone point as a level stretching beside it.
+  const draw = (
+    segments: Point[][],
+    title: string,
+    formatter: (price: number) => string,
+    pane: number,
+  ) =>
+    segments.map((points, index) => {
+      const last = index === segments.length - 1;
+      const series = chart.addSeries(
+        LineSeries,
+        {
+          color,
+          lineWidth: 2,
+          lineVisible: points.filter((point) => point.value !== undefined).length > 1,
+          pointMarkersVisible: true,
+          title: last ? title : "",
+          lastValueVisible: last,
+          priceLineVisible: last,
+          priceFormat: { type: "custom", formatter },
+        },
+        pane,
+      );
+      series.setData(points);
+      return series;
+    });
+  const balance = lineSegments(history.months, balanceOf);
+  const markers = segmentMarkers(balance, statusMarkers(history.status_changes, token("--medium")));
+  draw(balance, "ending balance", axisMoney, 0).forEach((series, index) => {
+    createSeriesMarkers(series, markers[index]);
+  });
+  draw(lineSegments(history.months, dscrOf), "DSCR", axisRatio, 1);
   chart.subscribeCrosshairMove((param: MouseEventParams) => onHover(timeKey(param.time)));
   chart.timeScale().fitContent();
   return () => chart.remove();

@@ -1,5 +1,6 @@
 import { act, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { HistoryMonth } from "./api";
 import { HistoryChart, NOTICE, TRADINGVIEW } from "./HistoryChart";
 import { axisMoney, axisRatio } from "./historyData";
 import { charts, type FakeChart, LineSeries } from "./test-chart";
@@ -14,13 +15,19 @@ const TOKENS = {
 };
 
 beforeEach(() => {
-  for (const [name, value] of Object.entries(TOKENS)) {
-    document.documentElement.style.setProperty(name, value);
-  }
+  // A browser reads a custom property with the space after its colon ("--paper: #f6f7f4" is
+  // " #f6f7f4"); jsdom trims it, so the page's tokens are served as a browser serves them.
+  const read = CSSStyleDeclaration.prototype.getPropertyValue;
+  vi.spyOn(CSSStyleDeclaration.prototype, "getPropertyValue").mockImplementation(function (
+    this: CSSStyleDeclaration,
+    name: string,
+  ) {
+    return name in TOKENS ? ` ${TOKENS[name as keyof typeof TOKENS]}` : read.call(this, name);
+  });
 });
 
 afterEach(() => {
-  document.documentElement.removeAttribute("style");
+  vi.restoreAllMocks();
 });
 
 function drawn(): FakeChart {
@@ -65,45 +72,82 @@ describe("HistoryChart", () => {
     expect(chart.fitted).toBe(true);
   });
 
-  it("draws the balance and the DSCR in panes of their own, with gaps where not reported", () => {
+  it("draws the balance and the DSCR in panes of their own, a line per run of months", () => {
     render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
-    const [balance, dscr] = drawn().series;
+    const series = drawn().series;
+    expect(series).toHaveLength(3);
+    const [balance, before, after] = series;
     const line = { color: "#1d4f8a", lineWidth: 2, pointMarkersVisible: true };
-    expect(balance).toMatchObject({
-      definition: LineSeries,
-      pane: 0,
-      options: {
-        ...line,
-        title: "ending balance",
-        priceFormat: { type: "custom", formatter: axisMoney },
-      },
-      data: [
-        { time: "2026-07-01", value: 30400000 },
-        { time: "2026-08-01", value: 30200000 },
-        { time: "2026-09-01", value: 30000000 },
-      ],
-    });
-    expect(dscr).toMatchObject({
-      definition: LineSeries,
-      pane: 1,
-      options: { ...line, title: "DSCR", priceFormat: { type: "custom", formatter: axisRatio } },
-      data: [
-        { time: "2026-07-01", value: 1.12 },
-        { time: "2026-08-01" },
-        { time: "2026-09-01", value: 0.96 },
-      ],
-    });
-    expect(Object.keys(balance?.options ?? {})).toHaveLength(5);
+    const named = { lastValueVisible: true, priceLineVisible: true };
+    expect(balance).toEqual(
+      expect.objectContaining({
+        definition: LineSeries,
+        pane: 0,
+        options: {
+          ...line,
+          ...named,
+          lineVisible: true,
+          title: "ending balance",
+          priceFormat: { type: "custom", formatter: axisMoney },
+        },
+        data: [
+          { time: "2026-07-01", value: 30400000 },
+          { time: "2026-08-01", value: 30200000 },
+          { time: "2026-09-01", value: 30000000 },
+        ],
+      }),
+    );
+    // August reports no DSCR: July and September are lines of their own, not joined across it.
+    const dscr = { type: "custom", formatter: axisRatio };
+    expect(before).toEqual(
+      expect.objectContaining({
+        definition: LineSeries,
+        pane: 1,
+        options: {
+          ...line,
+          lineVisible: false,
+          title: "",
+          lastValueVisible: false,
+          priceLineVisible: false,
+          priceFormat: dscr,
+        },
+        data: [{ time: "2026-07-01", value: 1.12 }, { time: "2026-08-01" }, { time: "2026-09-01" }],
+      }),
+    );
+    expect(after).toEqual(
+      expect.objectContaining({
+        definition: LineSeries,
+        pane: 1,
+        options: { ...line, ...named, lineVisible: false, title: "DSCR", priceFormat: dscr },
+        data: [{ time: "2026-07-01" }, { time: "2026-08-01" }, { time: "2026-09-01", value: 0.96 }],
+      }),
+    );
   });
 
-  it("marks each payment status change on the balance line", () => {
-    render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
-    const [balance, dscr] = drawn().series;
-    expect(balance?.markers).toEqual([
-      expect.objectContaining({ time: "2026-08-01", color: "#9a5b00", text: "grace or late" }),
-      expect.objectContaining({ time: "2026-09-01", color: "#9a5b00", text: "30 days" }),
+  it("draws a run of two months as a line and a lone month as its point", () => {
+    const history = loanHistory();
+    history.months[1] = { ...(history.months[1] as HistoryMonth), dscr: "1.05" };
+    history.months[2] = { ...(history.months[2] as HistoryMonth), ending_balance: null };
+    render(<HistoryChart history={history} asOf="2026-10-28" />);
+    expect(drawn().series.map((line) => [line.pane, line.options.lineVisible])).toEqual([
+      [0, true],
+      [1, true],
     ]);
-    expect(dscr?.markers).toEqual([]);
+  });
+
+  it("marks each payment status change on the balance line that has the month", () => {
+    const history = loanHistory();
+    history.months[1] = { ...(history.months[1] as HistoryMonth), ending_balance: null };
+    render(<HistoryChart history={history} asOf="2026-10-28" />);
+    const [july, september, ...dscr] = drawn().series;
+    const marker = { position: "aboveBar", shape: "arrowDown", color: "#9a5b00" };
+    expect(july?.markers).toEqual([]);
+    // August reports no balance: its change is marked on the last balance line.
+    expect(september?.markers).toEqual([
+      { ...marker, time: "2026-09-01", text: "30 days" },
+      { ...marker, time: "2026-08-01", text: "grace or late" },
+    ]);
+    expect(dscr.map((line) => line.markers)).toEqual([[], []]);
   });
 
   it("names the latest month until a month is hovered, then that month and its filing", () => {

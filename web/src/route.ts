@@ -19,9 +19,10 @@ function decoded(hash: string): string[] | null {
 }
 
 export function parseRoute(hash: string): Route {
-  const start = hash.indexOf("?");
-  const path = start === -1 ? hash : hash.slice(0, start);
-  const query = new URLSearchParams(start === -1 ? "" : hash.slice(start + 1));
+  // The route's query starts at its first "?"; a route without one has an empty query.
+  const start = hash.includes("?") ? hash.indexOf("?") : hash.length;
+  const path = hash.slice(0, start);
+  const query = new URLSearchParams(hash.slice(start + 1));
   const parts = decoded(path);
   if (parts === null) {
     return { page: "missing", hash };

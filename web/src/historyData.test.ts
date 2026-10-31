@@ -8,8 +8,10 @@ import {
   dscrOf,
   dscrText,
   linePoints,
+  lineSegments,
   monthAt,
   NOT_ON_TAPE,
+  segmentMarkers,
   statusMarkers,
   statusText,
   timeKey,
@@ -46,6 +48,94 @@ describe("linePoints", () => {
     expect(linePoints([historyMonth("2026-07", "July 2026", { dscr: "0.00" })], dscrOf)).toEqual([
       { time: "2026-07-01", value: 0 },
     ]);
+  });
+});
+
+describe("lineSegments", () => {
+  const month = (key: string, dscr: string | null) =>
+    historyMonth(key, key, { day: `${key}-01`, dscr });
+  const months5 = [
+    month("2026-05", "1.30"),
+    month("2026-06", "1.25"),
+    month("2026-07", null),
+    month("2026-08", "1.10"),
+    month("2026-09", null),
+  ];
+  const times = ["2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"];
+
+  it("draws each run of reported months as a line of its own over every month", () => {
+    expect(lineSegments(months5, dscrOf)).toEqual([
+      [
+        { time: times[0], value: 1.3 },
+        { time: times[1], value: 1.25 },
+        { time: times[2] },
+        { time: times[3] },
+        { time: times[4] },
+      ],
+      [
+        { time: times[0] },
+        { time: times[1] },
+        { time: times[2] },
+        { time: times[3], value: 1.1 },
+        { time: times[4] },
+      ],
+    ]);
+  });
+
+  it("draws a value every month reports as one line", () => {
+    expect(lineSegments(months, balanceOf)).toEqual([linePoints(months, balanceOf)]);
+  });
+
+  it("keeps the months of a value no month reports, as one line without values", () => {
+    const none = [month("2026-07", null), month("2026-08", null)];
+    expect(lineSegments(none, dscrOf)).toEqual([[{ time: "2026-07-01" }, { time: "2026-08-01" }]]);
+    expect(lineSegments([], dscrOf)).toEqual([[]]);
+  });
+
+  it("starts a new line after every gap, however short the run", () => {
+    const alternate = [
+      month("2026-05", "1.30"),
+      month("2026-06", null),
+      month("2026-07", "1.20"),
+      month("2026-08", null),
+      month("2026-09", "1.10"),
+    ];
+    const segments = lineSegments(alternate, dscrOf);
+    expect(segments.map((points) => points.filter((p) => p.value !== undefined))).toEqual([
+      [{ time: times[0], value: 1.3 }],
+      [{ time: times[2], value: 1.2 }],
+      [{ time: times[4], value: 1.1 }],
+    ]);
+  });
+});
+
+describe("segmentMarkers", () => {
+  const marker = (time: string) => ({
+    time,
+    position: "aboveBar" as const,
+    shape: "arrowDown" as const,
+    color: "c",
+    text: time,
+  });
+  const segments = [
+    [{ time: "a", value: 1 }, { time: "b", value: 2 }, { time: "c" }, { time: "d" }],
+    [{ time: "a" }, { time: "b" }, { time: "c" }, { time: "d", value: 4 }],
+  ];
+
+  it("puts each marker on the line with a value at its month", () => {
+    expect(segmentMarkers(segments, [marker("b"), marker("d")])).toEqual([
+      [marker("b")],
+      [marker("d")],
+    ]);
+  });
+
+  it("puts a marker over a month no line has a value for on the last line", () => {
+    expect(segmentMarkers(segments, [marker("c"), marker("a")])).toEqual([
+      [marker("a")],
+      [marker("c")],
+    ]);
+    expect(segmentMarkers([segments[0] ?? []], [marker("c")])).toEqual([[marker("c")]]);
+    expect(segmentMarkers(segments, [])).toEqual([[], []]);
   });
 });
 

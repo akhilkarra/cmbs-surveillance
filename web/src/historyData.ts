@@ -23,6 +23,28 @@ export function linePoints(
   });
 }
 
+/** The line's segments, one per run of consecutive months that report the value: a line drawn
+ *  through a month without a point joins its neighbours across the gap, so each run is drawn as
+ *  a line of its own. Every segment keeps every month (valued only in its run), so each line
+ *  spans the whole time axis; a value no month reports is one segment without values. */
+export function lineSegments(
+  months: HistoryMonth[],
+  value: (month: HistoryMonth) => string | null,
+): Point[][] {
+  const points = linePoints(months, value);
+  const runs: number[][] = [];
+  points.forEach((point, index) => {
+    if (point.value === undefined) return;
+    const run = runs.at(-1);
+    if (run?.at(-1) === index - 1) run.push(index);
+    else runs.push([index]);
+  });
+  if (runs.length === 0) return [points];
+  return runs.map((run) =>
+    points.map((point, index) => (run.includes(index) ? point : { time: point.time })),
+  );
+}
+
 export const balanceOf = (month: HistoryMonth) => month.ending_balance;
 export const dscrOf = (month: HistoryMonth) => month.dscr;
 
@@ -44,6 +66,16 @@ export function statusMarkers(changes: StatusChange[], color: string): Marker[] 
     color,
     text: change.bucket,
   }));
+}
+
+/** Each segment's markers: those over a month the segment has a value for. A marker over a
+ *  month no segment has a value for goes on the last segment, so no change is left unmarked. */
+export function segmentMarkers(segments: Point[][], markers: Marker[]): Marker[][] {
+  const valued = (segment: Point[], marker: Marker) =>
+    segment.some((point) => point.time === marker.time && point.value !== undefined);
+  const placed = segments.map((segment) => markers.filter((marker) => valued(segment, marker)));
+  const left = markers.filter((marker) => !segments.some((segment) => valued(segment, marker)));
+  return placed.map((own, index) => (index === placed.length - 1 ? [...own, ...left] : own));
 }
 
 /** The chart's time for a month ("2026-08-01"), as the crosshair reports it: the string the
