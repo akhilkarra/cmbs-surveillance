@@ -209,6 +209,19 @@ describe("BookPage", () => {
     });
   });
 
+  it("reads again when the month changes", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify(bookPage())));
+    vi.stubGlobal("fetch", fetch);
+    const { rerender } = render(<BookPage user="pat" month="2026-09" />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    rerender(<BookPage user="pat" month="2026-08" />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(fetch).toHaveBeenLastCalledWith("/dashboard/book?month=2026-08", {
+      headers: { "X-CMBS-User": "pat" },
+      method: "GET",
+    });
+  });
+
   it("shows a refusal in the server's words", async () => {
     vi.stubGlobal(
       "fetch",
