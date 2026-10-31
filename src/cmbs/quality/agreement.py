@@ -18,21 +18,29 @@ Per field it reports:
   stated, its top option is only where a forced choice landed, so the values are not compared.
 
 Every field on which they differ in outcome, or in value where both state it, is listed with
-both answers. Agreement is not accuracy: without golden labels it measures consistency only.
+both answers, each with the confidence of its value answer, computed from the probabilities
+the same way for both models (`cmbs.model.policy.confidence`), never the model's own field.
+Agreement is not accuracy: without golden labels it measures consistency only.
 """
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from cmbs.extraction.decision import Outcome
 from cmbs.extraction.fields import FIELDS, spec
 from cmbs.extraction.judgments import FieldResult, decide_fields, read
-from cmbs.extraction.questions import plan
+from cmbs.extraction.questions import Plan, plan, value_name
 from cmbs.extraction.sentences import split
-from cmbs.model.policy import check_answers
-from cmbs.model.types import ModelRequest, ModelResponse
+from cmbs.model.policy import check_answers, confidence
+from cmbs.model.types import Choice, ChoiceAnswer, ModelRequest, ModelResponse
 from cmbs.quality.stats import Proportion
+
+PLACES = Decimal("0.0001")
+
+
+def _shown(value: Decimal) -> Decimal:
+    return value.quantize(PLACES, rounding=ROUND_HALF_UP)
 
 
 @dataclass(frozen=True)
@@ -56,19 +64,21 @@ class Answer:
     answer_probability: Decimal
     support_probability: Decimal
     sentence: int | None
+    confidence: Decimal
 
     @property
     def stated(self) -> bool:
         return self.outcome is not Outcome.NOT_STATED
 
     def text(self) -> str:
-        """'clef-flash-2026-10-01: review (unsettled answer), "imminent monetary default" at
-        0.6725, support 0.9522, sentence 1'."""
+        """'jev-1.14.0: review (unsettled answer), "imminent monetary default" at 0.6000,
+        confidence 0.5333, support 0.9500, sentence 1', each figure to four places."""
         outcome = self.outcome.value + (f" ({self.reason})" if self.reason else "")
         cited = f"sentence {self.sentence}" if self.sentence is not None else "no sentence found"
         return (
-            f'{self.model}: {outcome}, "{self.value}" at {self.answer_probability}, '
-            f"support {self.support_probability}, {cited}"
+            f'{self.model}: {outcome}, "{self.value}" at {_shown(self.answer_probability)}, '
+            f"confidence {_shown(self.confidence)}, support {_shown(self.support_probability)}, "
+            f"{cited}"
         )
 
 
@@ -101,20 +111,26 @@ class NotComparable(ValueError):
     """The cases do not hold two models' answers to the same questions."""
 
 
-def _answers(model: str, results: dict[str, FieldResult]) -> dict[str, Answer]:
+def _answers(
+    plan_: Plan, response: ModelResponse, results: dict[str, FieldResult]
+) -> dict[str, Answer]:
     answers: dict[str, Answer] = {}
     for field, result in results.items():
         judgment = result.judgment
         if judgment is None:  # not asked: the comment prints nothing the field could be
             continue
+        name = value_name(field)
+        question, answered = plan_.questions[name], response.answers[name]
+        assert isinstance(question, Choice) and isinstance(answered, ChoiceAnswer)
         answers[field] = Answer(
-            model=model,
+            model=response.model,
             outcome=result.decision.outcome,
             reason=result.decision.reason,
             value=judgment.value,
             answer_probability=judgment.answer_probability,
             support_probability=judgment.support_probability,
             sentence=judgment.sentence,
+            confidence=confidence(question, answered),
         )
     return answers
 
@@ -130,7 +146,7 @@ def decide_case(
         ModelRequest(model=response.model, state=asked.state, questions=asked.questions), response
     )
     results = decide_fields(read(asked, sentences, response), low=low, high=high)
-    return _answers(response.model, results)
+    return _answers(asked, response, results)
 
 
 def _model(cases: Sequence[Case], which: str) -> str:

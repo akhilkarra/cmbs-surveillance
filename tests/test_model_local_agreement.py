@@ -45,6 +45,10 @@ def test_every_live_comment_has_a_local_recording_from_the_pinned_model():
         assert recording.prompt_version == PROMPT_VERSION
         assert recording.classification is Classification.PUBLIC
         assert recording.synthetic is False
+        assert (recording.response.revision, recording.response.reference_sha256) == (
+            CLEF_FLASH_2026_10_01.revision,
+            CLEF_FLASH_2026_10_01.reference_sha256,
+        )
 
 
 def test_each_recording_is_keyed_as_the_extraction_asks_for_its_comment():
@@ -119,6 +123,7 @@ def test_a_comment_is_decided_field_by_field_with_the_judgments_behind_each():
         answer_probability=Decimal("0.9"),
         support_probability=Decimal("0.95"),
         sentence=1,
+        confidence=Decimal("5.3") / 6,  # seven reasons: (7 x 0.9 - 1) / 6, not the field's 0.9
     )
     assert decided["borrower_request"].outcome is Outcome.NOT_STATED
     assert decided["borrower_request"].stated is False
@@ -138,12 +143,13 @@ def test_an_answer_reads_with_its_outcome_value_probabilities_and_sentence():
         reason="unsettled answer",
         value="imminent monetary default",
         answer_probability=Decimal("0.6725"),
-        support_probability=Decimal("0.9522"),
+        support_probability=Decimal("0.952219933"),
         sentence=1,
+        confidence=Decimal("0.61792961"),
     )
     assert answer.text() == (
         'clef-flash-2026-10-01: review (unsettled answer), "imminent monetary default" at '
-        "0.6725, support 0.9522, sentence 1"
+        "0.6725, confidence 0.6179, support 0.9522, sentence 1"
     )
     unfound = Answer(
         model="jev-1.14.0",
@@ -153,9 +159,11 @@ def test_an_answer_reads_with_its_outcome_value_probabilities_and_sentence():
         answer_probability=Decimal("0.0"),
         support_probability=Decimal("0.01"),
         sentence=None,
+        confidence=Decimal("0.00005"),
     )
     assert unfound.text() == (
-        'jev-1.14.0: not stated, "2025-03-06" at 0.0, support 0.01, no sentence found'
+        'jev-1.14.0: not stated, "2025-03-06" at 0.0000, confidence 0.0001, support 0.0100, '
+        "no sentence found"
     )
 
 

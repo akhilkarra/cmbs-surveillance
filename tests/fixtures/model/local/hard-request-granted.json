@@ -8,7 +8,7 @@
   "input_sha256": "24079c0c62e24b87e0ad206f51674cd83a60489cbe324cf6bfd7eb1a653e3702",
   "classification": "public",
   "settings_version": 8,
-  "recorded_at": "2026-10-31T05:20:45.928256Z",
+  "recorded_at": "2026-10-31T05:58:56.559180Z",
   "synthetic": false,
   "request": {
     "model": "clef-flash-2026-10-01",
@@ -224,189 +224,191 @@
       "transfer_reason.value": {
         "type": "choice",
         "choice": "imminent monetary default",
-        "confidence": 0.6725,
+        "confidence": 0.6725110988525246,
         "probabilities": {
-          "imminent monetary default": 0.6725,
-          "monetary default": 0.0121,
-          "imminent maturity default": 0.2553,
-          "maturity default": 0.0153,
-          "non-monetary default": 0.0078,
-          "bankruptcy": 0.0153,
-          "other": 0.0216
+          "imminent monetary default": 0.6725110988525246,
+          "monetary default": 0.012126505756421758,
+          "imminent maturity default": 0.25525642170238405,
+          "maturity default": 0.015329339633481346,
+          "non-monetary default": 0.007829460572353059,
+          "bankruptcy": 0.015329339633481346,
+          "other": 0.021617833849353948
         }
       },
       "transfer_reason.support": {
         "type": "noul",
-        "noul": 0.9522
+        "noul": 0.9522199336364293
       },
       "transfer_reason.sentence": {
         "type": "choice",
         "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
-        "confidence": 0.9933,
+        "confidence": 0.9932814816985407,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9933,
-          "The borrower requested a 12-month maturity extension.": 0.0044,
-          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0023
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9932814816985407,
+          "The borrower requested a 12-month maturity extension.": 0.0044235900275247375,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0022949282739345342
         }
       },
       "transfer_date.value": {
         "type": "choice",
         "choice": "3/6/2025",
-        "confidence": 0.991,
+        "confidence": 0.9910001772734338,
         "probabilities": {
-          "3/6/2025": 0.991,
-          "9/15/2026": 0.0035,
-          "none of these": 0.0055
+          "3/6/2025": 0.9910001772734338,
+          "9/15/2026": 0.0034641410656578667,
+          "none of these": 0.005535681660908409
         }
       },
       "transfer_date.support": {
         "type": "noul",
-        "noul": 0.9759
+        "noul": 0.9759464471055739
       },
       "transfer_date.sentence": {
         "type": "choice",
         "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
-        "confidence": 0.9956,
+        "confidence": 0.9956356015656094,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9956,
-          "The borrower requested a 12-month maturity extension.": 0.0023,
-          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.002
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9956356015656094,
+          "The borrower requested a 12-month maturity extension.": 0.002318409357486105,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0020459890769046296
         }
       },
       "dscr_as_of.value": {
         "type": "choice",
         "choice": "none of these",
-        "confidence": 0.9631,
+        "confidence": 0.963071230819769,
         "probabilities": {
-          "3/6/2025": 0.0239,
-          "9/15/2026": 0.013,
-          "none of these": 0.9631
+          "3/6/2025": 0.02392239086611851,
+          "9/15/2026": 0.01300637831411257,
+          "none of these": 0.963071230819769
         }
       },
       "dscr_as_of.support": {
         "type": "noul",
-        "noul": 0.0331
+        "noul": 0.033085978388704126
       },
       "dscr_as_of.sentence": {
         "type": "choice",
         "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
-        "confidence": 0.8084,
+        "confidence": 0.8083980920924576,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.8084,
-          "The borrower requested a 12-month maturity extension.": 0.0951,
-          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0965
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.8083980920924576,
+          "The borrower requested a 12-month maturity extension.": 0.0950525242277871,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.09654938367975517
         }
       },
       "occupancy_as_of.value": {
         "type": "choice",
         "choice": "none of these",
-        "confidence": 0.9824,
+        "confidence": 0.9823573046923514,
         "probabilities": {
-          "3/6/2025": 0.0098,
-          "9/15/2026": 0.0079,
-          "none of these": 0.9824
+          "3/6/2025": 0.009782353470387037,
+          "9/15/2026": 0.007860341837261507,
+          "none of these": 0.9823573046923514
         }
       },
       "occupancy_as_of.support": {
         "type": "noul",
-        "noul": 0.013
+        "noul": 0.013020490113842825
       },
       "occupancy_as_of.sentence": {
         "type": "choice",
         "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
-        "confidence": 0.6813,
+        "confidence": 0.6813422924109429,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.6813,
-          "The borrower requested a 12-month maturity extension.": 0.1581,
-          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.1606
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.6813422924109429,
+          "The borrower requested a 12-month maturity extension.": 0.15808412244827988,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.16057358514077733
         }
       },
       "borrower_request.value": {
         "type": "choice",
         "choice": "maturity extension",
-        "confidence": 0.9594,
+        "confidence": 0.9594161832389949,
         "probabilities": {
-          "maturity extension": 0.9594,
-          "forbearance": 0.009,
-          "loan modification": 0.0168,
-          "discounted payoff": 0.0016,
-          "loan assumption": 0.0019,
-          "collateral release": 0.0033,
-          "other": 0.008
+          "maturity extension": 0.9594161832389949,
+          "forbearance": 0.008975063028366202,
+          "loan modification": 0.016767625220444556,
+          "discounted payoff": 0.0016344804021793014,
+          "loan assumption": 0.0019109011880903714,
+          "collateral release": 0.0032505524191119104,
+          "other": 0.008045194502812793
         }
       },
       "borrower_request.support": {
         "type": "noul",
-        "noul": 0.9711
+        "noul": 0.9711290930537122
       },
       "borrower_request.sentence": {
         "type": "choice",
         "choice": "The borrower requested a 12-month maturity extension.",
-        "confidence": 0.9973,
+        "confidence": 0.9973211764527535,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0011,
-          "The borrower requested a 12-month maturity extension.": 0.9973,
-          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0015
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0011318153645610025,
+          "The borrower requested a 12-month maturity extension.": 0.9973211764527535,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0015470081826854307
         }
       },
       "request_status.value": {
         "type": "choice",
         "choice": "granted",
-        "confidence": 0.9779,
+        "confidence": 0.9778529874363039,
         "probabilities": {
-          "pending": 0.0145,
-          "granted": 0.9779,
-          "denied": 0.0076
+          "pending": 0.01450396179199435,
+          "granted": 0.9778529874363039,
+          "denied": 0.007643050771701747
         }
       },
       "request_status.support": {
         "type": "noul",
-        "noul": 0.8988
+        "noul": 0.8987665192930021
       },
       "request_status.sentence": {
         "type": "choice",
         "choice": "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.",
-        "confidence": 0.9635,
+        "confidence": 0.9634851880030643,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0051,
-          "The borrower requested a 12-month maturity extension.": 0.0315,
-          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.9635
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0050559062513848155,
+          "The borrower requested a 12-month maturity extension.": 0.03145890574555085,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.9634851880030643
         }
       },
       "workout_strategy.value": {
         "type": "choice",
         "choice": "extension",
-        "confidence": 0.6825,
+        "confidence": 0.6824670869792099,
         "probabilities": {
-          "modification": 0.0131,
-          "foreclosure": 0.0049,
-          "bankruptcy": 0.006,
-          "extension": 0.6825,
-          "note sale": 0.0036,
-          "discounted payoff": 0.0034,
-          "property in REO": 0.003,
-          "resolved": 0.0091,
-          "pending return to master servicer": 0.2501,
-          "deed in lieu of foreclosure": 0.0075,
-          "full payoff": 0.005,
-          "representations and warranties": 0.0024,
-          "other": 0.0094
+          "modification": 0.013099699639869391,
+          "foreclosure": 0.004895000125838365,
+          "bankruptcy": 0.005997479524319809,
+          "extension": 0.6824670869792099,
+          "note sale": 0.0035812585957591264,
+          "discounted payoff": 0.0034172608246328126,
+          "property in REO": 0.0030157220930621376,
+          "resolved": 0.009145064196727745,
+          "pending return to master servicer": 0.2500867985214194,
+          "deed in lieu of foreclosure": 0.007463983863931436,
+          "full payoff": 0.0049720851613518574,
+          "representations and warranties": 0.00242320077774825,
+          "other": 0.009435359696129927
         }
       },
       "workout_strategy.support": {
         "type": "noul",
-        "noul": 0.291
+        "noul": 0.29098086621490676
       },
       "workout_strategy.sentence": {
         "type": "choice",
         "choice": "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.",
-        "confidence": 0.6012,
+        "confidence": 0.6011717470736643,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.1321,
-          "The borrower requested a 12-month maturity extension.": 0.2668,
-          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.6012
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.1320599072656538,
+          "The borrower requested a 12-month maturity extension.": 0.2667683456606818,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.6011717470736643
         }
       }
-    }
+    },
+    "revision": "8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3",
+    "reference_sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
   }
 }

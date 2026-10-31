@@ -8,7 +8,7 @@
   "input_sha256": "d2447c82a9567e201efed4511e5361035a03b94ef76389dd126a2779dd06c882",
   "classification": "public",
   "settings_version": 8,
-  "recorded_at": "2026-10-31T05:20:42.553722Z",
+  "recorded_at": "2026-10-31T05:58:53.342444Z",
   "synthetic": false,
   "request": {
     "model": "clef-flash-2026-10-01",
@@ -283,244 +283,246 @@
       "transfer_reason.value": {
         "type": "choice",
         "choice": "imminent monetary default",
-        "confidence": 0.7452,
+        "confidence": 0.7452229459276174,
         "probabilities": {
-          "imminent monetary default": 0.7452,
-          "monetary default": 0.0155,
-          "imminent maturity default": 0.1689,
-          "maturity default": 0.0173,
-          "non-monetary default": 0.0117,
-          "bankruptcy": 0.0175,
-          "other": 0.024
+          "imminent monetary default": 0.7452229459276174,
+          "monetary default": 0.015466608811015645,
+          "imminent maturity default": 0.16890027126649768,
+          "maturity default": 0.017254248963827643,
+          "non-monetary default": 0.011674808839026723,
+          "bankruptcy": 0.017525963848392122,
+          "other": 0.023955152343622672
         }
       },
       "transfer_reason.support": {
         "type": "noul",
-        "noul": 0.9458
+        "noul": 0.9458012701768145
       },
       "transfer_reason.sentence": {
         "type": "choice",
         "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
-        "confidence": 0.9837,
+        "confidence": 0.9837197370614029,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9837,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.0052,
-          "The borrower has requested a 12-month maturity extension.": 0.0068,
-          "The special servicer is evaluating the request.": 0.0043
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9837197370614029,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.005162087419867585,
+          "The borrower has requested a 12-month maturity extension.": 0.006838654737066591,
+          "The special servicer is evaluating the request.": 0.004279520781662962
         }
       },
       "transfer_date.value": {
         "type": "choice",
         "choice": "3/6/2025",
-        "confidence": 0.9837,
+        "confidence": 0.9836649218921428,
         "probabilities": {
-          "3/6/2025": 0.9837,
-          "12/31/2024": 0.0067,
-          "none of these": 0.0097
+          "3/6/2025": 0.9836649218921428,
+          "12/31/2024": 0.006653822905689356,
+          "none of these": 0.009681255202167949
         }
       },
       "transfer_date.support": {
         "type": "noul",
-        "noul": 0.9649
+        "noul": 0.9648551535992067
       },
       "transfer_date.sentence": {
         "type": "choice",
         "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
-        "confidence": 0.9859,
+        "confidence": 0.9858642583457381,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9859,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.0047,
-          "The borrower has requested a 12-month maturity extension.": 0.0049,
-          "The special servicer is evaluating the request.": 0.0046
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9858642583457381,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.004710380433003576,
+          "The borrower has requested a 12-month maturity extension.": 0.0048599039585642085,
+          "The special servicer is evaluating the request.": 0.004565457262694138
         }
       },
       "dscr.value": {
         "type": "choice",
         "choice": "0.71x",
-        "confidence": 0.9893,
+        "confidence": 0.9893474891602738,
         "probabilities": {
-          "0.71x": 0.9893,
-          "none of these": 0.0107
+          "0.71x": 0.9893474891602738,
+          "none of these": 0.010652510839726164
         }
       },
       "dscr.support": {
         "type": "noul",
-        "noul": 0.9579
+        "noul": 0.9579122720843811
       },
       "dscr.sentence": {
         "type": "choice",
         "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
-        "confidence": 0.9893,
+        "confidence": 0.9893386997292434,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0041,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9893,
-          "The borrower has requested a 12-month maturity extension.": 0.004,
-          "The special servicer is evaluating the request.": 0.0025
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0041390828929658285,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9893386997292434,
+          "The borrower has requested a 12-month maturity extension.": 0.004011736700114973,
+          "The special servicer is evaluating the request.": 0.002510480677675839
         }
       },
       "dscr_as_of.value": {
         "type": "choice",
         "choice": "12/31/2024",
-        "confidence": 0.9901,
+        "confidence": 0.9901422284569776,
         "probabilities": {
-          "3/6/2025": 0.0046,
-          "12/31/2024": 0.9901,
-          "none of these": 0.0052
+          "3/6/2025": 0.004621230898791842,
+          "12/31/2024": 0.9901422284569776,
+          "none of these": 0.005236540644230595
         }
       },
       "dscr_as_of.support": {
         "type": "noul",
-        "noul": 0.9744
+        "noul": 0.9744347860767304
       },
       "dscr_as_of.sentence": {
         "type": "choice",
         "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
-        "confidence": 0.9915,
+        "confidence": 0.9915101284441438,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0032,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9915,
-          "The borrower has requested a 12-month maturity extension.": 0.0034,
-          "The special servicer is evaluating the request.": 0.002
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0031557593963568546,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9915101284441438,
+          "The borrower has requested a 12-month maturity extension.": 0.0033592883910998402,
+          "The special servicer is evaluating the request.": 0.0019748237683995563
         }
       },
       "occupancy.value": {
         "type": "choice",
         "choice": "61.4%",
-        "confidence": 0.9881,
+        "confidence": 0.9880849780328519,
         "probabilities": {
-          "61.4%": 0.9881,
-          "none of these": 0.0119
+          "61.4%": 0.9880849780328519,
+          "none of these": 0.01191502196714824
         }
       },
       "occupancy.support": {
         "type": "noul",
-        "noul": 0.9627
+        "noul": 0.9626731126558706
       },
       "occupancy.sentence": {
         "type": "choice",
         "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
-        "confidence": 0.9877,
+        "confidence": 0.9876511009633484,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0043,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9877,
-          "The borrower has requested a 12-month maturity extension.": 0.0051,
-          "The special servicer is evaluating the request.": 0.003
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0042631869832050395,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9876511009633484,
+          "The borrower has requested a 12-month maturity extension.": 0.005062659806769166,
+          "The special servicer is evaluating the request.": 0.003023052246677335
         }
       },
       "occupancy_as_of.value": {
         "type": "choice",
         "choice": "12/31/2024",
-        "confidence": 0.9854,
+        "confidence": 0.9854092626974899,
         "probabilities": {
-          "3/6/2025": 0.006,
-          "12/31/2024": 0.9854,
-          "none of these": 0.0086
+          "3/6/2025": 0.005998410695173151,
+          "12/31/2024": 0.9854092626974899,
+          "none of these": 0.008592326607336963
         }
       },
       "occupancy_as_of.support": {
         "type": "noul",
-        "noul": 0.9679
+        "noul": 0.9678992932829918
       },
       "occupancy_as_of.sentence": {
         "type": "choice",
         "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
-        "confidence": 0.9893,
+        "confidence": 0.9892878624357067,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0038,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9893,
-          "The borrower has requested a 12-month maturity extension.": 0.0043,
-          "The special servicer is evaluating the request.": 0.0026
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0037980407946241724,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9892878624357067,
+          "The borrower has requested a 12-month maturity extension.": 0.004303744051113081,
+          "The special servicer is evaluating the request.": 0.002610352718555938
         }
       },
       "borrower_request.value": {
         "type": "choice",
         "choice": "maturity extension",
-        "confidence": 0.9399,
+        "confidence": 0.939915588628325,
         "probabilities": {
-          "maturity extension": 0.9399,
-          "forbearance": 0.0105,
-          "loan modification": 0.024,
-          "discounted payoff": 0.004,
-          "loan assumption": 0.0047,
-          "collateral release": 0.0062,
-          "other": 0.0108
+          "maturity extension": 0.939915588628325,
+          "forbearance": 0.010482385970281796,
+          "loan modification": 0.023994420445927866,
+          "discounted payoff": 0.0039786649443300254,
+          "loan assumption": 0.004651530577544197,
+          "collateral release": 0.006162276813891829,
+          "other": 0.010815132619699328
         }
       },
       "borrower_request.support": {
         "type": "noul",
-        "noul": 0.9638
+        "noul": 0.9637799441350253
       },
       "borrower_request.sentence": {
         "type": "choice",
         "choice": "The borrower has requested a 12-month maturity extension.",
-        "confidence": 0.9907,
+        "confidence": 0.9907175738924734,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0028,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.0023,
-          "The borrower has requested a 12-month maturity extension.": 0.9907,
-          "The special servicer is evaluating the request.": 0.0041
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0028265432614747927,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.0023432866675592,
+          "The borrower has requested a 12-month maturity extension.": 0.9907175738924734,
+          "The special servicer is evaluating the request.": 0.004112596178492753
         }
       },
       "request_status.value": {
         "type": "choice",
         "choice": "pending",
-        "confidence": 0.9863,
+        "confidence": 0.9863497233861007,
         "probabilities": {
-          "pending": 0.9863,
-          "granted": 0.0078,
-          "denied": 0.0058
+          "pending": 0.9863497233861007,
+          "granted": 0.007830868949147954,
+          "denied": 0.005819407664751288
         }
       },
       "request_status.support": {
         "type": "noul",
-        "noul": 0.9208
+        "noul": 0.9207896758909757
       },
       "request_status.sentence": {
         "type": "choice",
         "choice": "The special servicer is evaluating the request.",
-        "confidence": 0.9848,
+        "confidence": 0.9847724818331915,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0042,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.0036,
-          "The borrower has requested a 12-month maturity extension.": 0.0074,
-          "The special servicer is evaluating the request.": 0.9848
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.004217681761899592,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.003607574387110553,
+          "The borrower has requested a 12-month maturity extension.": 0.007402262017798396,
+          "The special servicer is evaluating the request.": 0.9847724818331915
         }
       },
       "workout_strategy.value": {
         "type": "choice",
         "choice": "extension",
-        "confidence": 0.6421,
+        "confidence": 0.6421187694559158,
         "probabilities": {
-          "modification": 0.0652,
-          "foreclosure": 0.0263,
-          "bankruptcy": 0.0328,
-          "extension": 0.6421,
-          "note sale": 0.0196,
-          "discounted payoff": 0.016,
-          "property in REO": 0.0187,
-          "resolved": 0.0091,
-          "pending return to master servicer": 0.0349,
-          "deed in lieu of foreclosure": 0.0408,
-          "full payoff": 0.0137,
-          "representations and warranties": 0.0146,
-          "other": 0.0662
+          "modification": 0.06521333096799349,
+          "foreclosure": 0.026348567540815063,
+          "bankruptcy": 0.0327913221153774,
+          "extension": 0.6421187694559158,
+          "note sale": 0.01958059276664562,
+          "discounted payoff": 0.01598121405301344,
+          "property in REO": 0.01868393214156132,
+          "resolved": 0.00910582128575552,
+          "pending return to master servicer": 0.0349061806924099,
+          "deed in lieu of foreclosure": 0.040809459732822226,
+          "full payoff": 0.01366945676494476,
+          "representations and warranties": 0.014551060982700946,
+          "other": 0.06624029150004454
         }
       },
       "workout_strategy.support": {
         "type": "noul",
-        "noul": 0.0798
+        "noul": 0.079782013464093
       },
       "workout_strategy.sentence": {
         "type": "choice",
         "choice": "The special servicer is evaluating the request.",
-        "confidence": 0.6779,
+        "confidence": 0.6779060813406237,
         "probabilities": {
-          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0862,
-          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.0115,
-          "The borrower has requested a 12-month maturity extension.": 0.2244,
-          "The special servicer is evaluating the request.": 0.6779
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.08618608651032433,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.011483184584446953,
+          "The borrower has requested a 12-month maturity extension.": 0.22442464756460503,
+          "The special servicer is evaluating the request.": 0.6779060813406237
         }
       }
-    }
+    },
+    "revision": "8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3",
+    "reference_sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
   }
 }

@@ -8,7 +8,7 @@
   "input_sha256": "b3c9f2bbc6c973a0edfa443cbd6d600f27f609d66c36ed0aa8f5a7f3b9a9ff05",
   "classification": "public",
   "settings_version": 8,
-  "recorded_at": "2026-10-31T05:20:44.878950Z",
+  "recorded_at": "2026-10-31T05:58:55.589078Z",
   "synthetic": false,
   "request": {
     "model": "clef-flash-2026-10-01",
@@ -146,117 +146,119 @@
       "transfer_reason.value": {
         "type": "choice",
         "choice": "imminent monetary default",
-        "confidence": 0.3236,
+        "confidence": 0.3236435802079851,
         "probabilities": {
-          "imminent monetary default": 0.3236,
-          "monetary default": 0.0425,
-          "imminent maturity default": 0.1292,
-          "maturity default": 0.0268,
-          "non-monetary default": 0.2993,
-          "bankruptcy": 0.0567,
-          "other": 0.1219
+          "imminent monetary default": 0.3236435802079851,
+          "monetary default": 0.042452799094039415,
+          "imminent maturity default": 0.1292403823232785,
+          "maturity default": 0.026774644774702927,
+          "non-monetary default": 0.29932138106039863,
+          "bankruptcy": 0.05668192343284455,
+          "other": 0.1218852891067508
         }
       },
       "transfer_reason.support": {
         "type": "noul",
-        "noul": 0.0346
+        "noul": 0.03461883883917583
       },
       "transfer_reason.sentence": {
         "type": "choice",
         "choice": "The special servicer continues to monitor the loan.",
-        "confidence": 0.5428,
+        "confidence": 0.5427555401659507,
         "probabilities": {
-          "The special servicer continues to monitor the loan.": 0.5428,
-          "The borrower remains in contact and is current on reporting.": 0.3672,
-          "No further updates at this time.": 0.09
+          "The special servicer continues to monitor the loan.": 0.5427555401659507,
+          "The borrower remains in contact and is current on reporting.": 0.367246768668074,
+          "No further updates at this time.": 0.08999769116597511
         }
       },
       "borrower_request.value": {
         "type": "choice",
         "choice": "other",
-        "confidence": 0.2738,
+        "confidence": 0.27384292690297957,
         "probabilities": {
-          "maturity extension": 0.0939,
-          "forbearance": 0.2051,
-          "loan modification": 0.1225,
-          "discounted payoff": 0.0954,
-          "loan assumption": 0.0924,
-          "collateral release": 0.1169,
-          "other": 0.2738
+          "maturity extension": 0.09390110768094731,
+          "forbearance": 0.20509887553320977,
+          "loan modification": 0.12247013232898729,
+          "discounted payoff": 0.09537983496067388,
+          "loan assumption": 0.09244530594275382,
+          "collateral release": 0.11686181665044826,
+          "other": 0.27384292690297957
         }
       },
       "borrower_request.support": {
         "type": "noul",
-        "noul": 0.0165
+        "noul": 0.01652955655765428
       },
       "borrower_request.sentence": {
         "type": "choice",
         "choice": "The borrower remains in contact and is current on reporting.",
-        "confidence": 0.7367,
+        "confidence": 0.7367058395598457,
         "probabilities": {
-          "The special servicer continues to monitor the loan.": 0.0741,
-          "The borrower remains in contact and is current on reporting.": 0.7367,
-          "No further updates at this time.": 0.1892
+          "The special servicer continues to monitor the loan.": 0.07409245315120808,
+          "The borrower remains in contact and is current on reporting.": 0.7367058395598457,
+          "No further updates at this time.": 0.18920170728894625
         }
       },
       "request_status.value": {
         "type": "choice",
         "choice": "pending",
-        "confidence": 0.6509,
+        "confidence": 0.6508583981316444,
         "probabilities": {
-          "pending": 0.6509,
-          "granted": 0.2661,
-          "denied": 0.0831
+          "pending": 0.6508583981316444,
+          "granted": 0.2660703783788676,
+          "denied": 0.08307122348948803
         }
       },
       "request_status.support": {
         "type": "noul",
-        "noul": 0.096
+        "noul": 0.09602548878779378
       },
       "request_status.sentence": {
         "type": "choice",
         "choice": "No further updates at this time.",
-        "confidence": 0.4177,
+        "confidence": 0.41771415471686896,
         "probabilities": {
-          "The special servicer continues to monitor the loan.": 0.1735,
-          "The borrower remains in contact and is current on reporting.": 0.4088,
-          "No further updates at this time.": 0.4177
+          "The special servicer continues to monitor the loan.": 0.17345030090014868,
+          "The borrower remains in contact and is current on reporting.": 0.40883554438298236,
+          "No further updates at this time.": 0.41771415471686896
         }
       },
       "workout_strategy.value": {
         "type": "choice",
         "choice": "pending return to master servicer",
-        "confidence": 0.48,
+        "confidence": 0.4799512810087456,
         "probabilities": {
-          "modification": 0.063,
-          "foreclosure": 0.0243,
-          "bankruptcy": 0.0317,
-          "extension": 0.0854,
-          "note sale": 0.0143,
-          "discounted payoff": 0.0322,
-          "property in REO": 0.0106,
-          "resolved": 0.049,
-          "pending return to master servicer": 0.48,
-          "deed in lieu of foreclosure": 0.0297,
-          "full payoff": 0.053,
-          "representations and warranties": 0.0094,
-          "other": 0.1176
+          "modification": 0.06295590752795789,
+          "foreclosure": 0.024271664520706667,
+          "bankruptcy": 0.03165621832487571,
+          "extension": 0.08538087254728217,
+          "note sale": 0.014268575487923083,
+          "discounted payoff": 0.03215473122601235,
+          "property in REO": 0.010603504936516225,
+          "resolved": 0.04903011008174456,
+          "pending return to master servicer": 0.4799512810087456,
+          "deed in lieu of foreclosure": 0.029738265013663567,
+          "full payoff": 0.05301418932597217,
+          "representations and warranties": 0.009357560263016035,
+          "other": 0.11761711973558414
         }
       },
       "workout_strategy.support": {
         "type": "noul",
-        "noul": 0.0427
+        "noul": 0.042722197546490565
       },
       "workout_strategy.sentence": {
         "type": "choice",
         "choice": "The special servicer continues to monitor the loan.",
-        "confidence": 0.7977,
+        "confidence": 0.7977353116266744,
         "probabilities": {
-          "The special servicer continues to monitor the loan.": 0.7977,
-          "The borrower remains in contact and is current on reporting.": 0.1571,
-          "No further updates at this time.": 0.0452
+          "The special servicer continues to monitor the loan.": 0.7977353116266744,
+          "The borrower remains in contact and is current on reporting.": 0.15708339658194825,
+          "No further updates at this time.": 0.04518129179137716
         }
       }
-    }
+    },
+    "revision": "8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3",
+    "reference_sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
   }
 }
