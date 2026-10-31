@@ -1,6 +1,7 @@
 # The `api` service in compose.yaml (grill log Q19): `cmbs serve` with the built dashboard, so the
 # page and the API it calls share one origin. Built reproducibly: every base image is pinned by
-# digest (Dependabot bumps them; keep the node image equal to the web service's in compose.yaml),
+# digest (the `docker` ecosystem in .github/dependabot.yml bumps them weekly; the node digest must
+# equal the web service's in compose.yaml, which the docker-compose ecosystem bumps separately),
 # the web bundle from web/package-lock.json with `npm ci`, Python from uv.lock with --locked.
 #
 #   docker compose up -d --wait api      # then http://localhost:8000/?user=pat
