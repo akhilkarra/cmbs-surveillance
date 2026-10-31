@@ -1,15 +1,17 @@
 import { act, render, renderHook, screen, within } from "@testing-library/react";
+import type { AutoscaleInfo } from "lightweight-charts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryMonth } from "./api";
 import {
   DARK_MODE,
   HistoryChart,
   NOTICE,
+  scaled,
   THEME,
   TRADINGVIEW,
   useThemeChanges,
 } from "./HistoryChart";
-import { axisMoney, axisRatio } from "./historyData";
+import { axisMoney, axisRatio, RATIO_SPAN } from "./historyData";
 import styles from "./styles.css?raw";
 import { charts, colorScheme, type FakeChart, type FakeSeries, LineSeries } from "./test-chart";
 import { historyMonth, loanHistory } from "./test-data";
@@ -107,6 +109,7 @@ describe("HistoryChart", () => {
           lineVisible: true,
           title: "ending balance",
           priceFormat: { type: "custom", formatter: axisMoney },
+          autoscaleInfoProvider: expect.any(Function),
         },
         // The top of the balance pane is the status lane's.
         scale: { scaleMargins: { top: 0.32, bottom: 0.08 } },
@@ -132,6 +135,7 @@ describe("HistoryChart", () => {
           lastValueVisible: false,
           priceLineVisible: false,
           priceFormat: dscr,
+          autoscaleInfoProvider: expect.any(Function),
         },
         scale: clear,
         data: [{ time: "2026-07-01", value: 1.12 }, { time: "2026-08-01" }, { time: "2026-09-01" }],
@@ -141,11 +145,38 @@ describe("HistoryChart", () => {
       expect.objectContaining({
         definition: LineSeries,
         pane: 1,
-        options: { ...line, ...named, lineVisible: false, title: "DSCR", priceFormat: dscr },
+        options: {
+          ...line,
+          ...named,
+          lineVisible: false,
+          title: "DSCR",
+          priceFormat: dscr,
+          autoscaleInfoProvider: expect.any(Function),
+        },
         scale: clear,
         data: [{ time: "2026-07-01" }, { time: "2026-08-01" }, { time: "2026-09-01", value: 0.96 }],
       }),
     );
+  });
+
+  it("widens each measure's axis when its value never changes", () => {
+    render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
+    const [balance, dscr] = drawn().series as [FakeSeries, FakeSeries];
+    type Provider = (values: () => AutoscaleInfo | null) => AutoscaleInfo | null;
+    const flat = (value: number) => () => ({
+      priceRange: { minValue: value, maxValue: value },
+      margins: { above: 2, below: 2 },
+    });
+    expect((balance.options.autoscaleInfoProvider as Provider)(flat(37500000))).toEqual({
+      priceRange: { minValue: 37125000, maxValue: 37875000 },
+      margins: { above: 2, below: 2 },
+    });
+    expect((dscr.options.autoscaleInfoProvider as Provider)(flat(0.03))).toEqual({
+      priceRange: { minValue: 0, maxValue: 0.1 },
+      margins: { above: 2, below: 2 },
+    });
+    // A series with nothing to show leaves the axis to the others.
+    expect(scaled(null, RATIO_SPAN)).toBeNull();
   });
 
   it("draws two months running as a line, and a month alone as its point", () => {

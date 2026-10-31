@@ -23,6 +23,18 @@ def test_the_dashboard_page_and_its_assets_are_served(tmp_path: Path):
     assert client.get("/assets/app.js").text == "console.log('dashboard')"
 
 
+def test_the_page_is_checked_on_every_load_and_hashed_assets_are_kept(tmp_path: Path):
+    # A rebuilt dashboard must never be a cached page asking for assets that no longer exist.
+    client = TestClient(create_app(web_dist=_bundle(tmp_path)))
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    assert client.get("/index.html").headers["cache-control"] == "no-cache"
+    assert (
+        client.get("/assets/app.js").headers["cache-control"]
+        == "public, max-age=31536000, immutable"
+    )
+    assert "cache-control" not in client.get("/assets/missing.js").headers
+
+
 def test_api_routes_win_over_the_bundle(tmp_path: Path):
     client = TestClient(create_app(web_dist=_bundle(tmp_path)))
     assert client.get("/health").json() == {"status": "ok"}

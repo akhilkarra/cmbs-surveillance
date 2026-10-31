@@ -10,13 +10,16 @@ import {
   filingText,
   linePoints,
   lineSegments,
+  MONEY_SPAN,
   monthAt,
   NO_TAPE,
   NOT_ON_TAPE,
+  RATIO_SPAN,
   statusLane,
   statusMarkers,
   statusText,
   timeKey,
+  widened,
 } from "./historyData";
 import { historyMonth, loanHistory } from "./test-data";
 
@@ -222,5 +225,50 @@ describe("axis labels", () => {
     expect(axisMoney(30255000)).toBe("$30.26M");
     expect(axisRatio(0.96)).toBe("0.96x");
     expect(axisRatio(1.125)).toBe("1.13x");
+  });
+});
+
+describe("axis ranges", () => {
+  it("widen a balance that never changes to 2% of it, about the balance", () => {
+    const flat = { minValue: 37500000, maxValue: 37500000 };
+    expect(widened(flat, MONEY_SPAN)).toEqual({ minValue: 37125000, maxValue: 37875000 });
+  });
+
+  it("widen a DSCR that never changes to 0.10x, never below zero", () => {
+    expect(widened({ minValue: 1.25, maxValue: 1.25 }, RATIO_SPAN)).toEqual({
+      minValue: 1.2,
+      maxValue: 1.3,
+    });
+    expect(widened({ minValue: 0.03, maxValue: 0.03 }, RATIO_SPAN)).toEqual({
+      minValue: 0,
+      maxValue: 0.1,
+    });
+    expect(widened({ minValue: 0, maxValue: 0 }, RATIO_SPAN)).toEqual({
+      minValue: 0,
+      maxValue: 0.1,
+    });
+    // Values below zero are shown as they are.
+    expect(widened({ minValue: -0.02, maxValue: -0.02 }, RATIO_SPAN)).toEqual({
+      minValue: -0.07,
+      maxValue: 0.03,
+    });
+  });
+
+  it("leave a range wider than the span as it is", () => {
+    // 2% of $30.2M is $604,000: a $400,000 fall is widened, a $1M fall is not.
+    expect(widened({ minValue: 30000000, maxValue: 30400000 }, MONEY_SPAN)).toEqual({
+      minValue: 29898000,
+      maxValue: 30502000,
+    });
+    const moving = { minValue: 29500000, maxValue: 30500000 };
+    expect(widened(moving, MONEY_SPAN)).toEqual(moving);
+    expect(widened({ minValue: 0, maxValue: 0.96 }, RATIO_SPAN)).toEqual({
+      minValue: 0,
+      maxValue: 0.96,
+    });
+  });
+
+  it("leave no range as none", () => {
+    expect(widened(null, RATIO_SPAN)).toBeNull();
   });
 });
