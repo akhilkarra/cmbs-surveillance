@@ -33,6 +33,8 @@ services:
     # `cmbs serve` with the built dashboard (Dockerfile), against the db service. The database is
     # migrated and seeded from the host first (README); then `docker compose up -d --wait api` and
     # open http://localhost:8000/?user=pat. Rebuild after a change with `--build`.
+    # It serves the API and the dashboard only. The `cmbs` CLI (refresh, extraction) and the
+    # Claude skills run on the host, so the container holds no SEC user agent and no TypeSafe key.
     build: .
     environment:
       DATABASE_URL: postgresql+psycopg://cmbs:cmbs@db:5432/cmbs

@@ -38,3 +38,16 @@ def test_dependabot_bumps_the_dockerfile():
     config = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
     entry = re.search(r"- package-ecosystem: docker\n\s+directory: /\n", config)
     assert entry is not None, "add a `docker` ecosystem for the Dockerfile to dependabot.yml"
+
+
+def test_the_api_service_gets_the_database_and_no_other_secret():
+    # The container serves the API and the dashboard only; the CLI and the Claude skills, which
+    # need the SEC user agent and the TypeSafe key, run on the host.
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    service = compose.split("\n  api:\n", 1)[1].split("\nvolumes:", 1)[0]
+    environment = re.search(r"\n    environment:\n((?:      .+\n)+)", service)
+    assert environment is not None
+    assert [line.split(":")[0].strip() for line in environment.group(1).splitlines()] == [
+        "DATABASE_URL"
+    ]
+    assert "env_file" not in service

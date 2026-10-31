@@ -20,7 +20,7 @@ Exact versions live in `pyproject.toml`, `uv.lock` and `web/package.json`; this 
 | Proofs | Lean 4 core v4.35.0 (no Mathlib) in `lean/`, every theorem audited (`Invariants/Audit.lean`: no sorry, no native_decide, standard axioms only), a compiled oracle checked against the Python by Hypothesis differential tests; CI's `lean` job is required [Q4] | Built |
 | Mutation testing | mutmut on `src/cmbs` (fork-server isolation, database tests last), Stryker on `web/src`; nightly in `.github/workflows/mutation.yml`, floor 90% [Q51, Q89] | Built |
 | Lint and types | pre-commit runs ruff, basedpyright (pyright, standard mode), Biome, typos, actionlint, zizmor, gitleaks and file hygiene on commit; pytest and Vitest with coverage floors on push [Q56] | Built |
-| Containers | Docker Compose on OrbStack: `db`, `web`, and `api` (`Dockerfile`: `cmbs serve` with the built dashboard) [Q19] | Built |
+| Containers | Docker Compose on OrbStack: `db`, `web`, and `api` (`Dockerfile`: `cmbs serve` with the built dashboard; it serves the API and dashboard only, and the CLI and Claude skills run on the host, so it holds no TypeSafe key) [Q19] | Built |
 | Claude skills | `/cmbs-refresh`, read-only `/cmbs-ask`, both calling only the `cmbs` CLI, in `.claude/skills/` [Q12] | Built |
 
 ## Running things
