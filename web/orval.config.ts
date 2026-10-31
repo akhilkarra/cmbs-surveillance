@@ -30,6 +30,8 @@ export default defineConfig({
       // Relative URLs: the page and the API share one origin (`cmbs serve`).
       baseUrl: "",
       formatter: "biome",
+      // Empty src/generated first, so an operation or tag the API dropped leaves no file behind.
+      clean: true,
       override: {
         operationName,
         // Every call goes through src/http.ts, which sends the user and turns a refusal into an
