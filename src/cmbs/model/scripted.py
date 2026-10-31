@@ -50,10 +50,14 @@ def respond(
 
 
 class ScriptedProvider:
-    """Answers each request with `answer(request)` and keeps every request it was sent."""
+    """Answers each request with `answer(request)` and keeps every request it was sent.
+    `local` says whether it stands in for a model on this machine."""
 
-    def __init__(self, answer: Callable[[ModelRequest], ModelResponse] | None = None) -> None:
+    def __init__(
+        self, answer: Callable[[ModelRequest], ModelResponse] | None = None, *, local: bool = False
+    ) -> None:
         self.answer = answer or (lambda request: respond(request, {}))
+        self.local = local
         self.requests: list[ModelRequest] = []
 
     def ask(self, request: ModelRequest) -> ModelResponse:

@@ -2,9 +2,10 @@
 
 `ModelClient.ask` looks up the recording for the exact request first. A replay-only client
 stops there: a missing recording is refused, naming the text it was for. A live client sends
-the request to its provider, but only if the text may be sent, then checks that the model it
-asked for answered every question, and records the call before using it. Nothing a provider
-returns is used unrecorded, so every answer the panel holds can be replayed.
+the request to its provider, but only if the text may be sent (restricted text needs zero data
+retention, or a provider on this machine), then checks that the model it asked for answered
+every question, and records the call before using it. Nothing a provider returns is used
+unrecorded, so every answer the panel holds can be replayed.
 """
 
 import datetime as dt
@@ -80,7 +81,11 @@ class ModelClient:
                 f"no recorded answer for this input: {ask.subject} "
                 f"(model {model}, prompt version {prompt_version})"
             )
-        check_may_send(ask.classification, zero_data_retention=settings.values.zero_data_retention)
+        check_may_send(
+            ask.classification,
+            zero_data_retention=settings.values.zero_data_retention,
+            local=self.provider.local,
+        )
         response = self.provider.ask(request)
         check_answered_by(model, response.model)
         check_answers(request, response)

@@ -48,6 +48,9 @@ class NoulAnswer(_Frozen):
 
 
 class ChoiceAnswer(_Frozen):
+    """`confidence` is kept as the provider sent it, and providers define it differently (Jev's
+    spread above even, Clef's top probability): read `cmbs.model.policy.confidence` instead."""
+
     type: Literal["choice"] = "choice"
     choice: str
     confidence: float

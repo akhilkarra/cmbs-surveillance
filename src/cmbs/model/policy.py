@@ -1,10 +1,15 @@
 """The rules every model call follows, as pure functions.
 
-- The model is named by an exact version ("jev-1.14.0"); a floating alias ("jev-latest") could
-  change answers between two runs without anyone noticing, so it is refused.
+- The model is named by an exact version ("jev-1.14.0"), or is a local model whose name this
+  code binds to weights at one commit ("clef-flash-2026-10-01", `cmbs.model.local`); a floating
+  alias ("jev-latest", "clef-flash") could change answers between two runs without anyone
+  noticing, so it is refused.
 - The model that answered must be the one asked for.
-- Text is classified public (SEC filings) or restricted. Restricted text goes to the provider
-  only when zero data retention is on in the settings in force (grill log Q42).
+- Text is classified public (SEC filings) or restricted. Restricted text goes to a provider
+  only when zero data retention is on in the settings in force (grill log Q42), or when the
+  provider is local: a model on this machine keeps nothing anywhere else.
+- An answer's confidence is computed here from its probabilities, the same way for every
+  provider, never taken from the provider's own field (Jev and Clef define it differently).
 - A recording is keyed on the model, the prompt version, the questions and the exact input, so
   a changed comment, question or model never reuses an old answer.
 """
@@ -12,11 +17,21 @@
 import hashlib
 import json
 import re
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
 from cmbs.errors import Refused
-from cmbs.model.types import Answer, ModelRequest, ModelResponse, NoulAnswer
+from cmbs.model.local import is_local_model
+from cmbs.model.types import (
+    Answer,
+    Choice,
+    ChoiceAnswer,
+    ModelRequest,
+    ModelResponse,
+    NoulAnswer,
+    probability,
+)
 
 # A model family, a dash and a three-part version: "jev-1.14.0".
 _PINNED = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*-\d+\.\d+\.\d+$")
@@ -44,7 +59,7 @@ class MalformedAnswer(Refused):
 
 
 def check_pinned(model: str) -> None:
-    if not _PINNED.match(model):
+    if not (_PINNED.match(model) or is_local_model(model)):
         raise UnpinnedModel(f"pin an exact model version, not {model}")
 
 
@@ -53,11 +68,30 @@ def check_answered_by(asked: str, answered: str) -> None:
         raise ModelMismatch(f"model version mismatch: asked for {asked}, got {answered}")
 
 
-def check_may_send(classification: Classification, *, zero_data_retention: bool) -> None:
-    if classification is Classification.RESTRICTED and not zero_data_retention:
+def check_may_send(
+    classification: Classification, *, zero_data_retention: bool, local: bool = False
+) -> None:
+    """Restricted text leaves this machine only under zero data retention; a local provider
+    reads it without leaving."""
+    if classification is Classification.RESTRICTED and not (zero_data_retention or local):
         raise RestrictedText(
             "restricted text cannot be sent to the provider without zero data retention"
         )
+
+
+def confidence(question: Choice, answer: ChoiceAnswer) -> Decimal:
+    """How far the top option stands above an even spread over the question's n options:
+    (p_max - 1/n) / (1 - 1/n), computed exactly as (n * p_max - 1) / (n - 1).
+
+    This is Jev's definition; Clef's own `confidence` field is p_max, so the provider's field is
+    never read. 0 means the answer is no better than even, 1 that one option has it all. A
+    question of one option is certain; a top probability below the even share reads as 0.
+    """
+    options = len(question.criteria)
+    if options < 2:
+        return Decimal(1)
+    top = max((probability(value) for value in answer.probabilities.values()), default=Decimal(0))
+    return max(Decimal(0), (options * top - 1) / (options - 1))
 
 
 def check_answers(request: ModelRequest, response: ModelResponse) -> None:
