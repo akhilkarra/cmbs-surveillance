@@ -21,6 +21,10 @@ jobs:
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - run: uv sync --locked
       - run: uvx pre-commit run --all-files --show-diff-on-failure
+      # The committed schema the web client is generated from (grill log Q12); the message names
+      # the command that regenerates it. tests/test_openapi.py checks the same under pytest.
+      - name: web/openapi.json matches the API
+        run: uv run python tools/export_openapi.py --check
 
   # Tests and feature scenarios; `py`, the required check, passes only when they and the Lean
   # proofs passed. Mutation testing runs nightly instead (.github/workflows/mutation.yml, Q89).
@@ -131,7 +135,45 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # orval regenerates the client from the committed schema; any difference, or a file it
+      # would add or remove, means the committed client is stale.
+      - name: src/generated matches openapi.json
+        run: |
+          npm run generate
+          if [ -n "$(git status --porcelain -- src/generated)" ]; then
+            git status --short -- src/generated
+            git diff -- src/generated
+            echo "::error::web/src/generated is stale against web/openapi.json. Regenerate it with 'docker compose run --rm web npm run generate' and commit it."
+            exit 1
+          fi
       - run: npm run build
       # Fails below the thresholds in web/vite.config.ts.
       - name: Tests with coverage
         run: npm run test:coverage
+
+  # Compose's api service (Dockerfile): the image builds from the lockfiles and serves the
+  # dashboard and the API against the db service, as `docker compose up -d api` does locally.
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - run: uv sync --locked
+      - name: Start db and api
+        run: docker compose up -d --build --wait db api
+      - name: Migrate and seed the fixture users
+        run: |
+          uv run alembic upgrade head
+          uv run python tools/seed_demo.py
+        env:
+          DATABASE_URL: postgresql+psycopg://cmbs:cmbs@localhost:5432/cmbs
+      - name: The dashboard page and its API answer
+        run: |
+          curl -fsS http://localhost:8000/health
+          curl -fsS "http://localhost:8000/?user=pat" | grep -q '<div id="root">'
+          curl -fsS -H "X-CMBS-User: pat" http://localhost:8000/dashboard/book | grep -q '"rows":\['
+      - name: Service logs
+        if: failure()
+        run: docker compose logs api db
