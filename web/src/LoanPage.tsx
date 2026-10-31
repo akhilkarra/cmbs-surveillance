@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type {
   Check,
   CommentSection,
@@ -224,9 +223,7 @@ export function LoanPage(props: {
   loan: string;
   month: string | null;
 }) {
-  const { deal, loan, month } = props;
-  const read = useMemo(() => loanRead(deal, loan, month), [deal, loan, month]);
-  const resource = useApi(read, props.user);
+  const resource = useApi(loanRead(props.deal, props.loan, props.month), props.user);
   return (
     <Loadable testId="loan" resource={resource} loading={`Reading loan ${props.loan}`}>
       {(data) => <LoanContent data={data} />}
