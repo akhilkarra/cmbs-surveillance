@@ -1,4 +1,4 @@
-@draft @layer:model @surface:cli
+@approved @layer:model @surface:cli
 Feature: A local decision model as the fallback
   Jev runs only in TypeSafe's cloud. Cloudflare's Clef-flash, an open-weight decision model that
   answers the same typed questions, runs on the analyst's own machine (grill log Q7). It answers
