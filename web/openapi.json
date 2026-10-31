@@ -306,6 +306,11 @@
             "title": "Note"
           },
           "severity": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
             "title": "Severity",
             "type": "string"
           },
@@ -455,6 +460,12 @@
             "type": "string"
           },
           "outcome": {
+            "enum": [
+              "passed",
+              "failed",
+              "not checked",
+              "decided"
+            ],
             "title": "Outcome",
             "type": "string"
           }
@@ -1151,6 +1162,11 @@
             "type": "string"
           },
           "severity": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
             "title": "Severity",
             "type": "string"
           },
@@ -2480,6 +2496,12 @@
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "money",
+              "date",
+              "ratio",
+              "text"
+            ],
             "title": "Kind",
             "type": "string"
           },

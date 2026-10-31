@@ -80,6 +80,14 @@ export interface LoanRef {
   loan: string | null;
 }
 
+export type BookRowSeverity = (typeof BookRowSeverity)[keyof typeof BookRowSeverity];
+
+export const BookRowSeverity = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
 /**
  * One open alert, in the order the alerts service gives.
  */
@@ -91,7 +99,7 @@ export interface BookRow {
   loans: LoanRef[];
   message: string;
   note: string | null;
-  severity: string;
+  severity: BookRowSeverity;
   state: string;
   state_text: string;
   title: string;
@@ -125,12 +133,21 @@ export interface BuildOut {
   vintage: number | null;
 }
 
+export type CheckOutcome = (typeof CheckOutcome)[keyof typeof CheckOutcome];
+
+export const CheckOutcome = {
+  passed: "passed",
+  failed: "failed",
+  not_checked: "not checked",
+  decided: "decided",
+} as const;
+
 /**
  * One thing that verified a value, as the page names it, and what it found.
  */
 export interface Check {
   label: string;
-  outcome: string;
+  outcome: CheckOutcome;
 }
 
 export interface CloseIn {
@@ -323,13 +340,21 @@ export interface HTTPValidationError {
   detail?: ValidationError[];
 }
 
+export type LoanAlertSeverity = (typeof LoanAlertSeverity)[keyof typeof LoanAlertSeverity];
+
+export const LoanAlertSeverity = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+} as const;
+
 /**
  * An alert on the loan for the month, in its state on the page's day.
  */
 export interface LoanAlert {
   alert_id: number;
   message: string;
-  severity: string;
+  severity: LoanAlertSeverity;
   state_text: string;
 }
 
@@ -348,10 +373,19 @@ export interface LoanFlag {
   message: string;
 }
 
+export type TapeValueKind = (typeof TapeValueKind)[keyof typeof TapeValueKind];
+
+export const TapeValueKind = {
+  money: "money",
+  date: "date",
+  ratio: "ratio",
+  text: "text",
+} as const;
+
 export interface TapeValue {
   checks: Check[];
   field: string;
-  kind: string;
+  kind: TapeValueKind;
   label: string;
   value: string | null;
 }

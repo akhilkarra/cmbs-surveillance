@@ -2,7 +2,7 @@
 // generates from the committed schema (src/generated, from openapi.json). Money and ratios
 // arrive as decimal strings, dates as ISO strings; every label and ordering is the server's.
 
-import type { BookPage, LoanPage } from "./generated/api.schemas";
+import type { BookPage, BookRow, LoanPage, TapeValue } from "./generated/api.schemas";
 import {
   getDashboardBook,
   getDashboardLoan,
@@ -22,6 +22,10 @@ export type {
   LoanPage as LoanPageData,
   TapeValue,
 } from "./generated/api.schemas";
+
+/** An alert's severity and a tape value's kind: the API's own unions. */
+export type Severity = BookRow["severity"];
+export type ValueKind = TapeValue["kind"];
 
 /** One read a page makes: `key` is its URL, which names it; `send` makes it with the request
  *  options given (the user's header). */
