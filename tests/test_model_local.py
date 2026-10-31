@@ -485,6 +485,12 @@ def test_confidence_counts_the_options_asked_not_the_probabilities_sent():
     assert confidence(seven, answer) == Decimal("4.60") / 6
 
 
+def test_a_question_of_two_options_measures_from_an_even_half():
+    two = Choice(instructions="Which?", criteria={"yes": None, "no": None})
+    answer = ChoiceAnswer(choice="yes", confidence=0.75, probabilities={"yes": 0.75, "no": 0.25})
+    assert confidence(two, answer) == Decimal("0.50")
+
+
 @pytest.mark.parametrize(
     ("probabilities", "expected"),
     [
