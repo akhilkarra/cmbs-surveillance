@@ -7,6 +7,7 @@ sees an unsettled, unsupported answer rather than a made-up one.
 
 from collections.abc import Callable, Mapping
 
+from cmbs.model.policy import Reach
 from cmbs.model.types import (
     Answer,
     Choice,
@@ -50,10 +51,17 @@ def respond(
 
 
 class ScriptedProvider:
-    """Answers each request with `answer(request)` and keeps every request it was sent."""
+    """Answers each request with `answer(request)` and keeps every request it was sent.
+    `reach` says whom it stands in for: TypeSafe unless told otherwise."""
 
-    def __init__(self, answer: Callable[[ModelRequest], ModelResponse] | None = None) -> None:
+    def __init__(
+        self,
+        answer: Callable[[ModelRequest], ModelResponse] | None = None,
+        *,
+        reach: Reach = Reach.TYPESAFE,
+    ) -> None:
         self.answer = answer or (lambda request: respond(request, {}))
+        self.reach = reach
         self.requests: list[ModelRequest] = []
 
     def ask(self, request: ModelRequest) -> ModelResponse:

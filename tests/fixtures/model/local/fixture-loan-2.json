@@ -1,0 +1,528 @@
+{
+  "format": 1,
+  "call_id": "a61ffbec6faa844bf62dd1c83d54ced9ac8786de71dd026492a45bfaf1078ba3",
+  "model": "clef-flash-2026-10-01",
+  "prompt_version": 3,
+  "questions_sha256": "fd8c3abd2e6ece417d70b64b4e826ae1dd9485663660242f91a98ec3c98c6284",
+  "state_sha256": "460b58d517ff53c38e3e608b8ac39ad40c63650675e31c0b156efab60c1b2a54",
+  "input_sha256": "d2447c82a9567e201efed4511e5361035a03b94ef76389dd126a2779dd06c882",
+  "classification": "public",
+  "settings_version": 8,
+  "recorded_at": "2026-10-31T05:58:53.342444Z",
+  "synthetic": false,
+  "request": {
+    "model": "clef-flash-2026-10-01",
+    "state": {
+      "comment": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default. As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%. The borrower has requested a 12-month maturity extension. The special servicer is evaluating the request."
+    },
+    "questions": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "instructions": "Why was the loan transferred to special servicing?",
+        "criteria": {
+          "imminent monetary default": "The servicer expects the borrower to stop paying soon, but payments have not yet been missed.",
+          "monetary default": "The borrower has missed required payments.",
+          "imminent maturity default": "The borrower is not expected to repay the loan when it matures.",
+          "maturity default": "The loan matured and was not repaid.",
+          "non-monetary default": "The borrower broke a loan term other than paying, such as a cash management or reporting requirement.",
+          "bankruptcy": "The borrower or a guarantor filed for bankruptcy.",
+          "other": "A reason that is none of the above."
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say why the loan was transferred to special servicing?",
+        "criteria": {
+          "true": "A sentence names the reason for the transfer, such as a default.",
+          "false": "The comment mentions the transfer or the loan's troubles without saying what caused the transfer."
+        }
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says why the loan was transferred to special servicing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "transfer_date.value": {
+        "type": "choice",
+        "instructions": "On which date was the loan transferred to special servicing?",
+        "criteria": {
+          "3/6/2025": null,
+          "12/31/2024": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "transfer_date.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the loan was transferred to special servicing?",
+        "criteria": {
+          "true": "A sentence gives the date of the transfer to special servicing.",
+          "false": "The comment gives dates of other events, such as financial statements, but not the transfer date."
+        }
+      },
+      "transfer_date.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the loan was transferred to special servicing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "dscr.value": {
+        "type": "choice",
+        "instructions": "Which figure is the property's debt service coverage ratio (DSCR)?",
+        "criteria": {
+          "0.71x": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "dscr.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the property's debt service coverage ratio (DSCR)?",
+        "criteria": {
+          "true": "A sentence gives the DSCR as a number of times, such as 1.25x.",
+          "false": "The comment gives no DSCR, or only other figures such as occupancy."
+        }
+      },
+      "dscr.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the property's debt service coverage ratio (DSCR)?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "dscr_as_of.value": {
+        "type": "choice",
+        "instructions": "As of which date was the debt service coverage ratio (DSCR) measured?",
+        "criteria": {
+          "3/6/2025": null,
+          "12/31/2024": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "dscr_as_of.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the debt service coverage ratio (DSCR) was measured as of?",
+        "criteria": {
+          "true": "A sentence gives the date or period end the DSCR was measured as of.",
+          "false": "The comment gives a DSCR with no date, or gives no DSCR."
+        }
+      },
+      "dscr_as_of.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the debt service coverage ratio (DSCR) was measured as of?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "occupancy.value": {
+        "type": "choice",
+        "instructions": "Which figure is the property's occupancy?",
+        "criteria": {
+          "61.4%": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "occupancy.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the property's occupancy?",
+        "criteria": {
+          "true": "A sentence gives the share of the property that is occupied or leased.",
+          "false": "The comment gives no occupancy, or only other percentages such as an interest rate."
+        }
+      },
+      "occupancy.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the property's occupancy?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "occupancy_as_of.value": {
+        "type": "choice",
+        "instructions": "As of which date was the property's occupancy measured?",
+        "criteria": {
+          "3/6/2025": null,
+          "12/31/2024": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "occupancy_as_of.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the property's occupancy was measured as of?",
+        "criteria": {
+          "true": "A sentence gives the date the occupancy figure was measured as of.",
+          "false": "The comment gives an occupancy with no date, or gives no occupancy."
+        }
+      },
+      "occupancy_as_of.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the property's occupancy was measured as of?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "instructions": "What has the borrower asked the lender or special servicer for?",
+        "criteria": {
+          "maturity extension": "More time to repay the loan after its maturity date.",
+          "forbearance": "A temporary pause in, or reduction of, payments.",
+          "loan modification": "A lasting change to the loan's terms, such as its rate or amortization.",
+          "discounted payoff": "Repaying the loan for less than the amount owed.",
+          "loan assumption": "A new borrower taking over the loan.",
+          "collateral release": "Releasing a property, or part of one, from the loan.",
+          "other": "A request that is none of the above."
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say the borrower has asked for something?",
+        "criteria": {
+          "true": "A sentence says the borrower requested or proposed something.",
+          "false": "The comment describes the servicer's own plans or actions, not a request from the borrower."
+        }
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says what the borrower has asked for?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "instructions": "Where does the borrower's request stand?",
+        "criteria": {
+          "pending": "The request is being reviewed or negotiated; no decision is stated.",
+          "granted": "The lender or servicer approved or agreed to the request.",
+          "denied": "The lender or servicer rejected the request."
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say where the borrower's request stands?",
+        "criteria": {
+          "true": "A sentence says the request is being reviewed, was approved or was rejected.",
+          "false": "The comment mentions a request but says nothing about its progress."
+        }
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says where the borrower's request stands?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "instructions": "Which workout strategy is the special servicer pursuing?",
+        "criteria": {
+          "modification": null,
+          "foreclosure": null,
+          "bankruptcy": null,
+          "extension": null,
+          "note sale": null,
+          "discounted payoff": null,
+          "property in REO": "The lender owns the property after foreclosure (real estate owned).",
+          "resolved": null,
+          "pending return to master servicer": "The loan is performing again and will return to the master servicer.",
+          "deed in lieu of foreclosure": null,
+          "full payoff": null,
+          "representations and warranties": "A claim against the loan seller for breaching its representations and warranties.",
+          "other": null
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` name a workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "true": "A sentence names a strategy the servicer has chosen, such as foreclosure or a modification.",
+          "false": "The comment describes a borrower request, or the servicer reviewing one, without naming a strategy the servicer has chosen."
+        }
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence names the workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": null,
+          "The borrower has requested a 12-month maturity extension.": null,
+          "The special servicer is evaluating the request.": null
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "clef-flash-2026-10-01",
+    "answers": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "choice": "imminent monetary default",
+        "confidence": 0.7452229459276174,
+        "probabilities": {
+          "imminent monetary default": 0.7452229459276174,
+          "monetary default": 0.015466608811015645,
+          "imminent maturity default": 0.16890027126649768,
+          "maturity default": 0.017254248963827643,
+          "non-monetary default": 0.011674808839026723,
+          "bankruptcy": 0.017525963848392122,
+          "other": 0.023955152343622672
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "noul": 0.9458012701768145
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
+        "confidence": 0.9837197370614029,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9837197370614029,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.005162087419867585,
+          "The borrower has requested a 12-month maturity extension.": 0.006838654737066591,
+          "The special servicer is evaluating the request.": 0.004279520781662962
+        }
+      },
+      "transfer_date.value": {
+        "type": "choice",
+        "choice": "3/6/2025",
+        "confidence": 0.9836649218921428,
+        "probabilities": {
+          "3/6/2025": 0.9836649218921428,
+          "12/31/2024": 0.006653822905689356,
+          "none of these": 0.009681255202167949
+        }
+      },
+      "transfer_date.support": {
+        "type": "noul",
+        "noul": 0.9648551535992067
+      },
+      "transfer_date.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
+        "confidence": 0.9858642583457381,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9858642583457381,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.004710380433003576,
+          "The borrower has requested a 12-month maturity extension.": 0.0048599039585642085,
+          "The special servicer is evaluating the request.": 0.004565457262694138
+        }
+      },
+      "dscr.value": {
+        "type": "choice",
+        "choice": "0.71x",
+        "confidence": 0.9893474891602738,
+        "probabilities": {
+          "0.71x": 0.9893474891602738,
+          "none of these": 0.010652510839726164
+        }
+      },
+      "dscr.support": {
+        "type": "noul",
+        "noul": 0.9579122720843811
+      },
+      "dscr.sentence": {
+        "type": "choice",
+        "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
+        "confidence": 0.9893386997292434,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0041390828929658285,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9893386997292434,
+          "The borrower has requested a 12-month maturity extension.": 0.004011736700114973,
+          "The special servicer is evaluating the request.": 0.002510480677675839
+        }
+      },
+      "dscr_as_of.value": {
+        "type": "choice",
+        "choice": "12/31/2024",
+        "confidence": 0.9901422284569776,
+        "probabilities": {
+          "3/6/2025": 0.004621230898791842,
+          "12/31/2024": 0.9901422284569776,
+          "none of these": 0.005236540644230595
+        }
+      },
+      "dscr_as_of.support": {
+        "type": "noul",
+        "noul": 0.9744347860767304
+      },
+      "dscr_as_of.sentence": {
+        "type": "choice",
+        "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
+        "confidence": 0.9915101284441438,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0031557593963568546,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9915101284441438,
+          "The borrower has requested a 12-month maturity extension.": 0.0033592883910998402,
+          "The special servicer is evaluating the request.": 0.0019748237683995563
+        }
+      },
+      "occupancy.value": {
+        "type": "choice",
+        "choice": "61.4%",
+        "confidence": 0.9880849780328519,
+        "probabilities": {
+          "61.4%": 0.9880849780328519,
+          "none of these": 0.01191502196714824
+        }
+      },
+      "occupancy.support": {
+        "type": "noul",
+        "noul": 0.9626731126558706
+      },
+      "occupancy.sentence": {
+        "type": "choice",
+        "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
+        "confidence": 0.9876511009633484,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0042631869832050395,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9876511009633484,
+          "The borrower has requested a 12-month maturity extension.": 0.005062659806769166,
+          "The special servicer is evaluating the request.": 0.003023052246677335
+        }
+      },
+      "occupancy_as_of.value": {
+        "type": "choice",
+        "choice": "12/31/2024",
+        "confidence": 0.9854092626974899,
+        "probabilities": {
+          "3/6/2025": 0.005998410695173151,
+          "12/31/2024": 0.9854092626974899,
+          "none of these": 0.008592326607336963
+        }
+      },
+      "occupancy_as_of.support": {
+        "type": "noul",
+        "noul": 0.9678992932829918
+      },
+      "occupancy_as_of.sentence": {
+        "type": "choice",
+        "choice": "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.",
+        "confidence": 0.9892878624357067,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0037980407946241724,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.9892878624357067,
+          "The borrower has requested a 12-month maturity extension.": 0.004303744051113081,
+          "The special servicer is evaluating the request.": 0.002610352718555938
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "choice": "maturity extension",
+        "confidence": 0.939915588628325,
+        "probabilities": {
+          "maturity extension": 0.939915588628325,
+          "forbearance": 0.010482385970281796,
+          "loan modification": 0.023994420445927866,
+          "discounted payoff": 0.0039786649443300254,
+          "loan assumption": 0.004651530577544197,
+          "collateral release": 0.006162276813891829,
+          "other": 0.010815132619699328
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "noul": 0.9637799441350253
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "choice": "The borrower has requested a 12-month maturity extension.",
+        "confidence": 0.9907175738924734,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0028265432614747927,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.0023432866675592,
+          "The borrower has requested a 12-month maturity extension.": 0.9907175738924734,
+          "The special servicer is evaluating the request.": 0.004112596178492753
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "choice": "pending",
+        "confidence": 0.9863497233861007,
+        "probabilities": {
+          "pending": 0.9863497233861007,
+          "granted": 0.007830868949147954,
+          "denied": 0.005819407664751288
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "noul": 0.9207896758909757
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "choice": "The special servicer is evaluating the request.",
+        "confidence": 0.9847724818331915,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.004217681761899592,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.003607574387110553,
+          "The borrower has requested a 12-month maturity extension.": 0.007402262017798396,
+          "The special servicer is evaluating the request.": 0.9847724818331915
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "choice": "extension",
+        "confidence": 0.6421187694559158,
+        "probabilities": {
+          "modification": 0.06521333096799349,
+          "foreclosure": 0.026348567540815063,
+          "bankruptcy": 0.0327913221153774,
+          "extension": 0.6421187694559158,
+          "note sale": 0.01958059276664562,
+          "discounted payoff": 0.01598121405301344,
+          "property in REO": 0.01868393214156132,
+          "resolved": 0.00910582128575552,
+          "pending return to master servicer": 0.0349061806924099,
+          "deed in lieu of foreclosure": 0.040809459732822226,
+          "full payoff": 0.01366945676494476,
+          "representations and warranties": 0.014551060982700946,
+          "other": 0.06624029150004454
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "noul": 0.079782013464093
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "choice": "The special servicer is evaluating the request.",
+        "confidence": 0.6779060813406237,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.08618608651032433,
+          "As of 12/31/2024, DSCR NOI was 0.71x and occupancy was 61.4%.": 0.011483184584446953,
+          "The borrower has requested a 12-month maturity extension.": 0.22442464756460503,
+          "The special servicer is evaluating the request.": 0.6779060813406237
+        }
+      }
+    },
+    "revision": "8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3",
+    "reference_sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+  }
+}
