@@ -29,6 +29,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Final, Literal
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, aliased
@@ -68,17 +69,34 @@ from cmbs.tape.tables import LoanPeriod
 
 # What a check found: "passed", "failed", or "not checked" (the check could not run yet); or
 # "decided" when a person settled the value (a review decision or an override), not a check.
-PASSED = "passed"
-FAILED = "failed"
-NOT_CHECKED = "not checked"
-DECIDED = "decided"
+# The API declares them as literals, so the generated web client's types name each one.
+Outcome = Literal["passed", "failed", "not checked", "decided"]
+PASSED: Final = "passed"
+FAILED: Final = "failed"
+NOT_CHECKED: Final = "not checked"
+DECIDED: Final = "decided"
 NOT_IN_AUDIT_TRAIL = "load not in the audit trail"
 
 # How the web app formats a value; the value itself is always sent as text, so no digit is lost.
-MONEY = "money"
-DATE = "date"
-RATIO = "ratio"
-TEXT = "text"
+Kind = Literal["money", "date", "ratio", "text"]
+MONEY: Final = "money"
+DATE: Final = "date"
+RATIO: Final = "ratio"
+TEXT: Final = "text"
+
+# An alert's severity as the API sends it.
+SeverityName = Literal["high", "medium", "low"]
+_SEVERITY_NAMES: dict[Severity, SeverityName] = {
+    Severity.HIGH: "high",
+    Severity.MEDIUM: "medium",
+    Severity.LOW: "low",
+}
+
+
+def severity_name(severity: str) -> SeverityName:
+    """'high' -> 'high', checked against the alerts' severities; an unknown one is a ValueError."""
+    return _SEVERITY_NAMES[Severity(severity)]
+
 
 _MONTH = re.compile(r"(\d{4})-(\d{2})")
 
@@ -92,7 +110,7 @@ class Check:
     """One thing that verified a value, as the page names it, and what it found."""
 
     label: str
-    outcome: str
+    outcome: Outcome
 
 
 CONTRACT_PASSED = Check("contract passed", PASSED)
@@ -148,7 +166,7 @@ class BookRow:
     """One open alert, in the order the alerts service gives."""
 
     alert_id: int
-    severity: str
+    severity: SeverityName
     title: str
     message: str
     loans: tuple[LoanRef, ...]
@@ -173,7 +191,7 @@ class BookPage:
 def book_row(view: AlertView) -> BookRow:
     return BookRow(
         alert_id=view.id,
-        severity=view.severity.value,
+        severity=severity_name(view.severity),
         title=view.title,
         message=view.message,
         loans=tuple(LoanRef(loan.deal, loan.loan, loan.label) for loan in view.loans),
@@ -248,7 +266,7 @@ class LoadedBy:
 class TapeValue:
     field: str
     label: str
-    kind: str
+    kind: Kind
     value: str | None
     checks: tuple[Check, ...]
 
@@ -315,7 +333,7 @@ class LoanAlert:
     """An alert on the loan for the month, in its state on the page's day."""
 
     alert_id: int
-    severity: str
+    severity: SeverityName
     message: str
     state_text: str
 
@@ -746,7 +764,10 @@ def _loan_alerts(
     ordered = sorted(found, key=lambda alert: (SEVERITY_ORDER[Severity(alert.severity)], alert.id))
     return tuple(
         LoanAlert(
-            alert.id, alert.severity, alert.message, state_on(_state_changes(db, alert.id, end))
+            alert.id,
+            severity_name(alert.severity),
+            alert.message,
+            state_on(_state_changes(db, alert.id, end)),
         )
         for alert in ordered
     )

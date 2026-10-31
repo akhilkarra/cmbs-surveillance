@@ -49,7 +49,9 @@ uv run alembic upgrade head
 uv run cmbs --help
 ```
 
-To see the dashboard, build it once (`docker compose run --rm web sh -c "npm ci && npm run build"`), run `uv run cmbs serve`, and open http://127.0.0.1:8000/?user=pat. On an empty database, `uv run python tools/seed_demo.py` adds the fixture users and settings, and `uv run cmbs discover deal "BANK 2018-BNK13" --user alex` then `uv run cmbs refresh deal "BANK 2018-BNK13" --user quinn --live` load a real deal.
+To see the dashboard, build it once (`docker compose run --rm web sh -c "npm ci && npm run build"`), run `uv run cmbs serve`, and open http://127.0.0.1:8000/?user=pat. On an empty database, `uv run python tools/seed_demo.py` adds the fixture users and settings, and `uv run cmbs discover deal "BANK 2018-BNK13" --user alex` then `uv run cmbs refresh deal "BANK 2018-BNK13" --user quinn --live` load a real deal. Or run it all in Compose: after migrating and seeding as above, `docker compose up -d --build --wait api` serves the same page and API at http://localhost:8000/?user=pat. The container serves only the API and the dashboard; the `cmbs` command and the Claude skills run on the host, and the container holds no TypeSafe key.
+
+The web app calls the API through a client generated from the API's schema. After changing a route, regenerate both and commit them: `uv run python tools/export_openapi.py` (writes `web/openapi.json`), then `docker compose run --rm web npm run generate` (writes `web/src/generated/`). A test and CI fail when either is stale.
 
 The `cmbs` command reads `.env` (copy `.env.example`): `DATABASE_URL`, `SEC_USER_AGENT` (a string with a contact address you control; `www.sec.gov` requires one) and `TYPESAFE_API_KEY` (only for live model calls; tests replay recorded answers). The main commands: `cmbs refresh deal "<deal>" --user <name>` loads a deal's new months end to end; `cmbs alerts book` lists the month's alerts on the book; `cmbs review queue` shows what waits for an analyst; `cmbs ask question "<text>" ...` answers from the panel with citations; `cmbs export panel ...` writes the panel as of a date. Each has `--help`.
 

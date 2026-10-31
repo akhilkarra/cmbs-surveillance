@@ -9,7 +9,8 @@
     "lint": "biome check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "mutate": "stryker run"
+    "mutate": "stryker run",
+    "generate": "orval --config orval.config.ts"
   },
   "dependencies": {
     "ag-grid-community": "36.2.0",
@@ -30,6 +31,7 @@
     "@vitejs/plugin-react": "6.1.2",
     "@vitest/coverage-v8": "5.0.5",
     "jsdom": "30.1.2",
+    "orval": "8.44.0",
     "typescript": "6.0.3",
     "vite": "8.3.5",
     "vitest": "5.0.5"

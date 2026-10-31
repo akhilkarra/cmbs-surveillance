@@ -1,6 +1,8 @@
 // Display formatting only. Values arrive computed from the API, money and ratios as decimal
 // strings; the UI never recomputes them and never turns money into a float.
 
+import type { ValueKind } from "./api";
+
 const AMOUNT = /^(?<sign>-?)(?<dollars>\d+)\.(?<cents>\d{2})$/;
 
 /** "30000000.00" -> "$30,000,000.00" */
@@ -21,9 +23,8 @@ export function formatRatio(ratio: string): string {
 /** A value the filing does not report is "not reported", never zero. */
 export const NOT_REPORTED = "not reported";
 
-export type ValueKind = "money" | "date" | "ratio" | "text";
-
-/** A panel value as the page shows it, by the kind the API names. */
+/** A panel value as the page shows it, by the kind the API names: "money" and "ratio" are
+ *  formatted, "date" and "text" are shown as sent. */
 export function formatValue(kind: ValueKind, value: string | null): string {
   if (value === null) {
     return NOT_REPORTED;

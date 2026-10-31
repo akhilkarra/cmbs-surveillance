@@ -1,7 +1,14 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**", "!!**/dist", "!!**/reports", "!!**/coverage", "!!**/.stryker-tmp"]
+    "includes": [
+      "**",
+      "!!**/dist",
+      "!!**/reports",
+      "!!coverage",
+      "!!**/.stryker-tmp",
+      "!openapi.json"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -27,5 +34,12 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/generated/**"],
+      "linter": { "enabled": false },
+      "assist": { "enabled": false }
+    }
+  ]
 }
