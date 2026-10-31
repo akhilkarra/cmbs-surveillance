@@ -36,6 +36,8 @@ export const NOTICE = "TradingView Lightweight Charts™ Copyright (c) 2025 Trad
 export const TRADINGVIEW = "https://www.tradingview.com/";
 
 export const DARK_MODE = "(prefers-color-scheme: dark)";
+/** The page's own theme attribute on <html>, which overrides the system's scheme. */
+export const THEME = ["data-theme"];
 
 /** A colour token of the page (styles.css), so the chart follows light and dark mode. */
 function token(name: string): string {
@@ -46,18 +48,19 @@ function token(name: string): string {
  *  so the chart is drawn again in the new theme's colours. */
 export function useThemeChanges(): number {
   const [changes, setChanges] = useState(0);
-  // Stryker disable next-line ArrayDeclaration: any constant list subscribes once, as [] does
+  // Stryker disable ArrayDeclaration: any constant list subscribes once, as [] does
   useEffect(() => {
     const changed = () => setChanges((count) => count + 1);
     const system = window.matchMedia(DARK_MODE);
     system.addEventListener("change", changed);
     const page = new MutationObserver(changed);
-    page.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    page.observe(document.documentElement, { attributes: true, attributeFilter: THEME });
     return () => {
       system.removeEventListener("change", changed);
       page.disconnect();
     };
   }, []);
+  // Stryker restore ArrayDeclaration
   return changes;
 }
 

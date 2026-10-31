@@ -1,7 +1,14 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, renderHook, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryMonth } from "./api";
-import { DARK_MODE, HistoryChart, NOTICE, TRADINGVIEW } from "./HistoryChart";
+import {
+  DARK_MODE,
+  HistoryChart,
+  NOTICE,
+  THEME,
+  TRADINGVIEW,
+  useThemeChanges,
+} from "./HistoryChart";
 import { axisMoney, axisRatio } from "./historyData";
 import styles from "./styles.css?raw";
 import { charts, colorScheme, type FakeChart, type FakeSeries, LineSeries } from "./test-chart";
@@ -337,10 +344,28 @@ describe("HistoryChart", () => {
 
   it("says what a gap in a line means", () => {
     render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
-    expect(screen.getByTestId("gap-note").textContent).toBe(
+    const gap =
       "A gap in a line is a month that does not report the value; the table says whether the " +
-        "loan was not on that month's tape or no tape was filed.",
+      "loan was not on that month's tape or no tape was filed.";
+    expect(screen.getByTestId("gap-note").textContent).toBe(gap);
+    expect(screen.getByTestId("gap-note").parentElement?.textContent).toBe(
+      `${gap} Chart: ${NOTICE} ${TRADINGVIEW}`,
     );
+  });
+
+  it("counts the theme's changes, and stops watching when the page closes", async () => {
+    const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+    const { result, unmount } = renderHook(() => useThemeChanges());
+    expect(THEME).toEqual(["data-theme"]);
+    expect(result.current).toBe(0);
+    act(() => colorScheme.change());
+    expect(result.current).toBe(1);
+    await act(async () => document.documentElement.setAttribute("data-theme", "dark"));
+    expect(result.current).toBe(2);
+    expect(disconnect).not.toHaveBeenCalled();
+    unmount();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    document.documentElement.removeAttribute("data-theme");
   });
 
   it("keeps the table in a box of its own that scrolls sideways, never the page", () => {
