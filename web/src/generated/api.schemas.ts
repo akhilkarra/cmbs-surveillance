@@ -648,13 +648,9 @@ export type GetAlertsOpenParams = {
 export type GetAskParams = {
   question: string;
   deal: string;
-  /**
-   * The loan, if none is named.
-   */
+  /** The loan, if none is named. */
   loan?: string | null;
-  /**
-   * Known on this date.
-   */
+  /** Known on this date. */
   as_of?: string | null;
 };
 
@@ -663,9 +659,7 @@ export type GetAsk200 = { [key: string]: unknown };
 export type GetAskFactsParams = {
   deal: string;
   loan: string;
-  /**
-   * Known on this date.
-   */
+  /** Known on this date. */
   as_of?: string | null;
 };
 
@@ -710,9 +704,7 @@ export type GetChecksFlags200Item = { [key: string]: unknown };
 export type GetChecksRollforwardParams = {
   deal: string;
   period: string;
-  /**
-   * Read as known on this day (default today).
-   */
+  /** Read as known on this day (default today). */
   as_of?: string | null;
 };
 
@@ -723,9 +715,7 @@ export type PostChecksRun200 = { [key: string]: unknown };
 export type GetChecksTextVsTapeParams = {
   deal: string;
   period: string;
-  /**
-   * Read as known on this day (default today).
-   */
+  /** Read as known on this day (default today). */
   as_of?: string | null;
 };
 
@@ -770,17 +760,11 @@ export type PostDealsByDealTapesParams = {
 export type PostDiscovery200 = { [key: string]: unknown };
 
 export type PostExportPanelParams = {
-  /**
-   * Known on this date.
-   */
+  /** Known on this date. */
   as_of: string;
-  /**
-   * csv or parquet.
-   */
+  /** csv or parquet. */
   format?: string;
-  /**
-   * One deal; the whole panel when left out.
-   */
+  /** One deal; the whole panel when left out. */
   deal?: string | null;
 };
 
@@ -809,13 +793,9 @@ export type GetHealth200 = { [key: string]: string };
 
 export type GetInvariantsPoolParams = {
   deal: string;
-  /**
-   * 'September 2026'; the latest by default.
-   */
+  /** 'September 2026'; the latest by default. */
   period?: string | null;
-  /**
-   * Read as known on this day.
-   */
+  /** Read as known on this day. */
   as_of?: string | null;
 };
 
@@ -842,20 +822,14 @@ export type GetQualityReportsLatest200 = { [key: string]: unknown };
 export type GetQualityReportsByReportId200 = { [key: string]: unknown };
 
 export type PostRefreshDealsByDealParams = {
-  /**
-   * Ask the model provider when no recording answers.
-   */
+  /** Ask the model provider when no recording answers. */
   live?: boolean;
 };
 
 export type PostRefreshDealsByDealBackfillParams = {
-  /**
-   * First month, like 'August 2025'.
-   */
+  /** First month, like 'August 2025'. */
   start: string;
-  /**
-   * Last month, like 'September 2026'.
-   */
+  /** Last month, like 'September 2026'. */
   end: string;
 };
 
