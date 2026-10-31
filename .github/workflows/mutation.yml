@@ -1,0 +1,107 @@
+name: mutation
+
+# Mutation testing, nightly and on demand, never on pull requests (grill log Q89): at about
+# 20,000 mutants it takes longer than a pull request should wait. A failure shows on main the
+# next morning; run it by hand with `gh workflow run mutation`.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation
+  cancel-in-progress: false
+
+# Actions are pinned to a commit SHA, with the release it was taken from in the comment.
+jobs:
+  # Python mutation testing in sixteen parallel shards that together run every mutant exactly
+  # once (tools/mutation_shards.py). With a database, so code reached only by database tests is
+  # mutation-tested too; every test uses its own scratch database, named per process. GitHub's
+  # runners are far slower than a laptop, so each shard gets three hours; read a run's job times
+  # before tightening it.
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    services:
+      # Same image as compose.yaml, so migrations are tested against the real extensions.
+      db:
+        image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+        env:
+          POSTGRES_USER: cmbs
+          POSTGRES_DB: cmbs
+          # A throwaway database reachable only inside this job, so no password at all.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cmbs -d cmbs"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      - run: uv sync --locked
+      - name: Mutation testing, one shard of sixteen
+        env:
+          DATABASE_URL: postgresql+psycopg://cmbs@localhost:5432/cmbs
+          SHARD: ${{ matrix.shard }}
+        run: uv run python tools/mutation_shards.py run --shard "$SHARD" --of 16 --max-children 4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutation-shard-${{ matrix.shard }}
+          path: mutants/shard-stats.json
+          if-no-files-found: error
+          retention-days: 14
+
+  # Every shard must have run, and the shards' combined score must meet the floor. Raise the
+  # floor as tests improve; never lower it to make the run pass.
+  score:
+    needs: [python]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every shard passed
+        env:
+          SHARDS: ${{ needs.python.result }}
+        run: |
+          echo "mutation shards: $SHARDS"
+          test "$SHARDS" = success
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: mutation-shard-*
+          path: shard-stats
+      - name: Mutation score across all shards
+        run: python3 tools/check_mutation_score.py --min 90 shard-stats/*/shard-stats.json
+
+  # Stryker on web/src; fails below the break threshold in web/stryker.config.json.
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: Mutation score
+        run: npm run mutate
