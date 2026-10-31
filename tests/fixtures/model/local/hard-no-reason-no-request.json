@@ -1,0 +1,262 @@
+{
+  "format": 1,
+  "call_id": "947803a3a887005ca47543dcfcb26beb60e472c611710b0339beb947e1654d22",
+  "model": "clef-flash-2026-10-01",
+  "prompt_version": 3,
+  "questions_sha256": "121d88e84e70d71669740f0ca9f0027147e87ede167bebb127ef19c837ec608c",
+  "state_sha256": "c78afea696e31383dbe4363fb8824c1bed3dc9c7b557ea2a5e4e6d102af6e5d6",
+  "input_sha256": "b3c9f2bbc6c973a0edfa443cbd6d600f27f609d66c36ed0aa8f5a7f3b9a9ff05",
+  "classification": "public",
+  "settings_version": 8,
+  "recorded_at": "2026-10-31T05:20:44.878950Z",
+  "synthetic": false,
+  "request": {
+    "model": "clef-flash-2026-10-01",
+    "state": {
+      "comment": "The special servicer continues to monitor the loan. The borrower remains in contact and is current on reporting. No further updates at this time."
+    },
+    "questions": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "instructions": "Why was the loan transferred to special servicing?",
+        "criteria": {
+          "imminent monetary default": "The servicer expects the borrower to stop paying soon, but payments have not yet been missed.",
+          "monetary default": "The borrower has missed required payments.",
+          "imminent maturity default": "The borrower is not expected to repay the loan when it matures.",
+          "maturity default": "The loan matured and was not repaid.",
+          "non-monetary default": "The borrower broke a loan term other than paying, such as a cash management or reporting requirement.",
+          "bankruptcy": "The borrower or a guarantor filed for bankruptcy.",
+          "other": "A reason that is none of the above."
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say why the loan was transferred to special servicing?",
+        "criteria": {
+          "true": "A sentence names the reason for the transfer, such as a default.",
+          "false": "The comment mentions the transfer or the loan's troubles without saying what caused the transfer."
+        }
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says why the loan was transferred to special servicing?",
+        "criteria": {
+          "The special servicer continues to monitor the loan.": null,
+          "The borrower remains in contact and is current on reporting.": null,
+          "No further updates at this time.": null
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "instructions": "What has the borrower asked the lender or special servicer for?",
+        "criteria": {
+          "maturity extension": "More time to repay the loan after its maturity date.",
+          "forbearance": "A temporary pause in, or reduction of, payments.",
+          "loan modification": "A lasting change to the loan's terms, such as its rate or amortization.",
+          "discounted payoff": "Repaying the loan for less than the amount owed.",
+          "loan assumption": "A new borrower taking over the loan.",
+          "collateral release": "Releasing a property, or part of one, from the loan.",
+          "other": "A request that is none of the above."
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say the borrower has asked for something?",
+        "criteria": {
+          "true": "A sentence says the borrower requested or proposed something.",
+          "false": "The comment describes the servicer's own plans or actions, not a request from the borrower."
+        }
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says what the borrower has asked for?",
+        "criteria": {
+          "The special servicer continues to monitor the loan.": null,
+          "The borrower remains in contact and is current on reporting.": null,
+          "No further updates at this time.": null
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "instructions": "Where does the borrower's request stand?",
+        "criteria": {
+          "pending": "The request is being reviewed or negotiated; no decision is stated.",
+          "granted": "The lender or servicer approved or agreed to the request.",
+          "denied": "The lender or servicer rejected the request."
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say where the borrower's request stands?",
+        "criteria": {
+          "true": "A sentence says the request is being reviewed, was approved or was rejected.",
+          "false": "The comment mentions a request but says nothing about its progress."
+        }
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says where the borrower's request stands?",
+        "criteria": {
+          "The special servicer continues to monitor the loan.": null,
+          "The borrower remains in contact and is current on reporting.": null,
+          "No further updates at this time.": null
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "instructions": "Which workout strategy is the special servicer pursuing?",
+        "criteria": {
+          "modification": null,
+          "foreclosure": null,
+          "bankruptcy": null,
+          "extension": null,
+          "note sale": null,
+          "discounted payoff": null,
+          "property in REO": "The lender owns the property after foreclosure (real estate owned).",
+          "resolved": null,
+          "pending return to master servicer": "The loan is performing again and will return to the master servicer.",
+          "deed in lieu of foreclosure": null,
+          "full payoff": null,
+          "representations and warranties": "A claim against the loan seller for breaching its representations and warranties.",
+          "other": null
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` name a workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "true": "A sentence names a strategy the servicer has chosen, such as foreclosure or a modification.",
+          "false": "The comment describes a borrower request, or the servicer reviewing one, without naming a strategy the servicer has chosen."
+        }
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence names the workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "The special servicer continues to monitor the loan.": null,
+          "The borrower remains in contact and is current on reporting.": null,
+          "No further updates at this time.": null
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "clef-flash-2026-10-01",
+    "answers": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "choice": "imminent monetary default",
+        "confidence": 0.3236,
+        "probabilities": {
+          "imminent monetary default": 0.3236,
+          "monetary default": 0.0425,
+          "imminent maturity default": 0.1292,
+          "maturity default": 0.0268,
+          "non-monetary default": 0.2993,
+          "bankruptcy": 0.0567,
+          "other": 0.1219
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "noul": 0.0346
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "choice": "The special servicer continues to monitor the loan.",
+        "confidence": 0.5428,
+        "probabilities": {
+          "The special servicer continues to monitor the loan.": 0.5428,
+          "The borrower remains in contact and is current on reporting.": 0.3672,
+          "No further updates at this time.": 0.09
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "choice": "other",
+        "confidence": 0.2738,
+        "probabilities": {
+          "maturity extension": 0.0939,
+          "forbearance": 0.2051,
+          "loan modification": 0.1225,
+          "discounted payoff": 0.0954,
+          "loan assumption": 0.0924,
+          "collateral release": 0.1169,
+          "other": 0.2738
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "noul": 0.0165
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "choice": "The borrower remains in contact and is current on reporting.",
+        "confidence": 0.7367,
+        "probabilities": {
+          "The special servicer continues to monitor the loan.": 0.0741,
+          "The borrower remains in contact and is current on reporting.": 0.7367,
+          "No further updates at this time.": 0.1892
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "choice": "pending",
+        "confidence": 0.6509,
+        "probabilities": {
+          "pending": 0.6509,
+          "granted": 0.2661,
+          "denied": 0.0831
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "noul": 0.096
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "choice": "No further updates at this time.",
+        "confidence": 0.4177,
+        "probabilities": {
+          "The special servicer continues to monitor the loan.": 0.1735,
+          "The borrower remains in contact and is current on reporting.": 0.4088,
+          "No further updates at this time.": 0.4177
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "choice": "pending return to master servicer",
+        "confidence": 0.48,
+        "probabilities": {
+          "modification": 0.063,
+          "foreclosure": 0.0243,
+          "bankruptcy": 0.0317,
+          "extension": 0.0854,
+          "note sale": 0.0143,
+          "discounted payoff": 0.0322,
+          "property in REO": 0.0106,
+          "resolved": 0.049,
+          "pending return to master servicer": 0.48,
+          "deed in lieu of foreclosure": 0.0297,
+          "full payoff": 0.053,
+          "representations and warranties": 0.0094,
+          "other": 0.1176
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "noul": 0.0427
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "choice": "The special servicer continues to monitor the loan.",
+        "confidence": 0.7977,
+        "probabilities": {
+          "The special servicer continues to monitor the loan.": 0.7977,
+          "The borrower remains in contact and is current on reporting.": 0.1571,
+          "No further updates at this time.": 0.0452
+        }
+      }
+    }
+  }
+}

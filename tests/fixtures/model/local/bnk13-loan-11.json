@@ -1,0 +1,544 @@
+{
+  "format": 1,
+  "call_id": "2403f40ee16b09a56413f62ad31d40ffbd857e249600f4b4b19c434f046741cd",
+  "model": "clef-flash-2026-10-01",
+  "prompt_version": 3,
+  "questions_sha256": "38763807d1cf98a6134b14b479b0387567073df7358586bafb7454d990c13afe",
+  "state_sha256": "2a3580ccff437667f1ce395155abc46163b1a97633fe6e28c424301171751bf9",
+  "input_sha256": "be937a402e3fd9a0d72267dfdf13cbd90f4b72501cc21961e427cbefbc89cb32",
+  "classification": "public",
+  "settings_version": 8,
+  "recorded_at": "2026-10-31T05:20:38.521124Z",
+  "synthetic": false,
+  "request": {
+    "model": "clef-flash-2026-10-01",
+    "state": {
+      "comment": "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default. The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan. It was built in the year 1907 and renovated later in 2016. As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%. Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower."
+    },
+    "questions": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "instructions": "Why was the loan transferred to special servicing?",
+        "criteria": {
+          "imminent monetary default": "The servicer expects the borrower to stop paying soon, but payments have not yet been missed.",
+          "monetary default": "The borrower has missed required payments.",
+          "imminent maturity default": "The borrower is not expected to repay the loan when it matures.",
+          "maturity default": "The loan matured and was not repaid.",
+          "non-monetary default": "The borrower broke a loan term other than paying, such as a cash management or reporting requirement.",
+          "bankruptcy": "The borrower or a guarantor filed for bankruptcy.",
+          "other": "A reason that is none of the above."
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say why the loan was transferred to special servicing?",
+        "criteria": {
+          "true": "A sentence names the reason for the transfer, such as a default.",
+          "false": "The comment mentions the transfer or the loan's troubles without saying what caused the transfer."
+        }
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says why the loan was transferred to special servicing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "transfer_date.value": {
+        "type": "choice",
+        "instructions": "On which date was the loan transferred to special servicing?",
+        "criteria": {
+          "6/4/2026": null,
+          "3/31/2026": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "transfer_date.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the loan was transferred to special servicing?",
+        "criteria": {
+          "true": "A sentence gives the date of the transfer to special servicing.",
+          "false": "The comment gives dates of other events, such as financial statements, but not the transfer date."
+        }
+      },
+      "transfer_date.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the loan was transferred to special servicing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "dscr.value": {
+        "type": "choice",
+        "instructions": "Which figure is the property's debt service coverage ratio (DSCR)?",
+        "criteria": {
+          "0.03x": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "dscr.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the property's debt service coverage ratio (DSCR)?",
+        "criteria": {
+          "true": "A sentence gives the DSCR as a number of times, such as 1.25x.",
+          "false": "The comment gives no DSCR, or only other figures such as occupancy."
+        }
+      },
+      "dscr.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the property's debt service coverage ratio (DSCR)?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "dscr_as_of.value": {
+        "type": "choice",
+        "instructions": "As of which date was the debt service coverage ratio (DSCR) measured?",
+        "criteria": {
+          "6/4/2026": null,
+          "3/31/2026": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "dscr_as_of.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the debt service coverage ratio (DSCR) was measured as of?",
+        "criteria": {
+          "true": "A sentence gives the date or period end the DSCR was measured as of.",
+          "false": "The comment gives a DSCR with no date, or gives no DSCR."
+        }
+      },
+      "dscr_as_of.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the debt service coverage ratio (DSCR) was measured as of?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "occupancy.value": {
+        "type": "choice",
+        "instructions": "Which figure is the property's occupancy?",
+        "criteria": {
+          "28.29%": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "occupancy.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the property's occupancy?",
+        "criteria": {
+          "true": "A sentence gives the share of the property that is occupied or leased.",
+          "false": "The comment gives no occupancy, or only other percentages such as an interest rate."
+        }
+      },
+      "occupancy.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the property's occupancy?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "occupancy_as_of.value": {
+        "type": "choice",
+        "instructions": "As of which date was the property's occupancy measured?",
+        "criteria": {
+          "6/4/2026": null,
+          "3/31/2026": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "occupancy_as_of.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the property's occupancy was measured as of?",
+        "criteria": {
+          "true": "A sentence gives the date the occupancy figure was measured as of.",
+          "false": "The comment gives an occupancy with no date, or gives no occupancy."
+        }
+      },
+      "occupancy_as_of.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the property's occupancy was measured as of?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "instructions": "What has the borrower asked the lender or special servicer for?",
+        "criteria": {
+          "maturity extension": "More time to repay the loan after its maturity date.",
+          "forbearance": "A temporary pause in, or reduction of, payments.",
+          "loan modification": "A lasting change to the loan's terms, such as its rate or amortization.",
+          "discounted payoff": "Repaying the loan for less than the amount owed.",
+          "loan assumption": "A new borrower taking over the loan.",
+          "collateral release": "Releasing a property, or part of one, from the loan.",
+          "other": "A request that is none of the above."
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say the borrower has asked for something?",
+        "criteria": {
+          "true": "A sentence says the borrower requested or proposed something.",
+          "false": "The comment describes the servicer's own plans or actions, not a request from the borrower."
+        }
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says what the borrower has asked for?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "instructions": "Where does the borrower's request stand?",
+        "criteria": {
+          "pending": "The request is being reviewed or negotiated; no decision is stated.",
+          "granted": "The lender or servicer approved or agreed to the request.",
+          "denied": "The lender or servicer rejected the request."
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say where the borrower's request stands?",
+        "criteria": {
+          "true": "A sentence says the request is being reviewed, was approved or was rejected.",
+          "false": "The comment mentions a request but says nothing about its progress."
+        }
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says where the borrower's request stands?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "instructions": "Which workout strategy is the special servicer pursuing?",
+        "criteria": {
+          "modification": null,
+          "foreclosure": null,
+          "bankruptcy": null,
+          "extension": null,
+          "note sale": null,
+          "discounted payoff": null,
+          "property in REO": "The lender owns the property after foreclosure (real estate owned).",
+          "resolved": null,
+          "pending return to master servicer": "The loan is performing again and will return to the master servicer.",
+          "deed in lieu of foreclosure": null,
+          "full payoff": null,
+          "representations and warranties": "A claim against the loan seller for breaching its representations and warranties.",
+          "other": null
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` name a workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "true": "A sentence names a strategy the servicer has chosen, such as foreclosure or a modification.",
+          "false": "The comment describes a borrower request, or the servicer reviewing one, without naming a strategy the servicer has chosen."
+        }
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence names the workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": null,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": null,
+          "It was built in the year 1907 and renovated later in 2016.": null,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": null,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": null
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "clef-flash-2026-10-01",
+    "answers": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "choice": "monetary default",
+        "confidence": 0.8599,
+        "probabilities": {
+          "imminent monetary default": 0.0248,
+          "monetary default": 0.8599,
+          "imminent maturity default": 0.0463,
+          "maturity default": 0.029,
+          "non-monetary default": 0.008,
+          "bankruptcy": 0.0157,
+          "other": 0.0162
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "noul": 0.9493
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.",
+        "confidence": 0.9928,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.9928,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0019,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0014,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.0021,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.0018
+        }
+      },
+      "transfer_date.value": {
+        "type": "choice",
+        "choice": "6/4/2026",
+        "confidence": 0.9888,
+        "probabilities": {
+          "6/4/2026": 0.9888,
+          "3/31/2026": 0.0037,
+          "none of these": 0.0075
+        }
+      },
+      "transfer_date.support": {
+        "type": "noul",
+        "noul": 0.9669
+      },
+      "transfer_date.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.",
+        "confidence": 0.9946,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.9946,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0012,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0014,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.0013,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.0014
+        }
+      },
+      "dscr.value": {
+        "type": "choice",
+        "choice": "0.03x",
+        "confidence": 0.9862,
+        "probabilities": {
+          "0.03x": 0.9862,
+          "none of these": 0.0138
+        }
+      },
+      "dscr.support": {
+        "type": "noul",
+        "noul": 0.9485
+      },
+      "dscr.sentence": {
+        "type": "choice",
+        "choice": "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.",
+        "confidence": 0.991,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.0034,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0018,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0018,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.991,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.002
+        }
+      },
+      "dscr_as_of.value": {
+        "type": "choice",
+        "choice": "3/31/2026",
+        "confidence": 0.9909,
+        "probabilities": {
+          "6/4/2026": 0.0041,
+          "3/31/2026": 0.9909,
+          "none of these": 0.005
+        }
+      },
+      "dscr_as_of.support": {
+        "type": "noul",
+        "noul": 0.9744
+      },
+      "dscr_as_of.sentence": {
+        "type": "choice",
+        "choice": "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.",
+        "confidence": 0.994,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.0021,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0014,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0013,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.994,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.0012
+        }
+      },
+      "occupancy.value": {
+        "type": "choice",
+        "choice": "28.29%",
+        "confidence": 0.9884,
+        "probabilities": {
+          "28.29%": 0.9884,
+          "none of these": 0.0116
+        }
+      },
+      "occupancy.support": {
+        "type": "noul",
+        "noul": 0.9553
+      },
+      "occupancy.sentence": {
+        "type": "choice",
+        "choice": "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.",
+        "confidence": 0.9928,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.0015,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0025,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0018,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.9928,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.0014
+        }
+      },
+      "occupancy_as_of.value": {
+        "type": "choice",
+        "choice": "3/31/2026",
+        "confidence": 0.9855,
+        "probabilities": {
+          "6/4/2026": 0.0061,
+          "3/31/2026": 0.9855,
+          "none of these": 0.0084
+        }
+      },
+      "occupancy_as_of.support": {
+        "type": "noul",
+        "noul": 0.9689
+      },
+      "occupancy_as_of.sentence": {
+        "type": "choice",
+        "choice": "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.",
+        "confidence": 0.9942,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.0015,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0015,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0015,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.9942,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.0012
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "choice": "forbearance",
+        "confidence": 0.2652,
+        "probabilities": {
+          "maturity extension": 0.0793,
+          "forbearance": 0.2652,
+          "loan modification": 0.137,
+          "discounted payoff": 0.092,
+          "loan assumption": 0.1425,
+          "collateral release": 0.1381,
+          "other": 0.1459
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "noul": 0.0246
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "choice": "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.",
+        "confidence": 0.7569,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.1696,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.039,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0119,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.0226,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.7569
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "choice": "pending",
+        "confidence": 0.9271,
+        "probabilities": {
+          "pending": 0.9271,
+          "granted": 0.0185,
+          "denied": 0.0544
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "noul": 0.0914
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "choice": "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.",
+        "confidence": 0.8203,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.1494,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0107,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0037,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.0159,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.8203
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "choice": "other",
+        "confidence": 0.2022,
+        "probabilities": {
+          "modification": 0.1041,
+          "foreclosure": 0.1347,
+          "bankruptcy": 0.1049,
+          "extension": 0.0646,
+          "note sale": 0.0732,
+          "discounted payoff": 0.0511,
+          "property in REO": 0.0562,
+          "resolved": 0.0096,
+          "pending return to master servicer": 0.0287,
+          "deed in lieu of foreclosure": 0.118,
+          "full payoff": 0.0174,
+          "representations and warranties": 0.0351,
+          "other": 0.2022
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "noul": 0.0745
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "choice": "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.",
+        "confidence": 0.9275,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 6/4/2026 due to monetary default.": 0.0401,
+          "The collateral is the Ditson Building, a 58,850 SF 10-story (plus lower level) Class B office building located on East 34th Street between Madison Avenue and Fifth Avenu e in the Murray Hill submarket of Midtown Manhattan.": 0.0202,
+          "It was built in the year 1907 and renovated later in 2016.": 0.0041,
+          "As of 3/31/2026, DSCR NOI was 0.03x and occupancy was 28.29%.": 0.0082,
+          "Special servicer will engage counsel, execute PNA and initiate discussions with t he Borrower.": 0.9275
+        }
+      }
+    }
+  }
+}

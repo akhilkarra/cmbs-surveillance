@@ -1,0 +1,412 @@
+{
+  "format": 1,
+  "call_id": "fe77a814d100b4657b43cedffb9ee5c708349cfe9f6283b4bd1f29d0a33a6443",
+  "model": "clef-flash-2026-10-01",
+  "prompt_version": 3,
+  "questions_sha256": "c2c40bfc6e6db2f7594a98d2114255bf3c8aac6f03cf7fb26310c08a4058a89d",
+  "state_sha256": "723291093272b0294c1fb9aef292c17df6238e8dc475ba2bc6e6c7905862329a",
+  "input_sha256": "24079c0c62e24b87e0ad206f51674cd83a60489cbe324cf6bfd7eb1a653e3702",
+  "classification": "public",
+  "settings_version": 8,
+  "recorded_at": "2026-10-31T05:20:45.928256Z",
+  "synthetic": false,
+  "request": {
+    "model": "clef-flash-2026-10-01",
+    "state": {
+      "comment": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default. The borrower requested a 12-month maturity extension. The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer."
+    },
+    "questions": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "instructions": "Why was the loan transferred to special servicing?",
+        "criteria": {
+          "imminent monetary default": "The servicer expects the borrower to stop paying soon, but payments have not yet been missed.",
+          "monetary default": "The borrower has missed required payments.",
+          "imminent maturity default": "The borrower is not expected to repay the loan when it matures.",
+          "maturity default": "The loan matured and was not repaid.",
+          "non-monetary default": "The borrower broke a loan term other than paying, such as a cash management or reporting requirement.",
+          "bankruptcy": "The borrower or a guarantor filed for bankruptcy.",
+          "other": "A reason that is none of the above."
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say why the loan was transferred to special servicing?",
+        "criteria": {
+          "true": "A sentence names the reason for the transfer, such as a default.",
+          "false": "The comment mentions the transfer or the loan's troubles without saying what caused the transfer."
+        }
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says why the loan was transferred to special servicing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "The borrower requested a 12-month maturity extension.": null,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": null
+        }
+      },
+      "transfer_date.value": {
+        "type": "choice",
+        "instructions": "On which date was the loan transferred to special servicing?",
+        "criteria": {
+          "3/6/2025": null,
+          "9/15/2026": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "transfer_date.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the loan was transferred to special servicing?",
+        "criteria": {
+          "true": "A sentence gives the date of the transfer to special servicing.",
+          "false": "The comment gives dates of other events, such as financial statements, but not the transfer date."
+        }
+      },
+      "transfer_date.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the loan was transferred to special servicing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "The borrower requested a 12-month maturity extension.": null,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": null
+        }
+      },
+      "dscr_as_of.value": {
+        "type": "choice",
+        "instructions": "As of which date was the debt service coverage ratio (DSCR) measured?",
+        "criteria": {
+          "3/6/2025": null,
+          "9/15/2026": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "dscr_as_of.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the debt service coverage ratio (DSCR) was measured as of?",
+        "criteria": {
+          "true": "A sentence gives the date or period end the DSCR was measured as of.",
+          "false": "The comment gives a DSCR with no date, or gives no DSCR."
+        }
+      },
+      "dscr_as_of.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the debt service coverage ratio (DSCR) was measured as of?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "The borrower requested a 12-month maturity extension.": null,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": null
+        }
+      },
+      "occupancy_as_of.value": {
+        "type": "choice",
+        "instructions": "As of which date was the property's occupancy measured?",
+        "criteria": {
+          "3/6/2025": null,
+          "9/15/2026": null,
+          "none of these": "The comment does not give this figure; the figures listed are other figures."
+        }
+      },
+      "occupancy_as_of.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` give the date the property's occupancy was measured as of?",
+        "criteria": {
+          "true": "A sentence gives the date the occupancy figure was measured as of.",
+          "false": "The comment gives an occupancy with no date, or gives no occupancy."
+        }
+      },
+      "occupancy_as_of.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence gives the date the property's occupancy was measured as of?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "The borrower requested a 12-month maturity extension.": null,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": null
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "instructions": "What has the borrower asked the lender or special servicer for?",
+        "criteria": {
+          "maturity extension": "More time to repay the loan after its maturity date.",
+          "forbearance": "A temporary pause in, or reduction of, payments.",
+          "loan modification": "A lasting change to the loan's terms, such as its rate or amortization.",
+          "discounted payoff": "Repaying the loan for less than the amount owed.",
+          "loan assumption": "A new borrower taking over the loan.",
+          "collateral release": "Releasing a property, or part of one, from the loan.",
+          "other": "A request that is none of the above."
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say the borrower has asked for something?",
+        "criteria": {
+          "true": "A sentence says the borrower requested or proposed something.",
+          "false": "The comment describes the servicer's own plans or actions, not a request from the borrower."
+        }
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says what the borrower has asked for?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "The borrower requested a 12-month maturity extension.": null,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": null
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "instructions": "Where does the borrower's request stand?",
+        "criteria": {
+          "pending": "The request is being reviewed or negotiated; no decision is stated.",
+          "granted": "The lender or servicer approved or agreed to the request.",
+          "denied": "The lender or servicer rejected the request."
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` say where the borrower's request stands?",
+        "criteria": {
+          "true": "A sentence says the request is being reviewed, was approved or was rejected.",
+          "false": "The comment mentions a request but says nothing about its progress."
+        }
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence says where the borrower's request stands?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "The borrower requested a 12-month maturity extension.": null,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": null
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "instructions": "Which workout strategy is the special servicer pursuing?",
+        "criteria": {
+          "modification": null,
+          "foreclosure": null,
+          "bankruptcy": null,
+          "extension": null,
+          "note sale": null,
+          "discounted payoff": null,
+          "property in REO": "The lender owns the property after foreclosure (real estate owned).",
+          "resolved": null,
+          "pending return to master servicer": "The loan is performing again and will return to the master servicer.",
+          "deed in lieu of foreclosure": null,
+          "full payoff": null,
+          "representations and warranties": "A claim against the loan seller for breaching its representations and warranties.",
+          "other": null
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "instructions": "Does a sentence of `comment` name a workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "true": "A sentence names a strategy the servicer has chosen, such as foreclosure or a modification.",
+          "false": "The comment describes a borrower request, or the servicer reviewing one, without naming a strategy the servicer has chosen."
+        }
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "instructions": "Which sentence names the workout strategy the special servicer is pursuing?",
+        "criteria": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": null,
+          "The borrower requested a 12-month maturity extension.": null,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": null
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "clef-flash-2026-10-01",
+    "answers": {
+      "transfer_reason.value": {
+        "type": "choice",
+        "choice": "imminent monetary default",
+        "confidence": 0.6725,
+        "probabilities": {
+          "imminent monetary default": 0.6725,
+          "monetary default": 0.0121,
+          "imminent maturity default": 0.2553,
+          "maturity default": 0.0153,
+          "non-monetary default": 0.0078,
+          "bankruptcy": 0.0153,
+          "other": 0.0216
+        }
+      },
+      "transfer_reason.support": {
+        "type": "noul",
+        "noul": 0.9522
+      },
+      "transfer_reason.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
+        "confidence": 0.9933,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9933,
+          "The borrower requested a 12-month maturity extension.": 0.0044,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0023
+        }
+      },
+      "transfer_date.value": {
+        "type": "choice",
+        "choice": "3/6/2025",
+        "confidence": 0.991,
+        "probabilities": {
+          "3/6/2025": 0.991,
+          "9/15/2026": 0.0035,
+          "none of these": 0.0055
+        }
+      },
+      "transfer_date.support": {
+        "type": "noul",
+        "noul": 0.9759
+      },
+      "transfer_date.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
+        "confidence": 0.9956,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.9956,
+          "The borrower requested a 12-month maturity extension.": 0.0023,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.002
+        }
+      },
+      "dscr_as_of.value": {
+        "type": "choice",
+        "choice": "none of these",
+        "confidence": 0.9631,
+        "probabilities": {
+          "3/6/2025": 0.0239,
+          "9/15/2026": 0.013,
+          "none of these": 0.9631
+        }
+      },
+      "dscr_as_of.support": {
+        "type": "noul",
+        "noul": 0.0331
+      },
+      "dscr_as_of.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
+        "confidence": 0.8084,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.8084,
+          "The borrower requested a 12-month maturity extension.": 0.0951,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0965
+        }
+      },
+      "occupancy_as_of.value": {
+        "type": "choice",
+        "choice": "none of these",
+        "confidence": 0.9824,
+        "probabilities": {
+          "3/6/2025": 0.0098,
+          "9/15/2026": 0.0079,
+          "none of these": 0.9824
+        }
+      },
+      "occupancy_as_of.support": {
+        "type": "noul",
+        "noul": 0.013
+      },
+      "occupancy_as_of.sentence": {
+        "type": "choice",
+        "choice": "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.",
+        "confidence": 0.6813,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.6813,
+          "The borrower requested a 12-month maturity extension.": 0.1581,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.1606
+        }
+      },
+      "borrower_request.value": {
+        "type": "choice",
+        "choice": "maturity extension",
+        "confidence": 0.9594,
+        "probabilities": {
+          "maturity extension": 0.9594,
+          "forbearance": 0.009,
+          "loan modification": 0.0168,
+          "discounted payoff": 0.0016,
+          "loan assumption": 0.0019,
+          "collateral release": 0.0033,
+          "other": 0.008
+        }
+      },
+      "borrower_request.support": {
+        "type": "noul",
+        "noul": 0.9711
+      },
+      "borrower_request.sentence": {
+        "type": "choice",
+        "choice": "The borrower requested a 12-month maturity extension.",
+        "confidence": 0.9973,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0011,
+          "The borrower requested a 12-month maturity extension.": 0.9973,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.0015
+        }
+      },
+      "request_status.value": {
+        "type": "choice",
+        "choice": "granted",
+        "confidence": 0.9779,
+        "probabilities": {
+          "pending": 0.0145,
+          "granted": 0.9779,
+          "denied": 0.0076
+        }
+      },
+      "request_status.support": {
+        "type": "noul",
+        "noul": 0.8988
+      },
+      "request_status.sentence": {
+        "type": "choice",
+        "choice": "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.",
+        "confidence": 0.9635,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.0051,
+          "The borrower requested a 12-month maturity extension.": 0.0315,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.9635
+        }
+      },
+      "workout_strategy.value": {
+        "type": "choice",
+        "choice": "extension",
+        "confidence": 0.6825,
+        "probabilities": {
+          "modification": 0.0131,
+          "foreclosure": 0.0049,
+          "bankruptcy": 0.006,
+          "extension": 0.6825,
+          "note sale": 0.0036,
+          "discounted payoff": 0.0034,
+          "property in REO": 0.003,
+          "resolved": 0.0091,
+          "pending return to master servicer": 0.2501,
+          "deed in lieu of foreclosure": 0.0075,
+          "full payoff": 0.005,
+          "representations and warranties": 0.0024,
+          "other": 0.0094
+        }
+      },
+      "workout_strategy.support": {
+        "type": "noul",
+        "noul": 0.291
+      },
+      "workout_strategy.sentence": {
+        "type": "choice",
+        "choice": "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.",
+        "confidence": 0.6012,
+        "probabilities": {
+          "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.": 0.1321,
+          "The borrower requested a 12-month maturity extension.": 0.2668,
+          "The lender approved the extension on 9/15/2026, and the loan is expected to return to the master servicer.": 0.6012
+        }
+      }
+    }
+  }
+}
