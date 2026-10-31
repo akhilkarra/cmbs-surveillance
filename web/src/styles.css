@@ -380,15 +380,23 @@ h3 {
   color: var(--ink);
 }
 
+/* Two panes of about 14rem each: room for a pane's ticks, and its last value's label, apart
+   from the other pane's. */
 .history-chart {
-  height: 22rem;
+  height: 30rem;
   border: 1px solid var(--rule);
 }
 
-.attribution {
+.chart-notes {
   margin: 0.35rem 0 1rem;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+/* A wide table scrolls inside its own box, so the page never scrolls sideways. */
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .history-table caption {

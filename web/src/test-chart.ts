@@ -1,5 +1,6 @@
 // A stand-in for lightweight-charts, which draws on a canvas jsdom does not have. It records what
 // the page asked the chart to draw, so tests read the series, markers and options from `charts`.
+// It also stands in for the browser's colour scheme query (window.matchMedia), which jsdom lacks.
 
 export interface FakeSeries {
   definition: unknown;
@@ -7,7 +8,10 @@ export interface FakeSeries {
   pane: number | undefined;
   data: unknown[];
   markers: unknown[];
+  /** The options last applied to the series' price scale. */
+  scale: unknown;
   setData(data: unknown[]): void;
+  priceScale(): { applyOptions(options: unknown): void };
 }
 
 export interface FakeChart {
@@ -42,8 +46,16 @@ export function createChart(element: HTMLElement, options: Record<string, unknow
         pane,
         data: [],
         markers: [],
+        scale: undefined,
         setData(data) {
           series.data = data;
+        },
+        priceScale() {
+          return {
+            applyOptions(scale) {
+              series.scale = scale;
+            },
+          };
         },
       };
       chart.series.push(series);
@@ -67,4 +79,27 @@ export function createChart(element: HTMLElement, options: Record<string, unknow
 
 export function createSeriesMarkers(series: FakeSeries, markers: unknown[]) {
   series.markers = markers;
+}
+
+/** The system's colour scheme: the queries the page asked about and the listeners it keeps. */
+export const colorScheme = {
+  queries: [] as string[],
+  listeners: new Set<() => void>(),
+  change() {
+    for (const listener of [...colorScheme.listeners]) listener();
+  },
+};
+
+export function matchMedia(query: string) {
+  colorScheme.queries.push(query);
+  return {
+    matches: false,
+    media: query,
+    addEventListener(type: string, listener: () => void) {
+      if (type === "change") colorScheme.listeners.add(listener);
+    },
+    removeEventListener(type: string, listener: () => void) {
+      if (type === "change") colorScheme.listeners.delete(listener);
+    },
+  };
 }

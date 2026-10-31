@@ -7,11 +7,13 @@ import {
   changeIn,
   dscrOf,
   dscrText,
+  filingText,
   linePoints,
   lineSegments,
   monthAt,
+  NO_TAPE,
   NOT_ON_TAPE,
-  segmentMarkers,
+  statusLane,
   statusMarkers,
   statusText,
   timeKey,
@@ -109,33 +111,25 @@ describe("lineSegments", () => {
   });
 });
 
-describe("segmentMarkers", () => {
-  const marker = (time: string) => ({
-    time,
-    position: "aboveBar" as const,
-    shape: "arrowDown" as const,
-    color: "c",
-    text: time,
-  });
-  const segments = [
-    [{ time: "a", value: 1 }, { time: "b", value: 2 }, { time: "c" }, { time: "d" }],
-    [{ time: "a" }, { time: "b" }, { time: "c" }, { time: "d", value: 4 }],
-  ];
-
-  it("puts each marker on the line with a value at its month", () => {
-    expect(segmentMarkers(segments, [marker("b"), marker("d")])).toEqual([
-      [marker("b")],
-      [marker("d")],
+describe("statusLane", () => {
+  it("has a point at every month, reported or not", () => {
+    const gap = historyMonth("2026-10", "October 2026", { on_tape: false, source: null });
+    expect(statusLane([...months, gap])).toEqual([
+      { time: "2026-07-01", value: 0 },
+      { time: "2026-08-01", value: 0 },
+      { time: "2026-09-01", value: 0 },
+      { time: "2026-10-01", value: 0 },
     ]);
   });
+});
 
-  it("puts a marker over a month no line has a value for on the last line", () => {
-    expect(segmentMarkers(segments, [marker("c"), marker("a")])).toEqual([
-      [marker("a")],
-      [marker("c")],
-    ]);
-    expect(segmentMarkers([segments[0] ?? []], [marker("c")])).toEqual([[marker("c")]]);
-    expect(segmentMarkers(segments, [])).toEqual([[], []]);
+describe("filingText", () => {
+  it("names the filing a month came from, or says no tape was filed", () => {
+    expect(filingText(august)).toBe("from ABS-EE 0009900001-26-000417, filed 2026-08-29");
+    expect(filingText(historyMonth("2026-08", "August 2026", { source: null }))).toBe(
+      "no tape filed",
+    );
+    expect(NO_TAPE).toBe("no tape filed");
   });
 });
 
@@ -203,6 +197,15 @@ describe("a month in words", () => {
       statusText(historyMonth("2026-07", "July 2026", { on_tape: false, payment_status: null })),
     ).toBe(NOT_ON_TAPE);
     expect(NOT_ON_TAPE).toBe("loan not on the tape");
+    expect(
+      statusText(
+        historyMonth("2026-07", "July 2026", {
+          on_tape: false,
+          payment_status: null,
+          source: null,
+        }),
+      ),
+    ).toBe(NO_TAPE);
   });
 
   it("formats the balance and DSCR, or says they are not reported", () => {

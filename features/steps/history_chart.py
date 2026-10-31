@@ -175,14 +175,16 @@ READ_LEGEND = """() => {
 
 def hovered_months(context) -> dict[str, dict[str, str | None]]:
     """Sweep the pointer across the chart's balance pane and keep what the legend says for each
-    month it names while hovered, by month ('2026-08')."""
+    month it names while hovered, by month ('2026-08'), with `x`: the middle of the stretch of
+    the chart where the pointer is on that month (where the chart draws the month)."""
     if getattr(context, "hovered", None) is None:
         page = context.page
         chart = page.locator('[data-testid="history-chart"]')
         chart.scroll_into_view_if_needed()
         box = chart.bounding_box()
         assert box is not None, "the history chart is not drawn"
-        found: dict[str, dict[str, str | None]] = {}
+        found: dict[str, dict] = {}
+        spans: dict[str, list[float]] = {}
         y = box["y"] + box["height"] * 0.25
         x = box["x"] + 1
         while x < box["x"] + box["width"] - 1:
@@ -190,10 +192,44 @@ def hovered_months(context) -> dict[str, dict[str, str | None]]:
             legend = page.evaluate(READ_LEGEND)
             if legend["hovered"] == "true":
                 found.setdefault(legend["month"], legend)
+                spans.setdefault(legend["month"], []).append(x)
             x += 4
         page.mouse.move(0, 0)
+        for month, xs in spans.items():
+            found[month]["x"] = (min(xs) + max(xs)) / 2
         context.hovered = found
     return context.hovered
+
+
+# Whether the chart's canvases hold a pixel of the status marker colour (the page's --medium
+# token) in a narrow column at each month's x: the months the chart draws a marker over.
+DRAWN_MARKS = """([columns, width]) => {
+    const chart = document.querySelector('[data-testid="history-chart"]');
+    const hex = getComputedStyle(document.documentElement).getPropertyValue('--medium').trim();
+    const colour = [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+    const canvases = [...chart.querySelectorAll('canvas')];
+    const marked = (x) => canvases.some((canvas) => {
+        const box = canvas.getBoundingClientRect();
+        if (x - width < box.left || x + width > box.right || box.height === 0) return false;
+        const scale = canvas.width / box.width;
+        const left = Math.round((x - width - box.left) * scale);
+        const pixels = canvas.getContext('2d').getImageData(
+            left, 0, Math.round(2 * width * scale), canvas.height).data;
+        for (let at = 0; at < pixels.length; at += 4) {
+            if (pixels[at + 3] > 200 && colour.every((c, i) => Math.abs(pixels[at + i] - c) < 24)) {
+                return true;
+            }
+        }
+        return false;
+    });
+    return columns.filter(([, x]) => marked(x)).map(([month]) => month);
+}"""
+
+
+def drawn_marks(context) -> list[str]:
+    """The months ('2026-08') the chart draws a payment status marker over."""
+    columns = [[month, legend["x"]] for month, legend in sorted(hovered_months(context).items())]
+    return context.page.evaluate(DRAWN_MARKS, [columns, 6])
 
 
 def named_period(context, name: str) -> Period:
@@ -270,7 +306,7 @@ def step_points_name_filings(context):
     assert sorted(hovered) == sorted(rows), f"hovered {sorted(hovered)}, listed {sorted(rows)}"
     for period in context.history_months:
         filing = abs_ee(context, period)
-        named = f"ABS-EE {filing.accession}, filed {filing.filing_date.isoformat()}"
+        named = f"from ABS-EE {filing.accession}, filed {filing.filing_date.isoformat()}"
         assert hovered[key(period)]["filing"] == named, hovered[key(period)]
         row = rows[key(period)]
         assert row["filing"] == f"ABS-EE {filing.accession}", row
@@ -296,6 +332,9 @@ def step_chart_ends_at(context, period):
 def step_chart_marks(context, first, first_mark, second, second_mark):
     marked = {row["month"]: row["change"] for row in table_rows(context) if row["change"]}
     assert marked == {key(first): first_mark, key(second): second_mark}, marked
+    # The markers are drawn over those months on the chart itself, and over no other.
+    drawn = drawn_marks(context)
+    assert drawn == sorted(marked), f"the chart draws markers over {drawn}"
     hovered = hovered_months(context)
     for period, mark in ((first, first_mark), (second, second_mark)):
         assert hovered[key(period)]["change"] == f", changed to {mark}", hovered[key(period)]
@@ -311,6 +350,6 @@ def step_chart_attribution(context):
     assert NOTICE in credit.inner_text(), credit.inner_text()
     link = credit.locator(f'a[href="{TRADINGVIEW}"]')
     assert link.count() == 1 and link.is_visible(), "the credit does not link to TradingView"
-    # The chart's own logo links to tradingview.com too (the attributionLogo option).
+    # The notice and link under the chart are the credit: no logo is drawn over the plot.
     logo = page.locator('[data-testid="history-chart"] a[href^="https://www.tradingview.com"]')
-    assert logo.count() == 1 and logo.is_visible(), "the chart shows no TradingView logo link"
+    assert logo.count() == 0, "a TradingView logo covers the chart"

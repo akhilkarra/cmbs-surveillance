@@ -68,14 +68,11 @@ export function statusMarkers(changes: StatusChange[], color: string): Marker[] 
   }));
 }
 
-/** Each segment's markers: those over a month the segment has a value for. A marker over a
- *  month no segment has a value for goes on the last segment, so no change is left unmarked. */
-export function segmentMarkers(segments: Point[][], markers: Marker[]): Marker[][] {
-  const valued = (segment: Point[], marker: Marker) =>
-    segment.some((point) => point.time === marker.time && point.value !== undefined);
-  const placed = segments.map((segment) => markers.filter((marker) => valued(segment, marker)));
-  const left = markers.filter((marker) => !segments.some((segment) => valued(segment, marker)));
-  return placed.map((own, index) => (index === placed.length - 1 ? [...own, ...left] : own));
+/** The status lane: a point at every month, at one level, that the chart does not draw but
+ *  hangs the status change markers on. The library draws a marker at a point of its series, so
+ *  a lane with every month puts each marker over its own month, even one with no balance. */
+export function statusLane(months: HistoryMonth[]): Point[] {
+  return months.map((month) => ({ time: month.day, value: 0 }));
 }
 
 /** The chart's time for a month ("2026-08-01"), as the crosshair reports it: the string the
@@ -102,14 +99,27 @@ export function changeIn(changes: StatusChange[], month: HistoryMonth): StatusCh
 }
 
 export const NOT_ON_TAPE = "loan not on the tape";
+export const NO_TAPE = "no tape filed";
 
-/** "in grace period (A)"; "not reported"; or that the month's tape leaves the loan out. */
+/** "in grace period (A)"; "not reported"; or that the month's tape leaves the loan out, or that
+ *  no tape was filed for the month. */
 export function statusText(month: HistoryMonth): string {
+  if (month.source === null) {
+    return NO_TAPE;
+  }
   if (!month.on_tape) {
     return NOT_ON_TAPE;
   }
   const status = month.payment_status;
   return status === null ? NOT_REPORTED : `${status.name} (${status.code})`;
+}
+
+/** "from ABS-EE 0009900001-26-000417, filed 2026-08-29", or that no tape was filed. */
+export function filingText(month: HistoryMonth): string {
+  const { source } = month;
+  return source === null
+    ? NO_TAPE
+    : `from ${source.form} ${source.accession}, filed ${source.filing_date}`;
 }
 
 export function balanceText(month: HistoryMonth): string {

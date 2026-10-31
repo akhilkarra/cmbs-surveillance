@@ -109,21 +109,23 @@ export function CommentBlock({ comment }: { comment: CommentSection }) {
         {comment.prompt_version}, settings version {comment.settings_version};{" "}
         <span data-testid="comment-loaded">{comment.loaded.text}</span>.
       </p>
-      <table className="values" data-testid="comment-values">
-        <thead>
-          <tr>
-            <th scope="col">Field</th>
-            <th scope="col">Value</th>
-            <th scope="col">Sentence behind it</th>
-            <th scope="col">Verified by</th>
-          </tr>
-        </thead>
-        <tbody>
-          {comment.values.map((value) => (
-            <CommentRow key={value.field} value={value} />
-          ))}
-        </tbody>
-      </table>
+      <div className="table-scroll">
+        <table className="values" data-testid="comment-values">
+          <thead>
+            <tr>
+              <th scope="col">Field</th>
+              <th scope="col">Value</th>
+              <th scope="col">Sentence behind it</th>
+              <th scope="col">Verified by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {comment.values.map((value) => (
+              <CommentRow key={value.field} value={value} />
+            ))}
+          </tbody>
+        </table>
+      </div>
       <h3>The comment as filed</h3>
       <ol className="sentences">
         {comment.sentences.map((sentence, index) => (
@@ -162,20 +164,22 @@ export function LoanContent({ data }: { data: LoanPageData }) {
             <FilingLink source={data.tape.source} testId="tape-filing" />, filed{" "}
             {data.tape.source.filing_date}.
           </p>
-          <table className="values" data-testid="tape-values">
-            <thead>
-              <tr>
-                <th scope="col">Field</th>
-                <th scope="col">Value</th>
-                <th scope="col">Verified by</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.tape.values.map((value) => (
-                <TapeRow key={value.field} value={value} loaded={data.tape.loaded.text} />
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="values" data-testid="tape-values">
+              <thead>
+                <tr>
+                  <th scope="col">Field</th>
+                  <th scope="col">Value</th>
+                  <th scope="col">Verified by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.tape.values.map((value) => (
+                  <TapeRow key={value.field} value={value} loaded={data.tape.loaded.text} />
+                ))}
+              </tbody>
+            </table>
+          </div>
           <FinancialsBlock financials={data.financials} />
         </section>
         <section aria-labelledby="comment-heading">

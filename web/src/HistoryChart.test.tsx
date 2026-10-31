@@ -1,9 +1,10 @@
 import { act, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HistoryMonth } from "./api";
-import { HistoryChart, NOTICE, TRADINGVIEW } from "./HistoryChart";
+import { DARK_MODE, HistoryChart, NOTICE, TRADINGVIEW } from "./HistoryChart";
 import { axisMoney, axisRatio } from "./historyData";
-import { charts, type FakeChart, LineSeries } from "./test-chart";
+import styles from "./styles.css?raw";
+import { charts, colorScheme, type FakeChart, type FakeSeries, LineSeries } from "./test-chart";
 import { historyMonth, loanHistory } from "./test-data";
 
 const TOKENS = {
@@ -50,7 +51,7 @@ function legend() {
 }
 
 describe("HistoryChart", () => {
-  it("draws on the page's colours, without scrolling or zooming, showing every month", () => {
+  it("draws on the page's colours, without scrolling, zooming or a logo over the plot", () => {
     render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
     const chart = drawn();
     expect(chart.element).toBe(screen.getByTestId("history-chart"));
@@ -60,12 +61,17 @@ describe("HistoryChart", () => {
         background: { type: "solid", color: "#f6f7f4" },
         textColor: "#55605a",
         fontFamily: getComputedStyle(chart.element).fontFamily,
-        attributionLogo: true,
+        attributionLogo: false,
         panes: { separatorColor: "#c9d1cb" },
       },
       grid: { vertLines: { visible: false }, horzLines: { color: "#c9d1cb" } },
       rightPriceScale: { borderColor: "#c9d1cb" },
-      timeScale: { borderColor: "#c9d1cb", fixLeftEdge: true, fixRightEdge: true },
+      timeScale: {
+        borderColor: "#c9d1cb",
+        fixLeftEdge: true,
+        fixRightEdge: true,
+        lockVisibleTimeRangeOnResize: true,
+      },
       handleScroll: false,
       handleScale: false,
     });
@@ -75,9 +81,14 @@ describe("HistoryChart", () => {
   it("draws the balance and the DSCR in panes of their own, a line per run of months", () => {
     render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
     const series = drawn().series;
-    expect(series).toHaveLength(3);
+    expect(series).toHaveLength(4);
     const [balance, before, after] = series;
-    const line = { color: "#1d4f8a", lineWidth: 2, pointMarkersVisible: true };
+    const line = {
+      color: "#1d4f8a",
+      lineWidth: 2,
+      pointMarkersVisible: true,
+      pointMarkersRadius: 4,
+    };
     const named = { lastValueVisible: true, priceLineVisible: true };
     expect(balance).toEqual(
       expect.objectContaining({
@@ -90,15 +101,19 @@ describe("HistoryChart", () => {
           title: "ending balance",
           priceFormat: { type: "custom", formatter: axisMoney },
         },
+        // The top of the balance pane is the status lane's.
+        scale: { scaleMargins: { top: 0.32, bottom: 0.08 } },
         data: [
           { time: "2026-07-01", value: 30400000 },
           { time: "2026-08-01", value: 30200000 },
           { time: "2026-09-01", value: 30000000 },
         ],
+        markers: [],
       }),
     );
     // August reports no DSCR: July and September are lines of their own, not joined across it.
     const dscr = { type: "custom", formatter: axisRatio };
+    const clear = { scaleMargins: { top: 0.18, bottom: 0.18 } };
     expect(before).toEqual(
       expect.objectContaining({
         definition: LineSeries,
@@ -111,6 +126,7 @@ describe("HistoryChart", () => {
           priceLineVisible: false,
           priceFormat: dscr,
         },
+        scale: clear,
         data: [{ time: "2026-07-01", value: 1.12 }, { time: "2026-08-01" }, { time: "2026-09-01" }],
       }),
     );
@@ -119,35 +135,59 @@ describe("HistoryChart", () => {
         definition: LineSeries,
         pane: 1,
         options: { ...line, ...named, lineVisible: false, title: "DSCR", priceFormat: dscr },
+        scale: clear,
         data: [{ time: "2026-07-01" }, { time: "2026-08-01" }, { time: "2026-09-01", value: 0.96 }],
       }),
     );
   });
 
-  it("draws a run of two months as a line and a lone month as its point", () => {
+  it("draws two months running as a line, and a month alone as its point", () => {
     const history = loanHistory();
     history.months[1] = { ...(history.months[1] as HistoryMonth), dscr: "1.05" };
     history.months[2] = { ...(history.months[2] as HistoryMonth), ending_balance: null };
     render(<HistoryChart history={history} asOf="2026-10-28" />);
-    expect(drawn().series.map((line) => [line.pane, line.options.lineVisible])).toEqual([
-      [0, true],
-      [1, true],
-    ]);
+    const [balanceRun, dscrRun] = drawn().series;
+    // July and August's balances are a line; the DSCR, reported every month, is one line.
+    expect([balanceRun?.pane, balanceRun?.options.lineVisible]).toEqual([0, true]);
+    expect([dscrRun?.pane, dscrRun?.options.lineVisible]).toEqual([1, true]);
+    render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
+    const [, alone] = (charts[1] as FakeChart).series;
+    expect(alone?.options).toMatchObject({ lineVisible: false, pointMarkersRadius: 4 });
   });
 
-  it("marks each payment status change on the balance line that has the month", () => {
+  it("marks each payment status change over its own month, balance reported or not", () => {
     const history = loanHistory();
     history.months[1] = { ...(history.months[1] as HistoryMonth), ending_balance: null };
     render(<HistoryChart history={history} asOf="2026-10-28" />);
-    const [july, september, ...dscr] = drawn().series;
+    const series = drawn().series;
+    const lane = series.at(-1) as FakeSeries;
+    expect(lane).toEqual(
+      expect.objectContaining({
+        definition: LineSeries,
+        pane: 0,
+        options: {
+          priceScaleId: "status",
+          lineVisible: false,
+          pointMarkersVisible: false,
+          crosshairMarkerVisible: false,
+          lastValueVisible: false,
+          priceLineVisible: false,
+        },
+        scale: { scaleMargins: { top: 0.2, bottom: 0.76 } },
+        // A point at every month, so each marker is drawn over its own month.
+        data: [
+          { time: "2026-07-01", value: 0 },
+          { time: "2026-08-01", value: 0 },
+          { time: "2026-09-01", value: 0 },
+        ],
+      }),
+    );
     const marker = { position: "aboveBar", shape: "arrowDown", color: "#9a5b00" };
-    expect(july?.markers).toEqual([]);
-    // August reports no balance: its change is marked on the last balance line.
-    expect(september?.markers).toEqual([
-      { ...marker, time: "2026-09-01", text: "30 days" },
+    expect(lane.markers).toEqual([
       { ...marker, time: "2026-08-01", text: "grace or late" },
+      { ...marker, time: "2026-09-01", text: "30 days" },
     ]);
-    expect(dscr.map((line) => line.markers)).toEqual([[], []]);
+    expect(series.slice(0, -1).map((line) => line.markers)).toEqual([[], [], [], []]);
   });
 
   it("names the latest month until a month is hovered, then that month and its filing", () => {
@@ -159,6 +199,9 @@ describe("HistoryChart", () => {
         "September 2026: ending balance $30,000,000.00, DSCR 0.96x, payment status 30 days (1), " +
         "changed to 30 days; from ABS-EE 0009900001-26-000419, filed 2026-09-29",
     });
+    expect(screen.getByTestId("legend-filing").textContent).toBe(
+      "from ABS-EE 0009900001-26-000419, filed 2026-09-29",
+    );
     hover("2026-08-01");
     expect(legend()).toEqual({
       month: "2026-08",
@@ -259,6 +302,51 @@ describe("HistoryChart", () => {
     expect(within(august).getByTestId("balance").textContent).toBe("not reported");
     expect(within(august).getByTestId("balance").getAttribute("data-reported")).toBe("false");
     expect(within(august).getByTestId("status").textContent).toBe("loan not on the tape");
+    expect(within(august).getByTestId("filing").textContent).toBe("ABS-EE 0009900001-26-000417");
+  });
+
+  it("says when no tape was filed for a month, in the table and the legend", () => {
+    const history = loanHistory();
+    history.months[1] = historyMonth("2026-08", "August 2026", {
+      on_tape: false,
+      ending_balance: null,
+      dscr: null,
+      payment_status: null,
+      source: null,
+    });
+    history.status_changes = [];
+    render(<HistoryChart history={history} asOf="2026-10-28" />);
+    const august = screen
+      .getByTestId("history-table")
+      .querySelector<HTMLElement>('[data-month="2026-08"]') as HTMLElement;
+    expect([...august.children].map((cell) => cell.textContent)).toEqual([
+      "August 2026",
+      "not reported",
+      "not reported",
+      "no tape filed",
+      "",
+      "no tape filed",
+    ]);
+    expect(within(august).queryByTestId("filing")).toBeNull();
+    hover("2026-08-01");
+    expect(legend().text).toBe(
+      "August 2026: ending balance not reported, DSCR not reported, payment status no tape " +
+        "filed; no tape filed",
+    );
+  });
+
+  it("says what a gap in a line means", () => {
+    render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
+    expect(screen.getByTestId("gap-note").textContent).toBe(
+      "A gap in a line is a month that does not report the value; the table says whether the " +
+        "loan was not on that month's tape or no tape was filed.",
+    );
+  });
+
+  it("keeps the table in a box of its own that scrolls sideways, never the page", () => {
+    render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
+    expect(screen.getByTestId("history-table").parentElement?.className).toBe("table-scroll");
+    expect(styles).toMatch(/\.table-scroll \{\n {2}max-width: 100%;\n {2}overflow-x: auto;\n\}/);
   });
 
   it("credits TradingView with its notice and a link, as its licence requires", () => {
@@ -268,7 +356,29 @@ describe("HistoryChart", () => {
     expect(credit.textContent).toBe(`Chart: ${NOTICE} https://www.tradingview.com/`);
     expect(within(credit).getByRole("link").getAttribute("href")).toBe(TRADINGVIEW);
     expect(TRADINGVIEW).toBe("https://www.tradingview.com/");
-    expect(drawn().options).toMatchObject({ layout: { attributionLogo: true } });
+    // The notice and link under the chart are the credit; no logo covers the plot.
+    expect(drawn().options).toMatchObject({ layout: { attributionLogo: false } });
+  });
+
+  it("draws the chart again when the system's colour scheme or the page's theme changes", async () => {
+    const { unmount } = render(<HistoryChart history={loanHistory()} asOf="2026-10-28" />);
+    const first = drawn();
+    expect(colorScheme.queries).toEqual([DARK_MODE]);
+    expect(DARK_MODE).toBe("(prefers-color-scheme: dark)");
+    act(() => colorScheme.change());
+    expect(first.removed).toBe(true);
+    expect(charts).toHaveLength(2);
+    expect(screen.getByTestId("history-chart")).toBe((charts[1] as FakeChart).element);
+    await act(async () => document.documentElement.setAttribute("data-theme", "dark"));
+    expect(charts).toHaveLength(3);
+    await act(async () => document.documentElement.setAttribute("lang", "en"));
+    expect(charts).toHaveLength(3);
+    unmount();
+    expect(colorScheme.listeners.size).toBe(0);
+    await act(async () => document.documentElement.setAttribute("data-theme", "light"));
+    expect(charts).toHaveLength(3);
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute("lang");
   });
 
   it("removes the chart when the page closes, and redraws it for another history", () => {

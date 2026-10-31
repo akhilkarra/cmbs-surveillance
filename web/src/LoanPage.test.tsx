@@ -44,6 +44,13 @@ describe("LoanContent", () => {
     );
   });
 
+  it("keeps each table in a box of its own that scrolls sideways, never the page", () => {
+    render(<LoanContent data={loanPage()} />);
+    for (const table of ["tape-values", "comment-values", "history-table"]) {
+      expect(screen.getByTestId(table).parentElement?.className).toBe("table-scroll");
+    }
+  });
+
   it("names a property the tape does not", () => {
     render(<LoanContent data={loanPage({ property_name: null })} />);
     expect(screen.getByText(/^Property not named\. September 2026/)).toBeTruthy();
