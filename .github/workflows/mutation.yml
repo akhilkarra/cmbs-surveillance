@@ -19,10 +19,12 @@ concurrency:
 jobs:
   # Python mutation testing in sixteen parallel shards that together run every mutant exactly
   # once (tools/mutation_shards.py). With a database, so code reached only by database tests is
-  # mutation-tested too; every test uses its own scratch database, named per process.
+  # mutation-tested too; every test uses its own scratch database, named per process. GitHub's
+  # runners are far slower than a laptop, so each shard gets three hours; read a run's job times
+  # before tightening it.
   python:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
