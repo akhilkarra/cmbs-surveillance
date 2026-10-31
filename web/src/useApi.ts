@@ -1,19 +1,21 @@
 import { useEffect, useState } from "react";
-import { getJson } from "./api";
+import type { ApiRead } from "./api";
+import { asUser } from "./http";
 
 export type Resource<T> =
   | { state: "loading" }
   | { state: "ready"; data: T }
   | { state: "error"; message: string };
 
-/** Read an API path as a user, again whenever either changes. An answer that arrives after the
- *  path changed, or after the page closed, is dropped. */
-export function useApi<T>(path: string, user: string): Resource<T> {
+/** Make a read as a user, again whenever either changes. An answer that arrives after the read
+ *  changed, or after the page closed, is dropped. Pass a read that keeps its identity while its
+ *  key does (`useMemo`), or it is made again on every render. */
+export function useApi<T>(read: ApiRead<T>, user: string): Resource<T> {
   const [resource, setResource] = useState<Resource<T>>({ state: "loading" });
   useEffect(() => {
     let current = true;
     setResource({ state: "loading" });
-    getJson<T>(path, user).then(
+    read.send(asUser(user)).then(
       (data) => {
         if (current) setResource({ state: "ready", data });
       },
@@ -24,6 +26,6 @@ export function useApi<T>(path: string, user: string): Resource<T> {
     return () => {
       current = false;
     };
-  }, [path, user]);
+  }, [read, user]);
   return resource;
 }

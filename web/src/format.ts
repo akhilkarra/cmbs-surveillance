@@ -21,10 +21,9 @@ export function formatRatio(ratio: string): string {
 /** A value the filing does not report is "not reported", never zero. */
 export const NOT_REPORTED = "not reported";
 
-export type ValueKind = "money" | "date" | "ratio" | "text";
-
-/** A panel value as the page shows it, by the kind the API names. */
-export function formatValue(kind: ValueKind, value: string | null): string {
+/** A panel value as the page shows it, by the kind the API names: "money" and "ratio" are
+ *  formatted, any other kind ("date", "text") is shown as sent. */
+export function formatValue(kind: string, value: string | null): string {
   if (value === null) {
     return NOT_REPORTED;
   }

@@ -1,164 +1,49 @@
-// The dashboard API (src/cmbs/dashboard/routes.py). Money and ratios arrive as decimal strings,
-// dates as ISO strings; every label and ordering is the server's.
+// The dashboard's reads of the API (src/cmbs/dashboard/routes.py), through the client orval
+// generates from the committed schema (src/generated, from openapi.json). Money and ratios
+// arrive as decimal strings, dates as ISO strings; every label and ordering is the server's.
 
-import type { ValueKind } from "./format";
+import type { BookPage, LoanPage } from "./generated/api.schemas";
+import {
+  getDashboardBook,
+  getDashboardLoan,
+  getGetDashboardBookUrl,
+  getGetDashboardLoanUrl,
+} from "./generated/dashboard/dashboard";
 
-export const USER_HEADER = "X-CMBS-User";
+// The API's types under the names the pages use; the components are BookPage and LoanPage.
+export type {
+  BookPage as BookPageData,
+  BookRow,
+  Check,
+  CommentSection,
+  CommentValue,
+  FilingSource,
+  Financials,
+  LoanPage as LoanPageData,
+  TapeValue,
+} from "./generated/api.schemas";
 
-export type Severity = "high" | "medium" | "low";
-
-export interface MonthRef {
+/** One read a page makes: `key` is its URL, which names it; `send` makes it with the request
+ *  options given (the user's header). */
+export interface ApiRead<T> {
   key: string;
-  label: string;
+  send: (init: RequestInit) => Promise<T>;
 }
 
-/** A deal's loan an alert is on. An alert on the deal (loans its tape dropped or added) has no
- * loan to open; its label says how many loans it lists ("19 loans"). */
-export interface LoanRef {
-  deal: string;
-  loan: string | null;
-  label: string;
+/** The book for a month, or for the latest month built when none is named. */
+export function bookRead(month: string | null): ApiRead<BookPage> {
+  const params = month === null ? {} : { month };
+  return {
+    key: getGetDashboardBookUrl(params),
+    send: (init) => getDashboardBook(params, init),
+  };
 }
 
-export interface BookRow {
-  alert_id: number;
-  severity: Severity;
-  title: string;
-  message: string;
-  loans: LoanRef[];
-  exposure: string;
-  balance: string | null;
-  classes: string[];
-  state: string;
-  state_text: string;
-  note: string | null;
-}
-
-export interface BookPageData {
-  month: MonthRef;
-  previous: MonthRef;
-  next: MonthRef;
-  as_of: string;
-  rows: BookRow[];
-  note: string | null;
-}
-
-/** One thing that verified a value: a check that "passed", "failed" or was "not checked", or a
- *  person's decision ("decided"). */
-export interface Check {
-  label: string;
-  outcome: "passed" | "failed" | "not checked" | "decided";
-}
-
-export interface FilingSource {
-  form: string;
-  accession: string;
-  filing_date: string;
-  url: string;
-}
-
-export interface LoadedBy {
-  run: number | null;
-  by: string | null;
-  at: string | null;
-  text: string;
-}
-
-export interface TapeValue {
-  field: string;
-  label: string;
-  kind: ValueKind;
-  value: string | null;
-  checks: Check[];
-}
-
-export interface Financials {
-  start: string | null;
-  end: string | null;
-  days_at_period_end: number | null;
-  days_at_filing: number | null;
-  status: string;
-}
-
-export interface CommentValue {
-  field: string;
-  label: string;
-  status: string;
-  value: string | null;
-  sentence: number | null;
-  evidence: string | null;
-  checks: Check[];
-  review_reason: string | null;
-  model_value: string | null;
-  decided_by: string | null;
-  decided_at: string | null;
-  overridden_by: string | null;
-  overridden_at: string | null;
-  override_reason: string | null;
-  declined_reason: string | null;
-  /** Who settled the value by hand, when and why; null when nobody did. */
-  decision: string | null;
-}
-
-export interface CommentSection {
-  source: FilingSource;
-  loaded: LoadedBy;
-  sentences: string[];
-  model: string;
-  prompt_version: number;
-  settings_version: number;
-  values: CommentValue[];
-}
-
-export interface LoanFlag {
-  id: number;
-  check: string;
-  message: string;
-}
-
-export interface LoanAlert {
-  alert_id: number;
-  severity: Severity;
-  message: string;
-  state_text: string;
-}
-
-export interface LoanPageData {
-  deal: string;
-  loan: string;
-  month: MonthRef;
-  as_of: string;
-  property_name: string | null;
-  property_type: string | null;
-  tape: { source: FilingSource; loaded: LoadedBy; values: TapeValue[] };
-  financials: Financials;
-  comment: CommentSection | null;
-  comment_note: string | null;
-  flags: LoanFlag[];
-  alerts: LoanAlert[];
-}
-
-export function bookPath(month: string | null): string {
-  return month === null ? "/dashboard/book" : `/dashboard/book?month=${encodeURIComponent(month)}`;
-}
-
-export function loanPath(deal: string, loan: string, month: string | null): string {
-  const query = new URLSearchParams({ deal, loan });
-  if (month !== null) {
-    query.set("month", month);
-  }
-  return `/dashboard/loan?${query.toString()}`;
-}
-
-/** Read an API path as a user; a refusal comes back as an Error with the server's message. */
-export async function getJson<T>(path: string, user: string): Promise<T> {
-  const response = await fetch(path, { headers: { [USER_HEADER]: user } });
-  const body: unknown = await response.json();
-  if (!response.ok) {
-    const detail = (body as { detail?: unknown }).detail;
-    throw new Error(
-      typeof detail === "string" ? detail : `the server answered HTTP ${response.status}`,
-    );
-  }
-  return body as T;
+/** A deal's loan for a month, or for the deal's latest month when none is named. */
+export function loanRead(deal: string, loan: string, month: string | null): ApiRead<LoanPage> {
+  const params = month === null ? { deal, loan } : { deal, loan, month };
+  return {
+    key: getGetDashboardLoanUrl(params),
+    send: (init) => getDashboardLoan(params, init),
+  };
 }

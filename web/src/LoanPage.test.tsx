@@ -328,6 +328,7 @@ describe("LoanPage", () => {
     await waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
     expect(fetch).toHaveBeenCalledWith("/dashboard/loan?deal=Fixture+Trust+2026-F1&loan=2", {
       headers: { "X-CMBS-User": "pat" },
+      method: "GET",
     });
   });
 });

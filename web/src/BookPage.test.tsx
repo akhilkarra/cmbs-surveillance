@@ -205,6 +205,7 @@ describe("BookPage", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(fetch).toHaveBeenCalledWith("/dashboard/book?month=2026-09", {
       headers: { "X-CMBS-User": "pat" },
+      method: "GET",
     });
   });
 

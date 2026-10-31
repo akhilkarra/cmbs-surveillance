@@ -1,5 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { useMemo } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { http } from "./http";
 import { useApi } from "./useApi";
 
 afterEach(() => {
@@ -7,7 +9,11 @@ afterEach(() => {
 });
 
 function Probe({ path, user }: { path: string; user: string }) {
-  const resource = useApi<{ name: string }>(path, user);
+  const read = useMemo(
+    () => ({ key: path, send: (init: RequestInit) => http<{ name: string }>(path, init) }),
+    [path],
+  );
+  const resource = useApi(read, user);
   return (
     <p data-testid="probe">
       {resource.state === "ready" ? resource.data.name : resource.state}

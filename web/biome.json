@@ -5,7 +5,7 @@
       "**",
       "!!**/dist",
       "!!**/reports",
-      "!!**/coverage",
+      "!!coverage",
       "!!**/.stryker-tmp",
       "!openapi.json"
     ]

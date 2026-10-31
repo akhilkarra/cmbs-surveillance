@@ -1,13 +1,13 @@
 // The book view's grid: one row per open alert, in the order the API sends (severity, then
 // exposure, then the loan's balance). Columns cannot be sorted, so no other order is shown.
 
-import type { BookRow, Severity } from "./api";
+import type { BookRow } from "./api";
 import { formatMoney, formatValue } from "./format";
 import { loanHref } from "./route";
 
 export interface GridRow {
   id: string;
-  severity: Severity;
+  severity: BookRow["severity"];
   deal: string;
   loan: string;
   loanHref: string;
