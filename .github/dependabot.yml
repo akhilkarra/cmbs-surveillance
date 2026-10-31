@@ -63,6 +63,23 @@ updates:
       - dependency-name: node
         update-types: ["version-update:semver-major"]
 
+  # Base-image digests in the api service's Dockerfile (node, uv, python); the docker-compose
+  # ecosystem above does not read Dockerfiles. The Dockerfile's node digest must stay equal to
+  # the web service's in compose.yaml: when either bump lands alone, update the other by hand.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      dockerfile:
+        patterns: ["*"]
+    ignore:
+      # Node stays on its LTS line, as for compose.yaml above.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
   # Hook revisions in .pre-commit-config.yaml. The local Biome hook's version is not seen here;
   # keep it equal to @biomejs/biome in web/package.json.
   - package-ecosystem: pre-commit

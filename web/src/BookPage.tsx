@@ -7,7 +7,7 @@ import {
   themeQuartz,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { type BookPageData, bookPath } from "./api";
+import { type BookPageData, bookRead } from "./api";
 import { type GridRow, gridRow } from "./bookGrid";
 import { openAlertsLabel } from "./format";
 import { Loadable } from "./Loadable";
@@ -132,7 +132,7 @@ export function BookContent({ data }: { data: BookPageData }) {
 }
 
 export function BookPage({ user, month }: { user: string; month: string | null }) {
-  const resource = useApi<BookPageData>(bookPath(month), user);
+  const resource = useApi(bookRead(month), user);
   return (
     <Loadable testId="book" resource={resource} loading="Reading the book's alerts">
       {(data) => <BookContent data={data} />}

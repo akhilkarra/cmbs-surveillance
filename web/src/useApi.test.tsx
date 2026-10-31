@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { http } from "./http";
 import { useApi } from "./useApi";
 
 afterEach(() => {
@@ -7,7 +8,9 @@ afterEach(() => {
 });
 
 function Probe({ path, user }: { path: string; user: string }) {
-  const resource = useApi<{ name: string }>(path, user);
+  // A new read object on every render, as a caller that does not memoise it makes.
+  const read = { key: path, send: (init: RequestInit) => http<{ name: string }>(path, init) };
+  const resource = useApi(read, user);
   return (
     <p data-testid="probe">
       {resource.state === "ready" ? resource.data.name : resource.state}
@@ -35,6 +38,18 @@ function held() {
 }
 
 describe("useApi", () => {
+  it("reads once while the key and the user stay the same, however often the page draws", async () => {
+    const release = held();
+    const { rerender } = render(<Probe path="/a" user="pat" />);
+    rerender(<Probe path="/a" user="pat" />);
+    release("pat /a", { name: "a" });
+    await waitFor(() => expect(screen.getByTestId("probe").textContent).toBe("a"));
+    rerender(<Probe path="/a" user="pat" />);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("probe").textContent).toBe("a");
+  });
+
   it("drops an answer for a path no longer shown, and shows the current one", async () => {
     const release = held();
     const { rerender } = render(<Probe path="/a" user="pat" />);

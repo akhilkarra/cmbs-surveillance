@@ -50,3 +50,22 @@ def test_domain_refusals_become_readable_responses():
     response = TestClient(app).get("/refuse-for-test")
     assert response.status_code == 422
     assert response.json() == {"detail": "0001888524-26-017705 already has period '2026-09-01'"}
+
+
+@needs_db
+def test_ready_when_the_database_answers(db, client):
+    response = client.get("/health/ready")
+    assert (response.status_code, response.json()) == (200, {"status": "ready"})
+
+
+def test_not_ready_when_the_database_does_not_answer(client, monkeypatch):
+    # Port 1 refuses connections at once, so this needs no database.
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://cmbs:cmbs@127.0.0.1:1/none")
+    response = client.get("/health/ready")
+    assert (response.status_code, response.json()) == (503, {"status": "database unavailable"})
+
+
+def test_not_ready_when_no_database_is_configured(client, monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    response = client.get("/health/ready")
+    assert (response.status_code, response.json()) == (503, {"status": "database unavailable"})

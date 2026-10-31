@@ -11,8 +11,11 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from cmbs.access.service import PermissionRefused, UnknownUser
+from cmbs.db import engine
 from cmbs.db.registry import all_route_modules
 from cmbs.errors import Refused
 
@@ -22,6 +25,16 @@ WEB_DIST = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 def _web_dist() -> Path:
     return Path(os.environ.get("CMBS_WEB_DIST") or WEB_DIST)
+
+
+def database_answers() -> bool:
+    """Whether the database answers a query now: not configured or not reachable is False."""
+    try:
+        with engine.session() as db:
+            db.execute(text("SELECT 1"))
+    except (SQLAlchemyError, RuntimeError):  # RuntimeError: DATABASE_URL is not set
+        return False
+    return True
 
 
 def create_app(*, web_dist: Path | None = None) -> FastAPI:
@@ -37,6 +50,18 @@ def create_app(*, web_dist: Path | None = None) -> FastAPI:
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get(
+        "/health/ready",
+        tags=["meta"],
+        responses={503: {"description": "The database does not answer"}},
+    )
+    def ready() -> JSONResponse:
+        """Ready to serve: the process is up and the database answers `SELECT 1`. The api
+        container's healthcheck (and so `docker compose up --wait`) waits on this."""
+        if database_answers():
+            return JSONResponse({"status": "ready"})
+        return JSONResponse(status_code=503, content={"status": "database unavailable"})
 
     for module in all_route_modules():
         app.include_router(module.router)

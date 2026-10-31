@@ -7,7 +7,7 @@ import type {
   LoanPageData,
   TapeValue,
 } from "./api";
-import { loanPath } from "./api";
+import { loanRead } from "./api";
 import { formatValue, NOT_REPORTED } from "./format";
 import { Loadable } from "./Loadable";
 import { bookHref } from "./route";
@@ -223,7 +223,7 @@ export function LoanPage(props: {
   loan: string;
   month: string | null;
 }) {
-  const resource = useApi<LoanPageData>(loanPath(props.deal, props.loan, props.month), props.user);
+  const resource = useApi(loanRead(props.deal, props.loan, props.month), props.user);
   return (
     <Loadable testId="loan" resource={resource} loading={`Reading loan ${props.loan}`}>
       {(data) => <LoanContent data={data} />}
