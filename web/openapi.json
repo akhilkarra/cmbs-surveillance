@@ -1100,7 +1100,7 @@
         "type": "object"
       },
       "HistoryMonth": {
-        "description": "One month of a loan's history as the deal's current tape for it reported the loan.\n`day` is the month's first day, where the chart places it. A value the tape does not report\nis None, never zero; a month whose tape leaves the loan out (`on_tape` false) reports\nnothing, so the chart has a gap there rather than a line drawn across it.",
+        "description": "One month of a loan's history as the deal's current tape for it reported the loan.\n`day` is the month's first day, where the chart places it. A value the tape does not report\nis None, never zero. A month whose tape leaves the loan out (`on_tape` false), or for which\nno tape had been filed (`source` None: a deal reports every month, so a month missing\nbetween two tapes is a gap), reports nothing, and the chart leaves a gap there rather than\na line drawn across it.",
         "properties": {
           "day": {
             "format": "date",
@@ -1147,7 +1147,14 @@
             ]
           },
           "source": {
-            "$ref": "#/components/schemas/FilingSource"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilingSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

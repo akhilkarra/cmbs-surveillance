@@ -351,8 +351,10 @@ export interface PaymentStatus {
 /**
  * One month of a loan's history as the deal's current tape for it reported the loan.
  * `day` is the month's first day, where the chart places it. A value the tape does not report
- * is None, never zero; a month whose tape leaves the loan out (`on_tape` false) reports
- * nothing, so the chart has a gap there rather than a line drawn across it.
+ * is None, never zero. A month whose tape leaves the loan out (`on_tape` false), or for which
+ * no tape had been filed (`source` None: a deal reports every month, so a month missing
+ * between two tapes is a gap), reports nothing, and the chart leaves a gap there rather than
+ * a line drawn across it.
  */
 export interface HistoryMonth {
   day: string;
@@ -361,7 +363,7 @@ export interface HistoryMonth {
   month: MonthRef;
   on_tape: boolean;
   payment_status: PaymentStatus | null;
-  source: FilingSource;
+  source: FilingSource | null;
 }
 
 export type LoanAlertSeverity = (typeof LoanAlertSeverity)[keyof typeof LoanAlertSeverity];

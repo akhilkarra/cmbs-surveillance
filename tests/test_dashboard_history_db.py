@@ -78,6 +78,11 @@ def world(seeded: Session) -> Session:
     return seeded
 
 
+def filing(month: service.HistoryMonth) -> service.FilingSource:
+    assert month.source is not None, f"{month.month.label} has no filing"
+    return month.source
+
+
 def history(db: Session, day: dt.date, loan: str = "2") -> service.LoanHistory:
     return service.loan_history(db, deal_id=deal_id(db, F1), loan=loan, day=day)
 
@@ -93,9 +98,9 @@ def test_the_history_is_each_month_as_published_with_the_filing_it_came_from(wor
             m.ending_balance,
             m.dscr,
             m.payment_status,
-            m.source.form,
-            m.source.accession,
-            m.source.filing_date,
+            filing(m).form,
+            filing(m).accession,
+            filing(m).filing_date,
         )
         for m in found.months
     ]
@@ -134,7 +139,7 @@ def test_the_history_is_each_month_as_published_with_the_filing_it_came_from(wor
             dt.date(2026, 9, 29),
         ),
     ]
-    assert found.months[0].source.url.startswith(
+    assert filing(found.months[0]).url.startswith(
         "https://www.sec.gov/Archives/edgar/data/9900001/000990000126000701/"
     )
     assert found.status_changes == (
@@ -169,17 +174,17 @@ def test_an_amendment_changes_its_month_only_from_the_day_it_was_filed(world):
     world.commit()
     before = history(world, dt.date(2026, 10, 4)).months[1]
     after = history(world, dt.date(2026, 10, 5)).months[1]
-    assert (before.ending_balance, before.dscr, before.source.accession) == (
+    assert (before.ending_balance, before.dscr, filing(before).accession) == (
         "30200000.00",
         None,
         "0009900001-26-000801",
     )
-    assert (after.ending_balance, after.dscr, after.source.accession) == (
+    assert (after.ending_balance, after.dscr, filing(after).accession) == (
         "30250000.00",
         "1.01",
         amended,
     )
-    assert after.source.filing_date == dt.date(2026, 10, 5)
+    assert filing(after).filing_date == dt.date(2026, 10, 5)
 
 
 @needs_db
@@ -194,7 +199,7 @@ def test_a_month_whose_tape_leaves_the_loan_out_is_a_gap(seeded):
         ("2026-08", False, None),
         ("2026-09", True, "30000000.00"),
     ]
-    assert months[1].source.accession == "0009900001-26-000801"
+    assert filing(months[1]).accession == "0009900001-26-000801"
 
 
 @needs_db
@@ -208,6 +213,31 @@ def test_the_loan_page_carries_its_history_as_of_its_day(world):
     assert page.month.key == "2026-08"
     assert [m.month.key for m in page.history.months] == ["2026-07", "2026-08"]
     assert [c.bucket for c in page.history.status_changes] == ["grace or late"]
+
+
+@needs_db
+def test_the_history_ends_at_the_month_the_page_shows(world):
+    page = service.loan_page(world, reader="pat", deal=F1, loan="2", period=AUGUST)
+    assert page.as_of == dt.date(2026, 10, 28)
+    assert [m.month.key for m in page.history.months] == ["2026-07", "2026-08"]
+    assert [c.month.key for c in page.history.status_changes] == ["2026-08"]
+    capped = service.loan_history(
+        world, deal_id=deal_id(world, F1), loan="2", day=dt.date(2026, 9, 1), through=SEPTEMBER
+    )
+    assert [m.month.key for m in capped.months] == ["2026-07", "2026-08"]
+
+
+@needs_db
+def test_a_month_with_no_tape_filed_is_a_gap_without_a_filing(seeded):
+    load(seeded, JULY, tape(JULY, *REPORTED[JULY]))
+    load(seeded, SEPTEMBER, tape(SEPTEMBER, *REPORTED[SEPTEMBER]))
+    seeded.commit()
+    months = history(seeded, dt.date(2026, 10, 28)).months
+    assert [(m.month.key, m.on_tape, m.source is None) for m in months] == [
+        ("2026-07", True, False),
+        ("2026-08", False, True),
+        ("2026-09", True, False),
+    ]
 
 
 @needs_db

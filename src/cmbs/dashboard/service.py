@@ -350,8 +350,10 @@ class PaymentStatus:
 class HistoryMonth:
     """One month of a loan's history as the deal's current tape for it reported the loan.
     `day` is the month's first day, where the chart places it. A value the tape does not report
-    is None, never zero; a month whose tape leaves the loan out (`on_tape` false) reports
-    nothing, so the chart has a gap there rather than a line drawn across it."""
+    is None, never zero. A month whose tape leaves the loan out (`on_tape` false), or for which
+    no tape had been filed (`source` None: a deal reports every month, so a month missing
+    between two tapes is a gap), reports nothing, and the chart leaves a gap there rather than
+    a line drawn across it."""
 
     month: MonthRef
     day: dt.date
@@ -359,7 +361,7 @@ class HistoryMonth:
     ending_balance: str | None
     dscr: str | None
     payment_status: PaymentStatus | None
-    source: FilingSource
+    source: FilingSource | None
 
 
 @dataclass(frozen=True)
@@ -388,9 +390,11 @@ def payment_status(code: str | None) -> PaymentStatus | None:
     return PaymentStatus(code=code.strip(), name=name_of(PAYMENT_STATUS, code))
 
 
-def history_month(period: Period, source: FilingSource, row: LoanPeriod | None) -> HistoryMonth:
-    """A month of the loan's history from the tape `source`, which reports the loan as `row`
-    (None: the tape leaves the loan out)."""
+def history_month(
+    period: Period, source: FilingSource | None, row: LoanPeriod | None
+) -> HistoryMonth:
+    """A month of the loan's history from the tape `source` (None: no tape filed), which
+    reports the loan as `row` (None: the tape leaves the loan out)."""
     return HistoryMonth(
         month=month_ref(period),
         day=period.first_day,
@@ -405,15 +409,22 @@ def history_month(period: Period, source: FilingSource, row: LoanPeriod | None) 
 def history_months(
     tapes: Sequence[tuple[Period, FilingSource]], rows: Mapping[str, LoanPeriod]
 ) -> tuple[HistoryMonth, ...]:
-    """The loan's months from the deal's current tapes, oldest first, and the loan's row on
-    each tape that reports it (by accession): every month from the first tape that reports the
-    loan to the last, so a month in between whose tape leaves the loan out is a gap."""
-    reported = [index for index, (_, source) in enumerate(tapes) if source.accession in rows]
+    """The loan's months from the deal's current tapes, and the loan's row on each tape that
+    reports it (by accession): every calendar month, oldest first, from the first tape that
+    reports the loan to the last. A month in between whose tape leaves the loan out, or that
+    has no tape at all, is a gap."""
+    by_period = dict(tapes)
+    reported = sorted(period for period, source in tapes if source.accession in rows)
     if not reported:
         return ()
+    months = [reported[0].shift(n) for n in range(reported[0].months_until(reported[-1]) + 1)]
     return tuple(
-        history_month(period, source, rows.get(source.accession))
-        for period, source in tapes[reported[0] : reported[-1] + 1]
+        history_month(
+            period,
+            by_period.get(period),
+            rows.get(by_period[period].accession) if period in by_period else None,
+        )
+        for period in months
     )
 
 
@@ -773,11 +784,18 @@ def _loan_alerts(
     )
 
 
-def loan_history(db: Session, *, deal_id: int, loan: str, day: dt.date) -> LoanHistory:
-    """The loan's history as published by the end of `day`: each month as the deal's current
-    tape for it on that day reports the loan (`cmbs.panel.service.as_of`), so a month filed
-    later, or an amendment filed later, is not on it."""
-    tapes = panel.current_tapes(db, day, deal_id=deal_id)
+def loan_history(
+    db: Session, *, deal_id: int, loan: str, day: dt.date, through: Period | None = None
+) -> LoanHistory:
+    """The loan's history as published by the end of `day`, through the month `through` (every
+    month by default): each month as the deal's current tape for it on that day reports the
+    loan (`cmbs.panel.service.as_of`), so a month filed later, or an amendment filed later, is
+    not on it."""
+    tapes = [
+        tape
+        for tape in panel.current_tapes(db, day, deal_id=deal_id)
+        if through is None or Period.of(tape.period) <= through
+    ]
     filings = {
         filing.accession: filing_source(filing)
         for filing in db.scalars(
@@ -828,5 +846,5 @@ def loan_page(
         comment_note=comment_note(month) if view is None else None,
         flags=_flags(db, deal_row.id, loan, month, day),
         alerts=_loan_alerts(db, deal_row.id, loan, month, day),
-        history=loan_history(db, deal_id=deal_row.id, loan=loan, day=day),
+        history=loan_history(db, deal_id=deal_row.id, loan=loan, day=day, through=month),
     )

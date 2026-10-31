@@ -136,6 +136,36 @@ def test_the_months_run_from_the_first_tape_reporting_the_loan_to_the_last():
     assert [m.source for m in months] == [source(AUGUST), source(SEPTEMBER), source(OCTOBER)]
 
 
+def test_a_month_with_no_tape_between_two_tapes_is_a_gap_with_no_filing():
+    tapes = [(period, source(period)) for period in (JULY, SEPTEMBER, OCTOBER)]
+    rows = {source(p).accession: row(p) for p in (JULY, SEPTEMBER)}
+    months = service.history_months(tapes, rows)
+    assert [(m.month.key, m.on_tape, m.source) for m in months] == [
+        ("2026-07", True, source(JULY)),
+        ("2026-08", False, None),
+        ("2026-09", True, source(SEPTEMBER)),
+    ]
+    assert months[1] == HistoryMonth(
+        month=MonthRef("2026-08", "August 2026"),
+        day=dt.date(2026, 8, 1),
+        on_tape=False,
+        ending_balance=None,
+        dscr=None,
+        payment_status=None,
+        source=None,
+    )
+
+
+def test_the_months_follow_the_calendar_whatever_order_the_tapes_come_in():
+    tapes = [(period, source(period)) for period in (SEPTEMBER, JULY, AUGUST)]
+    rows = {source(p).accession: row(p) for p in (JULY, AUGUST, SEPTEMBER)}
+    assert [m.month.key for m in service.history_months(tapes, rows)] == [
+        "2026-07",
+        "2026-08",
+        "2026-09",
+    ]
+
+
 def test_one_month_reported_is_a_history_of_one_month():
     tapes = [(period, source(period)) for period in (JULY, AUGUST, SEPTEMBER)]
     months = service.history_months(tapes, {source(JULY).accession: row(JULY)})
