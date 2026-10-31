@@ -123,6 +123,38 @@ export interface LoanAlert {
   state_text: string;
 }
 
+/** A payment status as the tape reports it ("A") and its name ("in grace period"). */
+export interface PaymentStatus {
+  code: string;
+  name: string;
+}
+
+/** One month of a loan's history, as published on the page's day. `day` is the month's first
+ *  day, where the chart places it; a value not reported is null, never zero, and a month whose
+ *  tape leaves the loan out (`on_tape` false) reports nothing. */
+export interface HistoryMonth {
+  month: MonthRef;
+  day: string;
+  on_tape: boolean;
+  ending_balance: string | null;
+  dscr: string | null;
+  payment_status: PaymentStatus | null;
+  source: FilingSource;
+}
+
+/** A month whose payment status changed, and the delinquency bucket it moved into. */
+export interface StatusChange {
+  month: MonthRef;
+  day: string;
+  code: string;
+  bucket: string;
+}
+
+export interface LoanHistory {
+  months: HistoryMonth[];
+  status_changes: StatusChange[];
+}
+
 export interface LoanPageData {
   deal: string;
   loan: string;
@@ -136,16 +168,25 @@ export interface LoanPageData {
   comment_note: string | null;
   flags: LoanFlag[];
   alerts: LoanAlert[];
+  history: LoanHistory;
 }
 
 export function bookPath(month: string | null): string {
   return month === null ? "/dashboard/book" : `/dashboard/book?month=${encodeURIComponent(month)}`;
 }
 
-export function loanPath(deal: string, loan: string, month: string | null): string {
+export function loanPath(
+  deal: string,
+  loan: string,
+  month: string | null,
+  asOf: string | null,
+): string {
   const query = new URLSearchParams({ deal, loan });
   if (month !== null) {
     query.set("month", month);
+  }
+  if (asOf !== null) {
+    query.set("as_of", asOf);
   }
   return `/dashboard/loan?${query.toString()}`;
 }

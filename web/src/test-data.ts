@@ -1,5 +1,5 @@
 // Sample API answers for component tests, shaped as src/cmbs/dashboard/routes.py sends them.
-import type { BookPageData, CommentValue, LoanPageData } from "./api";
+import type { BookPageData, CommentValue, HistoryMonth, LoanHistory, LoanPageData } from "./api";
 
 export const F1 = "Fixture Trust 2026-F1";
 export const F2 = "Fixture Trust 2026-F2";
@@ -65,6 +65,62 @@ export function commentValue(changes: Partial<CommentValue> = {}): CommentValue 
     declined_reason: null,
     decision: null,
     ...changes,
+  };
+}
+
+/** A month of loan 2's history, filed on the 29th in an ABS-EE numbered as the fixtures are. */
+export function historyMonth(
+  key: string,
+  label: string,
+  changes: Partial<HistoryMonth> = {},
+): HistoryMonth {
+  const number = `0009900001-26-${String(401 + 2 * Number(key.slice(5))).padStart(6, "0")}`;
+  return {
+    month: { key, label },
+    day: `${key}-01`,
+    on_tape: true,
+    ending_balance: "30000000.00",
+    dscr: "1.12",
+    payment_status: { code: "0", name: "current" },
+    source: {
+      form: "ABS-EE",
+      accession: number,
+      filing_date: `${key}-29`,
+      url: `https://www.sec.gov/Archives/edgar/data/9900001/${number.replaceAll("-", "")}/ex102.xml`,
+    },
+    ...changes,
+  };
+}
+
+/** Loan 2's July to September 2026, as the loan history chart's feature reports them. */
+export function loanHistory(): LoanHistory {
+  return {
+    months: [
+      historyMonth("2026-07", "July 2026", { ending_balance: "30400000.00" }),
+      historyMonth("2026-08", "August 2026", {
+        ending_balance: "30200000.00",
+        dscr: null,
+        payment_status: { code: "A", name: "in grace period" },
+      }),
+      historyMonth("2026-09", "September 2026", {
+        dscr: "0.96",
+        payment_status: { code: "1", name: "30 days" },
+      }),
+    ],
+    status_changes: [
+      {
+        month: { key: "2026-08", label: "August 2026" },
+        day: "2026-08-01",
+        code: "A",
+        bucket: "grace or late",
+      },
+      {
+        month: { key: "2026-09", label: "September 2026" },
+        day: "2026-09-01",
+        code: "1",
+        bucket: "30 days",
+      },
+    ],
   };
 }
 
@@ -145,6 +201,7 @@ export function loanPage(changes: Partial<LoanPageData> = {}): LoanPageData {
     comment_note: null,
     flags: [],
     alerts: [],
+    history: loanHistory(),
     ...changes,
   };
 }

@@ -361,3 +361,39 @@ h3 {
   font: inherit;
   padding: 0.4rem 0.6rem;
 }
+
+/* The loan's history: the hovered month's values over the chart, then the chart, its credit,
+   and the same months as a table. */
+.history {
+  margin: 0 0 2rem;
+}
+
+.legend {
+  margin: 0 0 0.5rem;
+  min-height: 3em;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.legend strong,
+.legend span {
+  color: var(--ink);
+}
+
+.history-chart {
+  height: 22rem;
+  border: 1px solid var(--rule);
+}
+
+.attribution {
+  margin: 0.35rem 0 1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.history-table caption {
+  margin-bottom: 0.35rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: left;
+}

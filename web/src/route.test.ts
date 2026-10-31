@@ -18,12 +18,37 @@ describe("parseRoute", () => {
       deal: "Fixture Trust 2026-F1",
       loan: "2",
       month: null,
+      asOf: null,
     });
     expect(parseRoute("#/loan/Fixture%20Trust%202026-F1/2-001/2026-08")).toEqual({
       page: "loan",
       deal: "Fixture Trust 2026-F1",
       loan: "2-001",
       month: "2026-08",
+      asOf: null,
+    });
+  });
+
+  it("reads the day a loan is read as of", () => {
+    expect(parseRoute("#/loan/Deal/2?as_of=2026-09-01")).toEqual({
+      page: "loan",
+      deal: "Deal",
+      loan: "2",
+      month: null,
+      asOf: "2026-09-01",
+    });
+    expect(parseRoute("#/loan/Deal/2/2026-08?x=1&as_of=2026-09-01")).toEqual({
+      page: "loan",
+      deal: "Deal",
+      loan: "2",
+      month: "2026-08",
+      asOf: "2026-09-01",
+    });
+    expect(parseRoute("#/loan/Deal/2?as_of=")).toMatchObject({ month: null, asOf: null });
+    expect(parseRoute("#/loan/Deal/2?")).toMatchObject({ month: null, asOf: null });
+    expect(parseRoute("#/book/2026-09?as_of=2026-09-01")).toEqual({
+      page: "book",
+      month: "2026-09",
     });
   });
 
@@ -62,6 +87,7 @@ describe("links", () => {
       deal: "A/B Trust",
       loan: "7",
       month: "2026-09",
+      asOf: null,
     });
   });
 });

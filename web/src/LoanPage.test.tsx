@@ -31,6 +31,19 @@ describe("LoanContent", () => {
     expect(back.getAttribute("href")).toBe("#/book/2026-09");
   });
 
+  it("charts the loan's history under its heading", () => {
+    render(<LoanContent data={loanPage()} />);
+    const section = screen.getByRole("region", { name: "History" });
+    const table = within(section).getByTestId("history-table");
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(within(section).getByTestId("history-legend").getAttribute("data-month")).toBe(
+      "2026-09",
+    );
+    expect(table.querySelector("caption")?.textContent).toBe(
+      "Each month as published by 2026-10-28",
+    );
+  });
+
   it("names a property the tape does not", () => {
     render(<LoanContent data={loanPage({ property_name: null })} />);
     expect(screen.getByText(/^Property not named\. September 2026/)).toBeTruthy();
@@ -322,12 +335,23 @@ describe("LoanPage", () => {
   it("reads the loan as the user", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify(loanPage())));
     vi.stubGlobal("fetch", fetch);
-    render(<LoanPage user="pat" deal={F1} loan="2" month={null} />);
+    render(<LoanPage user="pat" deal={F1} loan="2" month={null} asOf={null} />);
     const page = screen.getByTestId("loan");
     expect(screen.getByText("Reading loan 2").className).toBe("status");
     await waitFor(() => expect(page.getAttribute("data-state")).toBe("ready"));
     expect(fetch).toHaveBeenCalledWith("/dashboard/loan?deal=Fixture+Trust+2026-F1&loan=2", {
       headers: { "X-CMBS-User": "pat" },
     });
+  });
+
+  it("reads the loan as of a day", async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify(loanPage())));
+    vi.stubGlobal("fetch", fetch);
+    render(<LoanPage user="pat" deal={F1} loan="2" month="2026-08" asOf="2026-09-01" />);
+    await screen.findByTestId("loan-title");
+    expect(fetch).toHaveBeenCalledWith(
+      "/dashboard/loan?deal=Fixture+Trust+2026-F1&loan=2&month=2026-08&as_of=2026-09-01",
+      { headers: { "X-CMBS-User": "pat" } },
+    );
   });
 });

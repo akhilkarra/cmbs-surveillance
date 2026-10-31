@@ -9,6 +9,7 @@ import type {
 } from "./api";
 import { loanPath } from "./api";
 import { formatValue, NOT_REPORTED } from "./format";
+import { HistoryChart } from "./HistoryChart";
 import { Loadable } from "./Loadable";
 import { bookHref } from "./route";
 import { useApi } from "./useApi";
@@ -150,6 +151,10 @@ export function LoanContent({ data }: { data: LoanPageData }) {
           <span data-testid="as-of">{data.as_of}</span>.
         </p>
       </header>
+      <section aria-labelledby="history-heading">
+        <h2 id="history-heading">History</h2>
+        <HistoryChart history={data.history} asOf={data.as_of} />
+      </section>
       <div className="columns">
         <section aria-labelledby="tape-heading">
           <h2 id="tape-heading">Loan tape</h2>
@@ -222,8 +227,12 @@ export function LoanPage(props: {
   deal: string;
   loan: string;
   month: string | null;
+  asOf: string | null;
 }) {
-  const resource = useApi<LoanPageData>(loanPath(props.deal, props.loan, props.month), props.user);
+  const resource = useApi<LoanPageData>(
+    loanPath(props.deal, props.loan, props.month, props.asOf),
+    props.user,
+  );
   return (
     <Loadable testId="loan" resource={resource} loading={`Reading loan ${props.loan}`}>
       {(data) => <LoanContent data={data} />}
