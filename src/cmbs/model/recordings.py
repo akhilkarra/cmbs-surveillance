@@ -27,6 +27,7 @@ from cmbs.model.policy import (
     MalformedAnswer,
     check_answered_by,
     check_answers,
+    check_pin,
     recording_key,
     request_hashes,
 )
@@ -91,7 +92,8 @@ def make_recording(
 
 
 def check_recording(recording: Recording) -> None:
-    """The key matches the content, the asked model answered, and every question has an answer.
+    """The key matches the content, the asked model answered (a local model with its pinned
+    revision and reference code), and every question has an answer.
 
     The input text itself is not stored, so its hash is taken as recorded.
     """
@@ -111,6 +113,7 @@ def check_recording(recording: Recording) -> None:
     ):
         raise BadRecording(f"recording {recording.call_id[:12]} does not match its own request")
     check_answered_by(recording.model, recording.response.model)
+    check_pin(recording.model, recording.response)
     try:
         check_answers(recording.request, recording.response)
     except MalformedAnswer as error:

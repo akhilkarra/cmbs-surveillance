@@ -48,6 +48,9 @@ class NoulAnswer(_Frozen):
 
 
 class ChoiceAnswer(_Frozen):
+    """`confidence` is kept as the provider sent it, and providers define it differently (Jev's
+    spread above even, Clef's top probability): read `cmbs.model.policy.confidence` instead."""
+
     type: Literal["choice"] = "choice"
     choice: str
     confidence: float
@@ -66,12 +69,19 @@ class ModelRequest(_Frozen):
 
 
 class ModelResponse(_Frozen):
-    """`model` is the model that actually answered, which may differ from the one asked for."""
+    """`model` is the model that actually answered, which may differ from the one asked for.
+
+    A local model's answer also names the weights and code that answered: the Hugging Face
+    `revision` and the `reference_sha256` of its reference code (`cmbs.model.local`). Jev's
+    answers have neither, and they are left out of its JSON, so Jev's recordings are unchanged.
+    """
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     model: str
     answers: dict[str, Answer]
+    revision: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    reference_sha256: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 def probability(value: float) -> Decimal:
