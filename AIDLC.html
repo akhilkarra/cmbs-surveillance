@@ -348,13 +348,13 @@ footer p { margin: 0; }
   <div class="wrap two">
     <div>
       <p class="eyebrow"><b>Evidence</b></p>
-      <h2>14 AI mistakes caught. <em>Only 2 by automatic checks.</em></h2>
-      <p class="intro">The rest: 6 by the AI rechecking its own work, 4 by a person, 1 by a second AI, 1 by the first live run of the AI model.</p>
+      <h2>15 AI mistakes caught. <em>Only 2 by automatic checks.</em></h2>
+      <p class="intro">The rest: 6 by the AI rechecking its own work, 4 by a person, 2 by a second AI, 1 by the first live run of the AI model.</p>
     </div>
     <div class="card">
       <div class="card-head"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="title">Mistake log</span></div>
       <ol class="log" id="log">
-        <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the first live model run.</b> The AI's rule sent unmentioned fields to manual review: 13 of 30, not 3. Fixed; the real answers are now tests.</span></li>
+        <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the first live model run.</b> The AI's rule sent unmentioned fields to manual review: 12 of 33, not 3. Fixed; the real answers are now tests.</span></li>
         <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the automatic checks.</b> A newer Python than the AI assumed broke a dependency. Now pinned.</span></li>
         <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by a second AI.</b> A research AI called a deal publicly registered; no 10-D or loan tape exists under its name.</span></li>
       </ol>
@@ -400,8 +400,9 @@ footer p { margin: 0; }
       <!-- The four theorems in lean/Invariants/Theorems.lean (balance_rollforward, delinquency_partition, wac_bounds, decision_table_total).
            grep -rhE '^\s*theorem ' lean --include='*.lean' | wc -l -> 34, helper lemmas included; wac_bounds appears twice (Wac.lean and Theorems.lean) -->
       <div class="stat"><span class="n">4</span><span class="l">core results, machine-checked (34 theorems with helpers)</span></div>
-      <!-- grep -cE '^\| 2026-' docs/ai-catch-log.md  ->  14; caught by CI: the 2026-10-27 and 2026-10-28 (Python 3.15) entries; by the first live run: 2026-10-29 decision table -->
-      <div class="stat"><span class="n">14</span><span class="l">AI mistakes logged, each with its fix</span></div>
+      <!-- grep -cE '^\| 2026-' docs/ai-catch-log.md  ->  15; caught by CI: the 2026-10-27 and 2026-10-28 (Python 3.15) entries; by the first live run: 2026-10-29 decision table; by a second AI: 2026-10-24 deal registration, 2026-11-01 Q87 count (Copilot).
+           12 of 33 vs 3 of 33: replay tests/fixtures/model/live/ through cmbs.extraction.judgments.decide_fields with the pre-Q87 decide() (git show 23d535d^:src/cmbs/extraction/decision.py) and today's -->
+      <div class="stat"><span class="n">15</span><span class="l">AI mistakes logged, each with its fix</span></div>
     </div>
 
     <details class="eng" id="engineers">
@@ -421,7 +422,7 @@ footer p { margin: 0; }
             <tr><td>Second-opinion review</td><td>Independent Claude subagent per feature PR (Q64, Q68); fixes in #16, #19; proxy finding in PR 42 (Q90); Copilot reviewed #3, #51, #52. Review texts not saved</td></tr>
             <tr><td>Final checks</td><td><code>.github/workflows/ci.yml</code>; ruleset "main" requires <code>py</code>, <code>lint</code>, <code>web</code>, pre-commit.ci, CodeQL, secret scan; up to date with main</td></tr>
             <tr><td>Ship</td><td>The agent merges (Q95); merge script (outside the repo) added after catch-log entries of 2026-10-29 and 2026-10-31</td></tr>
-            <tr><td>Mistakes caught</td><td><code>docs/ai-catch-log.md</code>: 14 entries, 2 caught by CI (2026-10-27 trailer rule, 2026-10-28 Python 3.15)</td></tr>
+            <tr><td>Mistakes caught</td><td><code>docs/ai-catch-log.md</code>: 15 entries, 2 caught by CI (2026-10-27 trailer rule, 2026-10-28 Python 3.15)</td></tr>
             <tr><td>Nightly break-the-code run</td><td>mutmut and Stryker in <code>.github/workflows/mutation.yml</code> (mutmut floor 90%); Python shards fail before scoring since 2026-10-31</td></tr>
             <tr><td>Sign-off came late</td><td>Approval commits d3ca045, 689270a, e6fe2cf, 557d366; only the Q87 revision (#28) was approved before merging</td></tr>
             <tr><td>Admin keys; forgeable sign-off</td><td>Owner's admin <code>gh</code> credential; trailer is typed text, no CODEOWNERS, local commits unsigned</td></tr>
