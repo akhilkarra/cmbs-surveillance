@@ -1,4 +1,4 @@
-@draft @surface:skill @surface:cli
+@approved @surface:skill @surface:cli
 Feature: The facts that size a loss
   For a delinquent loan a PM needs the advances outstanding, whether the servicer has called them
   non-recoverable, any realized loss and the appraisal reduction. The panel already stores them

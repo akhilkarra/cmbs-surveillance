@@ -1,4 +1,4 @@
-@draft @surface:skill @surface:cli
+@approved @surface:skill @surface:cli
 Feature: A deal's loans and their special-servicing state
   A PM briefing a committee first asks which loans of a deal are with the special servicer. The
   panel answers for every loan at once, read only from the loan tape's dates and balance (grill

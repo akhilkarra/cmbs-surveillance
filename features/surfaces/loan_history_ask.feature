@@ -1,4 +1,4 @@
-@draft @surface:skill @surface:cli
+@approved @surface:skill @surface:cli
 Feature: A loan's history, month by month, when asked
   "Did it fall off a cliff or bleed out?" is answered from the tapes as filed: each month's
   balance, payment status, DSCR, occupancy and financials date, each month citing its own tape.
