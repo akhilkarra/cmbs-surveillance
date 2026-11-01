@@ -47,7 +47,10 @@ def test_tape_values_read_as_reported():
     assert tape_value("occupancy", Decimal("0.88")) == "88%"
     assert tape_value("occupancy", Decimal("0.8850")) == "88.5%"
     assert tape_value("paid_through_date", dt.date(2026, 5, 1)) == "2026-05-01"
-    assert tape_value("property_type", "LO") == "LO"
+    assert tape_value("property_type", "LO") == "lodging (code LO)"
+    assert tape_value("property_type", "98") == "other (code 98)"
+    assert tape_value("property_type", "XX") == "code XX"
+    assert tape_value("workout_strategy", "42") == "code 42"
 
 
 def test_loan_facts_with_none_say_so():
@@ -100,7 +103,7 @@ def test_facts_cite_the_comment_by_sentence_and_the_tape_by_field(panel):
         ),
         ("tape.workout_strategy", "full payoff (code 11)", "workoutStrategyCode"),
         ("tape.property_name", "Lakeside Hotel Portfolio", "propertyName"),
-        ("tape.property_type", "LO", "propertyTypeCode"),
+        ("tape.property_type", "lodging (code LO)", "propertyTypeCode"),
         ("tape.financials_end", "2024-12-31", "mostRecentFinancialsEndDate"),
     ]
     assert {f.period for f in found.facts} == {"September 2026"}

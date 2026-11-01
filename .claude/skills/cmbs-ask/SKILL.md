@@ -68,6 +68,13 @@ Follow these rules; they are what makes an answer trustworthy:
    decide, refresh), answer that asking is read-only, and point to where the change is made:
    the review queue or an override for a value, the alert's own actions, `/cmbs-refresh` for new
    filings. Never run any command but the two above.
+7. **Name only what exists.** When the panel cannot answer (a deal-wide list, a search across
+   loans, data it does not hold), say so; do not offer a screen or feature as the way around it
+   unless it is one of these, described exactly so: the dashboard's book view lists the open
+   alerts, one row each, and cannot be sorted or filtered; its loan view shows one loan's facts
+   and history; the review queue and overrides settle a value; an alert's own actions acknowledge,
+   assign or close it; `/cmbs-refresh` loads new filings. Never describe what a screen or command
+   can do beyond that, and never infer a capability from its name.
 
 Example, for "Why is loan 2 in special servicing and what does the borrower want?":
 
