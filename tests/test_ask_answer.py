@@ -37,6 +37,13 @@ def fact(name: str, topic: str, value: str | None = "v", status: str = "auto-acc
 def test_citations_read_with_their_sentence_or_tape_field():
     assert REPORT.text() == '10-D R-1, sentence 3: "The borrower asked."'
     assert TAPE.text() == "ABS-EE T-1, workoutStrategyCode"
+    table = Citation(
+        "10-D", "R-2", FILED, "https://r/", report_table="Appraisal Reduction Detail",
+        dated=dt.date(2026, 8, 15),
+    )  # fmt: skip
+    assert table.text() == "10-D R-2, Appraisal Reduction Detail, dated 2026-08-15"
+    undated = Citation("10-D", "R-2", FILED, "https://r/", report_table="Appraisal")
+    assert undated.text() == "10-D R-2, Appraisal"
 
 
 def test_facts_read_with_status_who_and_citation():
@@ -136,16 +143,51 @@ def test_an_answer_states_only_the_facts_the_question_asks_about():
     )
 
 
-def test_a_topic_awaiting_review_states_no_value_from_any_source():
+def test_a_topic_awaiting_review_states_no_extracted_value_but_the_tape_s():
+    """Grill log Q97: the extracted value stays unstated; the tape's value on the topic is
+    stated, labelled as the tape's, and the filer's sentence is quoted as unreviewed."""
     answer = compose("What is the workout strategy?", deal="F1", loan="2", facts=FACTS)
     assert answer.kind is Kind.ANSWERED
-    assert answer.stated == []
+    assert [f.name for f in answer.stated] == ["tape.workout_strategy"]
     assert answer.awaiting_review == ["workout strategy"]
+    assert answer.unreviewed == []  # no sentence is known for it
     assert answer.text() == (
-        "From the panel, for loan 2 of F1:\n- the workout strategy is awaiting human review"
+        "From the panel, for loan 2 of F1:\n- tape.workout strategy: full payoff (code 11) "
+        "(September 2026, reported; ABS-EE T-1, workoutStrategyCode)\n"
+        "- the workout strategy is awaiting human review"
     )
     both = compose("Balance and workout?", deal="F1", loan="2", facts=FACTS)
-    assert [f.name for f in both.stated] == ["tape.ending_balance"]
+    assert [f.name for f in both.stated] == ["tape.workout_strategy", "tape.ending_balance"]
+
+
+def test_a_field_awaiting_review_quotes_its_sentence_labelled_unreviewed():
+    waiting = Fact(
+        "workout_strategy",
+        "workout strategy",
+        "workout strategy",
+        "September 2026",
+        None,
+        "needs review",
+        Citation("10-D", "R-1", FILED, "https://r/", sentence=4, quote="It is reviewing."),
+    )
+    extracted = fact("transfer_reason", "workout strategy", "imminent default")
+    answer = compose(
+        "What is the workout strategy?", deal="F1", loan="2", facts=[waiting, extracted]
+    )
+    assert (answer.stated, answer.unreviewed) == ([], [waiting])
+    quoted = (
+        'the comment\'s sentence on it, unreviewed: not a panel fact: "It is reviewing." '
+        "(10-D R-1, sentence 4)"
+    )
+    assert waiting.unreviewed_quote() == quoted
+    assert waiting.text() == (
+        f"workout strategy: awaiting human review (September 2026 comment); {quoted}"
+    )
+    assert answer.text().splitlines()[1] == (
+        f"- the workout strategy is awaiting human review; {quoted}"
+    )
+    assert extracted.unreviewed_quote() is None
+    assert not waiting.from_tape and not extracted.from_tape
 
 
 def test_a_question_no_fact_covers_is_not_in_the_data():
@@ -234,6 +276,21 @@ def test_concepts_outside_the_panel():
         "maturity date",
     ]
     assert outside_in("Why is loan 2 in special servicing?") == []
+    assert outside_in("What is the ASER and the latest appraised value?") == [
+        "appraisal",
+        "ASER",
+    ]
+    assert outside_in("What is the appraisal reduction?") == []
+    assert outside_in("Any appraisal subordinate entitlement reduction?") == ["ASER"]
+
+
+def test_loss_topics():
+    assert topics_in("What are the advances outstanding?") == ["advances"]
+    assert topics_in("Are they non-recoverable? Any P&I?") == ["advances"]
+    assert topics_in("Any realized loss or losses?") == ["realized loss"]
+    assert topics_in("When was it liquidated?") == ["liquidation"]
+    assert topics_in("What is the ARA? The appraisal reduction?") == ["appraisal reduction"]
+    assert topics_in("When did it return to the master servicer?") == ["special servicing transfer"]
 
 
 @pytest.mark.parametrize(

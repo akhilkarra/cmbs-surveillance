@@ -92,7 +92,7 @@ def test_facts_cite_the_comment_by_sentence_and_the_tape_by_field(panel):
         "The loan transferred to Special Servicing effective 3/6/2025 due to imminent "
         "monetary default."
     )
-    tape = [(f.name, f.value, f.citation.tape_field) for f in found.facts[8:]]  # pyright: ignore[reportOptionalMemberAccess]
+    tape = [(f.name, f.value, f.citation.tape_field) for f in found.facts[8:-1]]  # pyright: ignore[reportOptionalMemberAccess]
     assert tape == [
         ("tape.ending_balance", "$30,000,000.00", "reportPeriodEndActualBalanceAmount"),
         ("tape.payment_status", "90+ days (code 3)", "paymentStatusLoanCode"),
@@ -107,7 +107,10 @@ def test_facts_cite_the_comment_by_sentence_and_the_tape_by_field(panel):
         ("tape.financials_end", "2024-12-31", "mostRecentFinancialsEndDate"),
     ]
     assert {f.period for f in found.facts} == {"September 2026"}
-    assert {f.citation.accession for f in found.facts[8:]} == {TAPE}  # pyright: ignore[reportOptionalMemberAccess]
+    assert {f.citation.accession for f in found.facts[8:-1]} == {TAPE}  # pyright: ignore[reportOptionalMemberAccess]
+    # The 10-D's appraisal reduction comes last, cited by its table and date.
+    reduction = found.facts[-1]
+    assert (reduction.name, reduction.value) == ("report.appraisal_reduction", "$6,500,000.00")
     assert found.text().splitlines()[0] == f"loan 2 of {FIXTURE_DEAL}, as known on 2026-10-06:"
 
 
@@ -118,7 +121,11 @@ def test_facts_are_point_in_time(panel):
     )
     # The comments were extracted on 2026-10-01; the September tape was public on 2026-09-29.
     assert [f.name for f in early.facts][:1] == ["tape.ending_balance"]
-    assert {f.citation.accession for f in early.facts} == {TAPE}  # pyright: ignore[reportOptionalMemberAccess]
+    # No comment fact yet: the tape's values and the 10-D's appraisal reduction only.
+    assert {f.citation.accession for f in early.facts} == {TAPE, REPORT}  # pyright: ignore[reportOptionalMemberAccess]
+    assert [f.name for f in early.facts if f.citation.accession == REPORT] == [  # pyright: ignore[reportOptionalMemberAccess]
+        "report.appraisal_reduction"
+    ]
     august = in_session(
         lambda db: loan_facts(db, "pat", deal=FIXTURE_DEAL, loan="2", as_of=dt.date(2026, 9, 1))
     )
@@ -137,15 +144,25 @@ def test_a_field_awaiting_review_is_a_fact_without_a_value(panel):
     in_session(lambda db: wait_for_review(db, field="workout_strategy"))
     found = in_session(lambda db: loan_facts(db, "alex", deal=FIXTURE_DEAL, loan="2"))
     waiting = [f for f in found.facts if f.name == "workout_strategy"]
-    assert [(f.value, f.status, f.citation) for f in waiting] == [(None, "needs review", None)]
+    assert [(f.value, f.status) for f in waiting] == [(None, "needs review")]
+    # The sentence the model pointed to is kept, to quote as the filer's words (Q97).
+    cited = waiting[0].citation
+    assert cited is not None and (cited.accession, cited.sentence) == (REPORT, 1)
+    assert cited.quote == (
+        "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary "
+        "default."
+    )
     answer = in_session(
         lambda db: ask(db, "rae", "What is the workout strategy for loan 2?", deal=FIXTURE_DEAL)
     )
-    assert (answer.kind, answer.stated, answer.awaiting_review) == (
+    assert (answer.kind, [f.name for f in answer.stated], answer.awaiting_review) == (
         Kind.ANSWERED,
-        [],
+        ["tape.workout_strategy"],
         ["workout strategy"],
     )
+    assert answer.unreviewed == waiting
+    assert "unreviewed: not a panel fact" in answer.text()
+    assert "modification" not in answer.text()
 
 
 @needs_db

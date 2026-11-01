@@ -2,8 +2,17 @@
 
 `loan_facts` gathers, as known on a day (today by default):
 - the latest tape row of the loan (`cmbs.panel.service.as_of`): balance, payment status, paid-
-  through date, special-servicer transfer date, workout strategy and modification codes,
-  property, and its most recent financials, each cited by the ABS-EE accession and the field;
+  through date, special-servicer transfer and master-servicer return dates, workout strategy
+  and modification codes, realized loss, property, and its most recent financials, each cited
+  by the ABS-EE accession and the field;
+- from the same tape asset as stored in bronze (`bronze.loan_tape_asset.tags`, the asset the
+  row was typed from, so the same filing): the advances outstanding, the non-recoverability
+  indicator and the liquidation date and code (`ASSET_TAGS`). They are read at ask time rather
+  than typed into silver: the silver contract quarantines a loan whose typed value cannot be
+  read, and these are facts to cite, not values the panel computes with, so an unreadable one
+  is shown as reported instead of dropping the loan;
+- the latest 10-D appraisal reduction of the loan filed by that day
+  (`cmbs.distribution.service.appraisal_reductions`), cited by its report table and date;
 - the latest extracted comment of the loan (`cmbs.extraction.service.comment_view`, which shows
   review decisions and overrides made by that day): each field with a value, cited by the 10-D
   accession, the sentence number and the sentence; a field awaiting review is listed without a
@@ -17,6 +26,7 @@ refusing any request to change data.
 import datetime as dt
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,6 +38,7 @@ from cmbs.alerts.codes import PAYMENT_STATUS, PROPERTY_TYPE, WORKOUT_STRATEGY, C
 from cmbs.ask.answer import (
     COMMENT_FORM,
     NEEDS_REVIEW,
+    REPORT_FORM,
     TAPE_FORM,
     Answer,
     Citation,
@@ -39,7 +50,7 @@ from cmbs.ask.answer import (
 )
 from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
-from cmbs.distribution.service import canonical_loan
+from cmbs.distribution.service import appraisal_reductions, canonical_loan
 from cmbs.domain import Period, format_money
 from cmbs.edgar.archives import filing_base_url
 from cmbs.errors import Refused
@@ -47,7 +58,8 @@ from cmbs.extraction.service import CommentView, comment_view
 from cmbs.extraction.tables import Extraction
 from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
-from cmbs.tape.tables import LoanPeriod
+from cmbs.tape.convert import Unreadable, read_date, read_money
+from cmbs.tape.tables import LoanPeriod, TapeAsset
 
 # Extracted fields by topic: what a question about the topic is answered from.
 COMMENT_TOPICS = {
@@ -96,12 +108,19 @@ TAPE_FIELDS = (
         "mostRecentSpecialServicerTransferDate",
     ),
     TapeField(
+        "master_servicer_return_date",
+        "master-servicer return date on the tape",
+        "special servicing transfer",
+        "mostRecentMasterServicerReturnDate",
+    ),
+    TapeField(
         "workout_strategy",
         "workout strategy on the tape",
         "workout strategy",
         "workoutStrategyCode",
     ),
     TapeField("modification_code", "modification code", "modification", "modificationCode"),
+    TapeField("realized_loss", "realized loss", "realized loss", "realizedLossToTrustAmount"),
     TapeField("property_name", "property name", "property", "propertyName"),
     TapeField("property_type", "property type", "property", "propertyTypeCode"),
     TapeField(
@@ -123,6 +142,7 @@ TAPE_FIELDS = (
 )
 
 
+MONEY_COLUMNS = frozenset({"ending_balance", "noi", "realized_loss"})
 CODED: dict[str, dict[str, Code]] = {
     "payment_status": PAYMENT_STATUS,
     "workout_strategy": WORKOUT_STRATEGY,
@@ -132,7 +152,7 @@ CODED: dict[str, dict[str, Code]] = {
 
 def tape_value(column: str, value: object) -> str:
     """A stored tape value as it reads: money in dollars, codes by name, ratios with 'x'."""
-    if column in ("ending_balance", "noi") and isinstance(value, Decimal):
+    if column in MONEY_COLUMNS and isinstance(value, Decimal):
         return format_money(value)
     if column in CODED:
         code = str(value)
@@ -175,6 +195,149 @@ def tape_facts(row: LoanPeriod, cik: int) -> list[Fact]:
     return facts
 
 
+class TagKind(StrEnum):
+    MONEY = "money"
+    INDICATOR = "indicator"
+    DATE = "date"
+    CODE = "code"
+
+
+@dataclass(frozen=True)
+class AssetTag:
+    """A loan-level Schedule AL tag read from the stored asset: its label, topic and kind."""
+
+    tag: str
+    label: str
+    topic: str
+    kind: TagKind
+
+
+ASSET_TAGS = (
+    AssetTag(
+        "totalPrincipalInterestAdvancedOutstandingAmount",
+        "P&I advances outstanding",
+        "advances",
+        TagKind.MONEY,
+    ),
+    AssetTag(
+        "totalTaxesInsuranceAdvancesOutstandingAmount",
+        "T&I advances outstanding",
+        "advances",
+        TagKind.MONEY,
+    ),
+    AssetTag(
+        "otherExpensesAdvancedOutstandingAmount",
+        "other expenses advanced",
+        "advances",
+        TagKind.MONEY,
+    ),
+    AssetTag(
+        "nonRecoverabilityIndicator",
+        "advances deemed non-recoverable",
+        "advances",
+        TagKind.INDICATOR,
+    ),
+    AssetTag("liquidationPrepaymentDate", "liquidation date", "liquidation", TagKind.DATE),
+    AssetTag("liquidationPrepaymentCode", "liquidation code", "liquidation", TagKind.CODE),
+)
+# XML Schema booleans, as Schedule AL indicators are written.
+_YES = frozenset({"true", "1"})
+_NO = frozenset({"false", "0"})
+
+
+def tag_value(kind: TagKind, text: str, label: str) -> str:
+    """A reported tag as it reads: money in dollars, an indicator as yes or no, a date in ISO
+    form, a code as 'code 3'. A value that cannot be read is shown as reported, never guessed."""
+    try:
+        if kind is TagKind.MONEY:
+            amount = read_money(text, label)
+            return format_money(amount) if amount is not None else text
+        if kind is TagKind.DATE:
+            day = read_date(text, label)
+            return day.isoformat() if day is not None else text
+    except Unreadable:
+        return f"{text!r} as reported, not readable as a {kind.value}"
+    if kind is TagKind.INDICATOR:
+        lowered = text.lower()
+        if lowered in _YES:
+            return "yes"
+        if lowered in _NO:
+            return "no"
+        return f"{text!r} as reported, not readable as yes or no"
+    return f"code {text}"
+
+
+def asset_facts(asset: TapeAsset | None, row: LoanPeriod, cik: int) -> list[Fact]:
+    """The ASSET_TAGS the loan's stored asset reports; a tag not reported is not a fact."""
+    if asset is None:
+        return []
+    period = Period.of(row.period).label
+    facts = []
+    for spec in ASSET_TAGS:
+        text = str(asset.tags.get(spec.tag) or "").strip()
+        if not text:
+            continue
+        facts.append(
+            Fact(
+                name=f"tape.{spec.tag}",
+                label=spec.label,
+                topic=spec.topic,
+                period=period,
+                value=tag_value(spec.kind, text, spec.label),
+                status="reported",
+                citation=Citation(
+                    form=TAPE_FORM,
+                    accession=row.accession,
+                    filing_date=row.filing_date,
+                    url=filing_base_url(cik, row.accession),
+                    tape_field=spec.tag,
+                ),
+            )
+        )
+    return facts
+
+
+def stored_asset(db: Session, row: LoanPeriod) -> TapeAsset | None:
+    """The bronze asset the loan row was typed from."""
+    return db.get(TapeAsset, (row.accession, row.file_name, row.asset_position))
+
+
+def appraisal_facts(db: Session, deal: Deal, loan: str, day: dt.date) -> list[Fact]:
+    """The appraisal reductions the latest 10-D filed by `day` lists for the loan, each cited
+    by its report table and dated as the report dates it. The same amount and date in two
+    tables of one report is one fact."""
+    found = appraisal_reductions(db, deal=deal.name, loan=loan, as_of=day)
+    if not found:
+        return []
+    latest = max(item.period for item in found)
+    facts: list[Fact] = []
+    seen: set[tuple[str, Decimal, dt.date | None]] = set()
+    for item in found:
+        key = (item.accession, item.amount, item.reduction_date)
+        if item.period != latest or key in seen:
+            continue
+        seen.add(key)
+        facts.append(
+            Fact(
+                name="report.appraisal_reduction",
+                label="appraisal reduction amount",
+                topic="appraisal reduction",
+                period=latest.label,
+                value=format_money(item.amount),
+                status="reported",
+                citation=Citation(
+                    form=REPORT_FORM,
+                    accession=item.accession,
+                    filing_date=item.filing_date,
+                    url=filing_base_url(deal.cik or 0, item.accession),
+                    report_table=item.source_table,
+                    dated=item.reduction_date,
+                ),
+            )
+        )
+    return facts
+
+
 def comment_facts(view: CommentView, cik: int) -> list[Fact]:
     """The comment's fields with a value (cited by sentence) or awaiting review (no value). A
     field the comment does not state, or that a reviewer found it cannot settle, is no fact."""
@@ -183,16 +346,23 @@ def comment_facts(view: CommentView, cik: int) -> list[Fact]:
         waiting = shown.status == NEEDS_REVIEW
         if shown.field not in COMMENT_TOPICS or not (waiting or shown.display is not None):
             continue
+        # A field awaiting review cites the sentence the model pointed to, if any: the filer's
+        # words, quoted as unreviewed (Q97), never its value.
+        sentence, quote = (
+            (shown.model_sentence, shown.model_quote)
+            if waiting
+            else (shown.sentence, shown.evidence)
+        )
         citation = (
             None
-            if waiting
+            if waiting and quote is None
             else Citation(
                 form=COMMENT_FORM,
                 accession=view.accession,
                 filing_date=view.filing_date,
                 url=filing_base_url(cik, view.accession),
-                sentence=shown.sentence,
-                quote=shown.evidence,
+                sentence=sentence,
+                quote=quote,
             )
         )
         facts.append(
@@ -267,7 +437,11 @@ def loan_facts(
     view = _latest_comment(db, reader, deal_row, loan, day)
     if not rows and view is None:
         raise UnknownLoan(f"the panel holds nothing for loan {loan} of {deal_row.name} by {day}")
-    facts = tape_facts(rows[-1], cik) if rows else []
+    facts: list[Fact] = []
+    if rows:
+        latest = rows[-1]
+        facts = tape_facts(latest, cik) + asset_facts(stored_asset(db, latest), latest, cik)
+    facts += appraisal_facts(db, deal_row, loan, day)
     if view is not None:
         facts = comment_facts(view, cik) + facts
     return LoanFacts(deal=deal_row.name, loan=loan, as_of=day, facts=facts)
