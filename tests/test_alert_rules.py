@@ -104,6 +104,27 @@ def test_workout_strategy_names_follow_schedule_al():
     }
 
 
+def test_property_type_names_follow_the_administrators_legend():
+    names = {code: entry.name for code, entry in codes.PROPERTY_TYPE.items()}
+    assert names == {
+        "HC": "health care",
+        "MU": "mixed use",
+        "WH": "warehouse",
+        "MF": "multi-family",
+        "SS": "self storage",
+        "LO": "lodging",
+        "RT": "retail",
+        "SF": "single family rental",
+        "98": "other",
+        "IN": "industrial",
+        "OF": "office",
+        "MH": "mobile home park",
+        "SE": "securities",
+        "CH": "cooperative housing",
+        "ZZ": "missing information/undefined",
+    }
+
+
 @pytest.mark.parametrize(
     ("code", "name"),
     [

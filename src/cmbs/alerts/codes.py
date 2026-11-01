@@ -70,7 +70,7 @@ PROPERTY_TYPE: dict[str, Code] = {
     "MH": Code("mobile home park"),
     "SE": Code("securities"),
     "CH": Code("cooperative housing"),
-    "ZZ": Code("missing information"),
+    "ZZ": Code("missing information/undefined"),
 }
 
 NOT_REPORTED = "not reported"

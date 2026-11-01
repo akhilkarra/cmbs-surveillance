@@ -30,10 +30,10 @@ The practitioner trusted every fact it was given: each carried an accession numb
 | # | Finding | Kind | Evidence |
 |---|---|---|---|
 | 1 | **The assistant invented a product feature.** It said twice that "the dashboard's book view shows every loan in the deal and lets you filter by special servicing". The book view lists open alerts only, one row per alert, and has no filters (`web/src/bookGrid.ts`). | Trust: the "only facts" rule covers loans, not the product | Turn 1 and turn 3 replies |
-| 2 | **No deal-wide question.** "Which loans are with the special servicer?" can't be answered: `ask` takes one loan, and nothing lists a deal's loans. | Missing capability | The `ask question` without `--loan` asked for a loan |
-| 3 | **No "in special servicing now" status.** Loans 12, 13 and 15 show an old transfer date plus "resolved", and the panel can't say whether they are still with the special servicer. | Missing derived fact | Turn 2 |
-| 4 | **Paid-off loans read as data gaps.** Loans 2, 3 and 10 have a beginning balance of 0.00 on every loaded tape, so they left the pool. `/cmbs-ask` said "the panel holds only the property name" and could not say why. | Wrong framing of a real fact | `silver.loan_period` for BNK13, Aug–Oct 2026 |
-| 5 | **No history before September 2026** in the demo panel: no trend, no securitization baseline, no "as of May". Only August–October 2026 are loaded. | Data loaded, not a design limit | The `--as-of 2026-05-31` call exits 1 |
+| 2 | **No deal-wide question in the skills.** "Which loans are with the special servicer?" can't be answered: `ask` takes one loan. The API's `GET /deals/{deal}/loans` does list a deal's loans, but neither skill can reach it. | Missing capability in the skill | The `ask question` without `--loan` asked for a loan |
+| 3 | **No "in special servicing now" status, and the return date is hidden.** Loans 12, 13 and 15 show an old transfer date plus "resolved". The panel holds their master-servicer return dates (2024-05-24, 2020-07-31, 2021-02-26), but `ask facts` leaves that field out, so the assistant could not say they had returned. | Field left out of `ask`, no derived state | Turn 2; `silver.loan_period` |
+| 4 | **Paid-off loans read as data gaps.** Loans 2, 3 and 10 have a zero balance: since July 2026, September 2024 and June 2023 respectively. They left the pool. `/cmbs-ask` said "the panel holds only the property name" and could not say why. | Wrong framing of a real fact | `silver.loan_period` for BNK13 |
+| 5 | **No history before August 2026** in the demo panel at the time of the session: no trend, no securitization baseline, no "as of May". Only August–October 2026 were loaded. | Data loaded, not a design limit | The `--as-of 2026-05-31` call exits 1 |
 | 6 | **No advances, ARA, ASER, appraisal or watchlist data.** For a delinquent loan these are the numbers that size the loss. | Missing data: the 10-D sections and tape fields aren't loaded | Turn 3 |
 | 7 | **Rule 4 blocks even the raw sentence.** With the workout strategy awaiting review, the PM can't see the servicer's own words, even labelled as unreviewed, the night before committee. | Design decision for the reviewer | Turn 2 |
 | 8 | **A PM can't refresh.** The refusal "pm may not run refreshes and backfills" doesn't say who can. | The role design is deliberate; the message should name the roles that can | Turn 1 |
@@ -56,11 +56,11 @@ The practitioner trusted every fact it was given: each carried an accession numb
   - Finding 9: `ask` decodes property types with the administrator's legend, such as "office (code OF)".
   - Finding 8: `/cmbs-refresh` now names the quant and operator roles after relaying a refusal.
 - **Data, finding 5:** BANK 2018-BNK13's tapes from September 2018 onward were loaded into the demo panel. This was an operational step, with no code change.
-- **Drafted for the reviewer's approval** (grill log Q96–Q98):
+- **Drafted for the reviewer's approval:**
   - Findings 2 and 3: a deal roster with special-servicing states.
   - Finding 4: paid-off loans read "paid off".
   - Finding 6: loss-sizing facts.
   - Finding 5: month-by-month history in `ask`.
   - A `/cmbs-brief` committee brief.
-  - Finding 7: the review rule, revised in `ask.revision.feature`.
+  - Finding 7: a revision of the review rule in the ask feature.
 - **Deferred:** a desk watchlist that PMs write to, and a dashboard deal page.
