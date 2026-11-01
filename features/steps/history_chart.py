@@ -2,12 +2,15 @@
 
 **What the page reads.** The Background loads its months the way the dashboard scenarios do
 (features/steps/dashboard.py): through the refresh service, replaying the synthetic EDGAR in
-tests/fixtures/refresh/, with each month's tape changed so that the loan reports exactly what the
-table says (a blank DSCR is a tape that does not report one). One backfill run loads them the
-morning after the last is filed, because alerts need settings in force and the fixture world's
-are approved on 2026-09-15; each month is still public only from its own filing date, which the
-step checks against the table. The page is then read on 2026-10-28 at noon, so September's tape
-(filed 2026-09-29) is the latest and October's (filed 2026-10-29) is not yet published.
+tests/fixtures/refresh/, each month published on the day the table says and its tape changed so
+that the loan reports exactly what the table says (a blank DSCR is a tape that does not report
+one; features/steps/published.py). One backfill run loads them the morning after the last is
+filed, because alerts need settings in force and the fixture world's are approved on 2026-09-15;
+each month is still public only from its own filing date, which the step checks against the
+table. The page is then read on 2026-10-28 at noon, so September's tape (filed 2026-09-29) is
+the latest and October's (filed 2026-10-29) is not yet published. The same Background step
+serves the loan history in `ask` (features/steps/history_ask.py), whose table adds occupancy
+and financials end.
 
 **How the chart is read.** The chart draws on a canvas, so the steps read it the way a person
 does: the pointer sweeps across the chart, and the legend over it names the month under the
@@ -16,30 +19,19 @@ alternative, gives the same months in words, with each payment status change.
 """
 
 import datetime as dt
-import xml.etree.ElementTree as ET
+from decimal import Decimal
 
 from behave import given, then  # pyright: ignore[reportAttributeAccessIssue]
 from sqlalchemy import select
 
 from cmbs import clock
-from cmbs.absee.schedule_al import NAMESPACE
-from cmbs.deals.service import by_name, get_or_create
+from cmbs.deals.service import by_name
 from cmbs.domain import Period, format_money, money
-from cmbs.edgar.replay import Replay
 from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
-from cmbs.refresh import service as refresh
-from cmbs.refresh.sources import FirstRecorded, Sources
 from cmbs.testing.bdd import in_session
-from cmbs.testing.world import FIXTURE_CIKS
-from features.steps.dashboard import (
-    EDGAR,
-    OPERATOR,
-    READ_AT,
-    Archive,
-    exhibit_url,
-    with_tags,
-)
+from features.steps.dashboard import READ_AT
+from features.steps.published import Publication, set_tags, tape_date
 
 # The NOTICE file of TradingView Lightweight Charts and the link its licence asks for.
 NOTICE = "TradingView Lightweight Charts™ Copyright (c) 2025 TradingView, Inc."
@@ -53,86 +45,93 @@ REFRESH_TIME = dt.time(9, 0, tzinfo=dt.UTC)
 
 # ---------------------------------------------------------------------------- Background
 
-
-def without_property_tag(content: bytes, loan: str, tag: str) -> bytes:
-    """The tape with the loan's property no longer reporting `tag`."""
-    root = ET.fromstring(content)
-    for asset in root.findall(NAMESPACE + "assets"):
-        if (asset.findtext(NAMESPACE + "assetNumber") or "").strip() != loan:
-            continue
-        prop = asset.find(NAMESPACE + "property")
-        assert prop is not None, f"loan {loan} has no property"
-        for element in prop.findall(NAMESPACE + tag):
-            prop.remove(element)
-    ET.register_namespace("", NAMESPACE.strip("{}"))
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+OCCUPANCY_TAG = "mostRecentPhysicalOccupancyPercentage"
+FINANCIALS_END_TAG = "mostRecentFinancialsEndDate"
 
 
-def month_tape(content: bytes, loan: str, row) -> bytes:
-    """The month's tape with the loan reporting the table row's balance, DSCR and status."""
-    tags = {
+def month_tags(row) -> dict[str, str | None]:
+    """The tags the loan reports in the table row's month: balance, status and DSCR, and the
+    occupancy and financials end when the table has those columns. A blank cell is a tag the
+    tape does not report."""
+
+    def cell(name: str) -> str | None:
+        text = row[name].strip()
+        return text or None
+
+    tags: dict[str, str | None] = {
         BALANCE_TAG: str(money(row["ending balance"])),
-        STATUS_TAG: row["payment status"].strip(),
+        STATUS_TAG: cell("payment status"),
+        f"property/{DSCR_TAG}": cell("DSCR"),
     }
-    dscr = row["DSCR"].strip()
-    if dscr:
-        tags[f"property/{DSCR_TAG}"] = dscr
-    else:
-        content = without_property_tag(content, loan, DSCR_TAG)
-    return with_tags(content, loan, tags)
+    if "occupancy" in row.headings:
+        tags[f"property/{OCCUPANCY_TAG}"] = cell("occupancy")
+    if "financials end" in row.headings:
+        end = cell("financials end")
+        tags[f"property/{FINANCIALS_END_TAG}"] = (
+            None if end is None else tape_date(dt.date.fromisoformat(end))
+        )
+    return tags
 
 
-def stored_rows(deal: str, loan: str, day: dt.date) -> dict[Period, tuple]:
-    """The loan's months in the panel on `day`: (filing date, balance, DSCR, status) each."""
+def stored_rows(deal: str, loan: str, day: dt.date) -> dict[Period, dict[str, object]]:
+    """The loan's months in the panel on `day`, each with its filing date and values."""
 
     def read(db):
         deal_row = panel.deal_named(db, deal)
         return {
-            Period.of(row.period): (
-                row.filing_date,
-                row.ending_balance,
-                row.dscr,
-                row.payment_status,
-            )
+            Period.of(row.period): {
+                "filed": row.filing_date,
+                "ending balance": row.ending_balance,
+                "DSCR": row.dscr,
+                "payment status": row.payment_status,
+                "occupancy": row.occupancy,
+                "financials end": row.financials_end,
+            }
             for row in panel.as_of(db, day, deal_id=deal_row.id, loan=loan)
         }
 
     return in_session(read)
 
 
+# How each table column reads as the panel stores it; a blank cell is not reported.
+COLUMN_READS = {
+    "filed": dt.date.fromisoformat,
+    "ending balance": money,
+    "DSCR": money,
+    "payment status": str,
+    "occupancy": Decimal,
+    "financials end": dt.date.fromisoformat,
+}
+
+
 @given('loan "{loan:DashName}" of "{deal:DashName}" was reported in these months:')
 def step_loan_reported_in_months(context, loan, deal):
-    archive = Archive()
+    """Each month is published on the day the table says (features/steps/published.py), with
+    the loan reporting exactly the row's values, and all are loaded by one backfill run."""
+    publication = Publication(deal)
     months: list[Period] = []
     for row in context.table:
         period = Period.parse(row["month"])
-        url = exhibit_url(deal, period, "ABS-EE")
-        archive.replaced[url] = month_tape(archive.recorded.get_bytes(url), loan, row)
+        month = publication.month(period, dt.date.fromisoformat(row["filed"]))
+        month.tape.append(set_tags(loan, month_tags(row)))
         months.append(period)
-    in_session(lambda db: get_or_create(db, deal, cik=FIXTURE_CIKS[deal]))
     # Alerts need settings in force, and the fixture world's are approved on 2026-09-15, so the
     # months are backfilled the morning after the last one is filed. Each month still becomes
     # public on its own filing date: that, not the day it was loaded, is what the panel reads.
     last_filed = max(dt.date.fromisoformat(row["filed"]) for row in context.table)
-    clock.set_now(dt.datetime.combine(last_filed + dt.timedelta(days=1), REFRESH_TIME))
-    sources = Sources(
-        edgar=FirstRecorded(*(Replay(directory) for directory in EDGAR)), archive=archive
-    )
-    report = refresh.backfill(OPERATOR, deal, min(months), max(months), sources=sources)
-    loaded = [(m["period"], m["outcome"]) for d in report.run.summary["deals"] for m in d["months"]]
-    assert loaded == [(p.label, "loaded") for p in months], report.text()
+    publication.load(dt.datetime.combine(last_filed + dt.timedelta(days=1), REFRESH_TIME))
     clock.set_now(READ_AT)
     stored = stored_rows(deal, loan, clock.today())
-    expected = {
-        Period.parse(row["month"]): (
-            dt.date.fromisoformat(row["filed"]),
-            money(row["ending balance"]),
-            money(row["DSCR"]) if row["DSCR"].strip() else None,
-            row["payment status"].strip(),
-        )
-        for row in context.table
-    }
-    assert stored == expected, f"the panel holds {stored}"
+    assert sorted(stored) == months, f"the panel holds {sorted(stored)}"
+    for row in context.table:
+        held = stored[Period.parse(row["month"])]
+        for column in row.headings:
+            if column == "month":
+                continue
+            text = row[column].strip()
+            expected = COLUMN_READS[column](text) if text else None
+            assert held[column] == expected, f"{row['month']} {column}: the panel holds {held}"
+    context.deal = deal
     context.history_months = months
     # The loan page reads this world, not the dashboard's (features/steps/dashboard.py).
     context.loan_world = lambda _context: None
