@@ -665,6 +665,25 @@ export type GetAskFactsParams = {
 
 export type GetAskFacts200 = { [key: string]: unknown };
 
+export type GetAskHistoryParams = {
+  deal: string;
+  loan: string;
+  /** Known on this date. */
+  as_of?: string | null;
+};
+
+export type GetAskHistory200 = { [key: string]: unknown };
+
+export type GetAskLoansParams = {
+  deal: string;
+  /** Known on this date. */
+  as_of?: string | null;
+  /** Only the loans in special servicing. */
+  special_servicing?: boolean;
+};
+
+export type GetAskLoans200 = { [key: string]: unknown };
+
 export type GetAuditParams = {
   by?: string | null;
   start?: string | null;

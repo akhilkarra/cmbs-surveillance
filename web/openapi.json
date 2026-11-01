@@ -3672,6 +3672,187 @@
         ]
       }
     },
+    "/ask/history": {
+      "get": {
+        "description": "A loan's months as filed, each citing its own tape.",
+        "operationId": "history_ask_history_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "deal",
+            "required": true,
+            "schema": {
+              "title": "Deal",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "loan",
+            "required": true,
+            "schema": {
+              "title": "Loan",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Known on this date.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Known on this date.",
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cmbs-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cmbs-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response History Ask History Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "History",
+        "tags": [
+          "ask"
+        ]
+      }
+    },
+    "/ask/loans": {
+      "get": {
+        "description": "A deal's loans with their special-servicing state, opening with the panel's freshness.",
+        "operationId": "loans_ask_loans_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "deal",
+            "required": true,
+            "schema": {
+              "title": "Deal",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Known on this date.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Known on this date.",
+              "title": "As Of"
+            }
+          },
+          {
+            "description": "Only the loans in special servicing.",
+            "in": "query",
+            "name": "special_servicing",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only the loans in special servicing.",
+              "title": "Special Servicing",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cmbs-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cmbs-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Loans Ask Loans Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Loans",
+        "tags": [
+          "ask"
+        ]
+      }
+    },
     "/audit": {
       "get": {
         "description": "The log, optionally by one user, one loan of a deal, one run and between two dates\n(inclusive), newest first. Risk and operators only.",

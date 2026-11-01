@@ -1,6 +1,8 @@
 """`cmbs ask`: the facts the panel holds for a loan, each cited, and answers from them.
 
 Read-only. `--json` prints the facts as data for the `/cmbs-ask` skill to compose from.
+`loans` lists a deal's loans with their special-servicing state (grill log Q96), `history` one
+loan's months as filed (Q98).
 """
 
 import dataclasses
@@ -11,6 +13,10 @@ from typing import Annotated, Any
 import typer
 
 from cmbs.ask.answer import Answer
+from cmbs.ask.history import LoanHistory
+from cmbs.ask.history import history as loan_history
+from cmbs.ask.roster import Roster
+from cmbs.ask.roster import loans as deal_loans
 from cmbs.ask.service import ask, loan_facts
 from cmbs.db import engine
 from cmbs.errors import Refused
@@ -39,6 +45,22 @@ def as_data(value: Any) -> Any:
 
 def answer_data(answer: Answer) -> dict[str, Any]:
     return {**as_data(answer), "text": answer.text()}
+
+
+def roster_data(roster: Roster) -> dict[str, Any]:
+    """The roster as data, each loan with how it reads."""
+    data = as_data(roster)
+    for row, loan in zip(data["loans"], roster.loans, strict=True):
+        row["reads"] = loan.reading()
+    return {**data, "text": roster.text()}
+
+
+def history_data(found: LoanHistory) -> dict[str, Any]:
+    """The history as data, each month with how it reads."""
+    data = as_data(found)
+    for row, month in zip(data["months"], found.months, strict=True):
+        row["reads"] = month.reading()
+    return {**data, "text": found.text()}
 
 
 @app.command("facts")
@@ -78,3 +100,43 @@ def question(
         typer.echo(str(refused), err=True)
         raise typer.Exit(1) from refused
     typer.echo(json.dumps(answer_data(answer), indent=1) if as_json else answer.text())
+
+
+@app.command("loans")
+def loans(
+    deal: Annotated[str, typer.Argument(help="Deal name.")],
+    user: User,
+    as_of: AsOf = None,
+    special_servicing: Annotated[
+        bool, typer.Option("--special-servicing", help="Only the loans in special servicing.")
+    ] = False,
+    as_json: Json = False,
+) -> None:
+    """A deal's loans with their special-servicing state, each citing its tape."""
+    day = _day(as_of)
+    try:
+        with engine.session() as db:
+            found = deal_loans(db, user, deal=deal, as_of=day, special_servicing=special_servicing)
+    except Refused as refused:
+        typer.echo(str(refused), err=True)
+        raise typer.Exit(1) from refused
+    typer.echo(json.dumps(roster_data(found), indent=1) if as_json else found.text())
+
+
+@app.command("history")
+def history(
+    deal: Annotated[str, typer.Argument(help="Deal name.")],
+    loan: Annotated[str, typer.Argument(help="Loan, like 2.")],
+    user: User,
+    as_of: AsOf = None,
+    as_json: Json = False,
+) -> None:
+    """A loan's months as filed, each citing its own tape; nothing computed."""
+    day = _day(as_of)
+    try:
+        with engine.session() as db:
+            found = loan_history(db, user, deal=deal, loan=loan, as_of=day)
+    except Refused as refused:
+        typer.echo(str(refused), err=True)
+        raise typer.Exit(1) from refused
+    typer.echo(json.dumps(history_data(found), indent=1) if as_json else found.text())

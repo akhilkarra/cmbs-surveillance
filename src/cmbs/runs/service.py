@@ -29,7 +29,8 @@ from cmbs.deals.service import by_name
 from cmbs.domain import Period, format_money
 from cmbs.errors import Refused
 from cmbs.panel import service as panel
-from cmbs.refresh.plan import deal_lines
+from cmbs.refresh.plan import MonthOutcome, deal_lines
+from cmbs.refresh.tables import RunMonth
 from cmbs.runs.tables import RUN_STATUSES, Run
 from cmbs.tape.service import LOAD_ACTION
 
@@ -281,4 +282,52 @@ def trace(
         run=entry.run_id if entry else None,
         loaded_by=entry.user_name if entry else None,
         loaded_at=entry.at if entry else None,
+    )
+
+
+# ---------------------------------------------------------------------------- freshness
+
+
+@dataclass(frozen=True)
+class Freshness:
+    """How current the panel is for a deal on a day: the latest month whose tape had been filed,
+    and the latest run that had loaded a month of the deal by then (none when its months were
+    loaded outside a run, or only later)."""
+
+    deal: str
+    as_of: dt.date
+    through: Period | None
+    run: int | None
+    run_on: dt.date | None
+
+    def text(self) -> str:
+        """'Panel current through September 2026 (run 42, 2026-10-01)'."""
+        if self.through is None:
+            return f"Panel holds no loan tape of {self.deal} filed by {self.as_of.isoformat()}"
+        head = f"Panel current through {self.through.label}"
+        if self.run is None or self.run_on is None:
+            return head
+        return f"{head} (run {self.run}, {self.run_on.isoformat()})"
+
+
+def freshness(db: Session, *, deal_id: int, deal: str, day: dt.date) -> Freshness:
+    """The deal's freshness as known on `day`: tapes filed by then, runs made by its end (UTC)."""
+    tapes = panel.current_tapes(db, day, deal_id=deal_id)
+    _, until = day_bounds(day, day)
+    loaded = db.scalars(
+        select(RunMonth)
+        .where(
+            RunMonth.deal_id == deal_id,
+            RunMonth.outcome == MonthOutcome.LOADED.value,
+            RunMonth.at < until,
+        )
+        .order_by(RunMonth.at.desc(), RunMonth.id.desc())
+        .limit(1)
+    ).one_or_none()
+    return Freshness(
+        deal=deal,
+        as_of=day,
+        through=Period.of(tapes[-1].period) if tapes else None,
+        run=loaded.run_id if loaded else None,
+        run_on=loaded.at.astimezone(dt.UTC).date() if loaded else None,
     )
