@@ -98,6 +98,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px soli
 code { font-family: var(--mono); font-size: 0.84em; background: var(--code-bg); padding: 0.06em 0.34em; border-radius: 4px; overflow-wrap: anywhere; }
 h1, h2, h3 { margin: 0; font-weight: 400; }
 p { margin: 0 0 0.8em; }
+[id] { scroll-margin-top: 64px; }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
 @media (min-width: 720px) { .wrap { padding: 0 32px; } }
 .eyebrow { font: 500 0.7rem/1.4 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
@@ -164,7 +165,9 @@ p { margin: 0 0 0.8em; }
 .stage.human .row { background: color-mix(in srgb, var(--wait-soft) 55%, transparent); }
 .stage.human .dot { background: var(--wait-dot); }
 .stage.human .mark { color: var(--wait); }
-.stage.pending .row { opacity: 0.45; background: none; }
+/* Pending rows are muted by colour, not opacity, so their text keeps a readable contrast. */
+.stage.pending .row { background: none; color: var(--muted); }
+.stage.pending .tag { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--rule); }
 .stage.pending .dot { background: var(--pending); }
 .stage.pending .mark { visibility: hidden; }
 .stage.active .row { background: var(--accent-soft); opacity: 1; }
