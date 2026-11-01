@@ -307,7 +307,7 @@ footer p { margin: 0; }
         <!-- grep -cE '^\s+- id: ' .pre-commit-config.yaml -> 27 hooks; grep -c 'stages: \[pre-push\]' -> 2 on push, so 25 on commit -->
         <li class="stage done" data-status="25 automatic checks passed on commit.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Automatic checks</span><span class="tag gate-c">Automatic</span></span><span class="desc">Run on every commit.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>Catches errors, leaked passwords and confidential names in every saved version.</p></div>
+          <div class="info"><p>Catches errors and leaked passwords. Confidential names: checked locally only.</p></div>
         </li>
         <li class="stage done" data-status="Second review given; findings fixed.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Second-opinion review</span><span class="tag agent-c">AI</span></span><span class="desc">A second AI checks the work.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
@@ -354,7 +354,7 @@ footer p { margin: 0; }
     <div class="card">
       <div class="card-head"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="title">Mistake log</span></div>
       <ol class="log" id="log">
-        <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the first live model run.</b> The AI's rule sent unmentioned fields to manual review: 12 of 33, not 3. Fixed; the real answers are now tests.</span></li>
+        <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the first live model run.</b> The AI's rule sent 9 unmentioned fields to manual review, besides 3 unclear ones. Fixed; the real answers are now tests.</span></li>
         <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the automatic checks.</b> A newer Python than the AI assumed broke a dependency. Now pinned.</span></li>
         <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by a second AI.</b> A research AI called a deal publicly registered; no 10-D or loan tape exists under its name.</span></li>
       </ol>
@@ -427,7 +427,7 @@ footer p { margin: 0; }
             <tr><td>Sign-off came late</td><td>Approval commits d3ca045, 689270a, e6fe2cf, 557d366; only the Q87 revision (#28) was approved before merging</td></tr>
             <tr><td>Admin keys; forgeable sign-off</td><td>Owner's admin <code>gh</code> credential; trailer is typed text, no CODEOWNERS, local commits unsigned</td></tr>
             <tr><td>Accuracy</td><td>Five live Jev recordings in <code>tests/fixtures/model/live/</code>, two from real 10-D filings and three written for the tests; the golden set is synthetic</td></tr>
-            <tr><td>Also open</td><td>Hook matches text, so indirection passes it; draft-feature code can merge; scenarios run in process (Q61); Python coverage floor 55%</td></tr>
+            <tr><td>Also open</td><td>Hook matches text, so indirection passes it; the private-terms check runs only locally (its list is gitignored, so CI cannot run it); draft-feature code can merge; scenarios run in process (Q61); Python coverage floor 55%</td></tr>
             <tr><td>Skills</td><td><code>.claude/skills/cmbs-refresh/SKILL.md</code>, <code>.claude/skills/cmbs-ask/SKILL.md</code> (<code>allowed-tools</code> pre-approves only <code>uv run cmbs</code> commands; it does not sandbox); dev skills used: grilling, typesafe-ai, dataviz, frontend-design, writing-for-agents</td></tr>
           </tbody>
         </table>
