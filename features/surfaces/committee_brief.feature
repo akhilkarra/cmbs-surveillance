@@ -1,4 +1,4 @@
-@draft @surface:skill @surface:cli
+@approved @surface:skill @surface:cli
 Feature: A committee brief on a deal's special-servicing book
   The practitioner's real task: brief risk committee on the loans of a deal that are with the
   special servicer. `/cmbs-brief` composes one page only from what asking already gives (the
