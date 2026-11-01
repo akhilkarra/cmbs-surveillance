@@ -13,6 +13,10 @@ Turns public CMBS filings into a verified, point-in-time surveillance panel. Loa
 
 Surfaces: the `cmbs` command, a FastAPI service, a React dashboard (book view and loan view), and two Claude skills, `/cmbs-refresh` and the read-only `/cmbs-ask`.
 
+## Next to the data vendors
+
+Commercial data vendors (Trepp, Intex and the like) already give a desk cleaned loan data, cash-flow models and analysts' watchlists, across every deal and with history. This panel is meant to sit on top of that, not replace it. What it adds is the servicer's own words read into typed fields, each beside the sentence it came from; checks of the text against the tape and of the tape against itself; values exactly as they were known on any past day; and every decision written down and testable. The tape loader is the boundary: it reads EDGAR's ABS-EE today, and a vendor feed would be another adapter behind the same contract.
+
 ## How it is verified
 
 - **Requirements first.** Every behaviour is a Gherkin scenario in `features/`, written before the code and approved by the reviewer. CI runs every approved scenario on every push, the dashboard ones in a real browser.
