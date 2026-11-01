@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Development Lifecycle</title>
+<meta name="description" content="How this CMBS surveillance project takes code written by an AI agent to main: what the agent does at each stage, what a person decides, which automated gate stops wrong code, and where the gaps are.">
+<!--
+  Maintenance (CLAUDE.md): update this page in the same change whenever a skill in .claude/skills/,
+  a development skill, or a lifecycle gate (a hook, a CI job, the approval or merge flow) changes.
+  Every figure carries, in a comment beside it, the command that reproduces it.
+-->
+<style>
+:root {
+  --bg: #eef0eb;
+  --bg-rule: rgba(21, 32, 28, 0.045);
+  --surface: #fbfbf8;
+  --surface-2: #f4f5f1;
+  --ink: #15201c;
+  --muted: #4f5b56;
+  --rule: #cdd4cc;
+  --accent: #0d6b59;
+  --accent-soft: #dcece6;
+  --wait: #8a5200;
+  --wait-dot: #c77c0a;
+  --wait-soft: #f7e8c9;
+  --gate: #2c3a52;
+  --gate-soft: #e1e6ef;
+  --done: #1d7a3b;
+  --bad: #a3392a;
+  --pending: #9aa49f;
+  --code-bg: #e6e9e3;
+  --shadow: 0 1px 2px rgba(21, 32, 28, 0.06), 0 12px 32px -12px rgba(21, 32, 28, 0.18);
+  --serif: "Iowan Old Style", Charter, "Bitstream Charter", "Source Serif Pro", "Palatino Linotype", Palatino, Georgia, serif;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1412;
+    --bg-rule: rgba(230, 236, 232, 0.035);
+    --surface: #151d1a;
+    --surface-2: #1a2420;
+    --ink: #e4ebe7;
+    --muted: #9fb1a9;
+    --rule: #2b3732;
+    --accent: #52c4a7;
+    --accent-soft: #163a31;
+    --wait: #f2b856;
+    --wait-dot: #f2b856;
+    --wait-soft: #3a2d13;
+    --gate: #b9c8e6;
+    --gate-soft: #222c3d;
+    --done: #63d083;
+    --bad: #f08b77;
+    --pending: #5c6a64;
+    --code-bg: #1f2a26;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1412;
+  --bg-rule: rgba(230, 236, 232, 0.035);
+  --surface: #151d1a;
+  --surface-2: #1a2420;
+  --ink: #e4ebe7;
+  --muted: #9fb1a9;
+  --rule: #2b3732;
+  --accent: #52c4a7;
+  --accent-soft: #163a31;
+  --wait: #f2b856;
+  --wait-dot: #f2b856;
+  --wait-soft: #3a2d13;
+  --gate: #b9c8e6;
+  --gate-soft: #222c3d;
+  --done: #63d083;
+  --bad: #f08b77;
+  --pending: #5c6a64;
+  --code-bg: #1f2a26;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 31px, var(--bg-rule) 31px, var(--bg-rule) 32px);
+  color: var(--ink);
+  font: 16px/1.55 var(--sans);
+  overflow-x: hidden;
+}
+a { color: var(--accent); text-underline-offset: 3px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+code { font-family: var(--mono); font-size: 0.84em; background: var(--code-bg); padding: 0.06em 0.34em; border-radius: 4px; overflow-wrap: anywhere; }
+h1, h2, h3 { margin: 0; font-weight: 400; }
+p { margin: 0 0 0.8em; }
+[id] { scroll-margin-top: 64px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+.eyebrow { font: 500 0.7rem/1.4 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.eyebrow b { color: var(--accent); font-weight: 500; }
+.skip { position: absolute; left: -999px; top: 8px; background: var(--surface); padding: 8px 12px; z-index: 10; }
+.skip:focus { left: 8px; }
+
+/* Header */
+.top { border-bottom: 1px solid var(--rule); background: var(--bg); position: sticky; top: 0; z-index: 5; }
+.top .wrap { display: flex; align-items: center; gap: 16px; height: 50px; }
+.brand { font: 500 0.8rem/1 var(--mono); color: var(--ink); text-decoration: none; white-space: nowrap; }
+.brand span { color: var(--accent); }
+.top nav { margin-left: auto; display: none; gap: 18px; }
+.top nav a { font: 500 0.76rem/1 var(--mono); color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--ink); }
+@media (min-width: 900px) { .top nav { display: flex; } }
+.theme { display: none; margin-left: auto; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 999px; font: 500 0.72rem/1 var(--mono); padding: 7px 11px; cursor: pointer; }
+.js .theme { display: inline-block; }
+@media (min-width: 900px) { .theme { margin-left: 4px; } }
+
+/* Actor chips and tags: agent teal, person amber, gate slate */
+.chip, .tag { font: 500 0.66rem/1 var(--mono); letter-spacing: 0.06em; padding: 4px 7px; border-radius: 999px; white-space: nowrap; display: inline-block; }
+.chip { text-transform: uppercase; letter-spacing: 0.12em; text-align: center; padding: 6px 8px; }
+.agent-c { background: var(--accent-soft); color: var(--accent); }
+.person-c { background: var(--wait-soft); color: var(--wait); }
+.gate-c { background: var(--gate-soft); color: var(--gate); }
+
+/* Hero */
+.hero { padding: 32px 0 40px; }
+.hero-grid { display: grid; gap: 28px; }
+@media (min-width: 980px) { .hero-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr); gap: 44px; align-items: start; } .hero { padding: 52px 0 56px; } }
+.hero h1 { font-family: var(--serif); font-size: clamp(2rem, 5.4vw, 3.4rem); line-height: 1.02; letter-spacing: -0.015em; margin-bottom: 18px; font-weight: 500; }
+.hero h1 em { display: block; color: var(--accent); font-style: italic; font-weight: 400; }
+.lede { font-size: 1.04rem; color: var(--muted); max-width: 36em; }
+.lede strong { color: var(--ink); font-weight: 600; }
+.legend { list-style: none; padding: 0; margin: 18px 0 0; display: grid; gap: 8px; max-width: 36em; }
+.legend li { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: baseline; font-size: 0.92rem; }
+.actual { margin-top: 22px; padding: 14px 16px; border: 1px solid var(--rule); border-left: 3px solid var(--wait-dot); border-radius: 10px; background: var(--surface); font-size: 0.92rem; max-width: 36em; }
+.actual h2 { font: 600 0.95rem/1.3 var(--sans); margin-bottom: 6px; }
+.actual p { margin: 0 0 6px; }
+.actual p:last-child { margin: 0; }
+
+/* Pipeline card */
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+.card-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--rule); background: var(--surface-2); }
+.card-head .lights { display: flex; gap: 6px; }
+.card-head .lights i { width: 9px; height: 9px; border-radius: 50%; background: var(--rule); display: block; }
+.card-head .title { font: 500 0.7rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.cmd { padding: 12px 14px 4px; margin: 0; font: 400 0.82rem/1.5 var(--mono); min-height: 3.1em; }
+.cmd .prompt { color: var(--accent); }
+.cmd .caret { display: inline-block; width: 0.55em; height: 1.05em; vertical-align: -0.15em; background: var(--accent); margin-left: 2px; animation: blink 1s steps(1) infinite; }
+.cmd .caret.off { display: none; }
+@keyframes blink { 50% { opacity: 0; } }
+.stages { list-style: none; margin: 0; padding: 4px 6px 6px; }
+.stage .row { display: grid; grid-template-columns: 18px minmax(0, 1fr) 16px; gap: 8px; align-items: start; padding: 7px 9px; border-radius: 9px; color: inherit; text-decoration: none; transition: background-color 0.3s, opacity 0.3s; }
+.stage .row:hover, .stage.selected .row { background: var(--surface-2); }
+.dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; margin-left: 4px; background: var(--done); position: relative; }
+.row-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.name { font-weight: 600; font-size: 0.95rem; }
+.desc { display: block; font-size: 0.84rem; color: var(--muted); line-height: 1.4; margin-top: 2px; }
+@media (max-width: 599px) { .desc { display: none; } .stage .row { padding: 8px 9px; } }
+.mark { font: 600 0.9rem/1 var(--sans); color: var(--done); margin-top: 4px; text-align: center; }
+.wait-badge { display: none; }
+.stage.human .row { background: color-mix(in srgb, var(--wait-soft) 55%, transparent); }
+.stage.human .dot { background: var(--wait-dot); }
+.stage.human .mark { color: var(--wait); }
+/* Pending rows are muted by colour, not opacity, so their text keeps a readable contrast. */
+.stage.pending .row { background: none; color: var(--muted); }
+.stage.pending .tag { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--rule); }
+.stage.pending .dot { background: var(--pending); }
+.stage.pending .mark { visibility: hidden; }
+.stage.active .row { background: var(--accent-soft); opacity: 1; }
+.stage.active .dot { background: var(--accent); color: var(--accent); }
+.stage.active .dot::after, .stage.waiting .dot::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid currentColor; animation: pulse 1.2s ease-out infinite; }
+.stage.active .mark, .stage.waiting .mark { visibility: hidden; }
+.stage.waiting .row { background: var(--wait-soft); }
+.stage.waiting .dot { background: var(--wait-dot); color: var(--wait-dot); }
+.stage.waiting .wait-badge { display: inline-block; font: 500 0.62rem/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--wait); border: 1px solid var(--wait-dot); padding: 3px 6px; border-radius: 999px; }
+@keyframes pulse { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(1.5); opacity: 0; } }
+.status { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--rule); font: 400 0.78rem/1.45 var(--mono); color: var(--muted); min-height: 3.4em; }
+.status .s-text { flex: 1; }
+.status.waiting { color: var(--wait); background: var(--wait-soft); }
+.replay { display: none; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); border-radius: 999px; font: 500 0.7rem/1 var(--mono); padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+.js .replay.show { display: inline-block; }
+.detail { border-top: 1px solid var(--rule); padding: 12px 14px 14px; background: var(--surface-2); font-size: 0.88rem; }
+.detail .hint { color: var(--muted); margin: 0; font-size: 0.84rem; }
+.detail h3 { font: 600 0.96rem/1.3 var(--sans); margin-bottom: 8px; }
+.detail .more { display: inline-block; margin-top: 8px; font: 500 0.74rem/1 var(--mono); }
+.hint-js, .hint-wide, .hint-narrow { display: none; }
+.js .hint-nojs { display: none; }
+.js .hint-js { display: block; }
+.js .hint-wide { display: none; }
+.js .hint-narrow { display: inline; }
+@media (min-width: 980px) { .js .hint-wide { display: inline; } .js .hint-narrow { display: none; } }
+
+/* Who-does-what lists */
+.who { display: grid; grid-template-columns: 1fr; gap: 2px 12px; margin: 0; }
+.who dt { font: 500 0.64rem/1.2 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; padding-top: 6px; }
+.who dt.agent { color: var(--accent); }
+.who dt.person { color: var(--wait); }
+.who dt.gate { color: var(--gate); }
+.who dt.evidence { color: var(--muted); }
+.who dd { margin: 0 0 2px; }
+@media (min-width: 560px) { .who { grid-template-columns: 76px minmax(0, 1fr); } .who dt { padding-top: 4px; } }
+
+/* Sections */
+section.block { padding: 32px 0; border-top: 1px solid var(--rule); }
+@media (min-width: 980px) { section.block { padding: 52px 0; } }
+.block h2 { font-family: var(--serif); font-size: clamp(1.8rem, 4.4vw, 2.6rem); line-height: 1.08; margin-bottom: 10px; font-weight: 500; }
+.block h2 em { color: var(--accent); font-weight: 400; }
+.block .intro { color: var(--muted); max-width: 48em; margin-bottom: 22px; }
+
+/* Stage cards */
+.stage-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+@media (min-width: 700px) { .stage-list { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1100px) { .stage-list { grid-template-columns: 1fr 1fr 1fr; } }
+.stage-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; scroll-margin-top: 64px; font-size: 0.92rem; }
+.stage-card.human { border-color: var(--wait-dot); }
+.stage-card header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 6px; }
+.stage-card .num { font: 500 0.74rem/1 var(--mono); color: var(--muted); }
+.stage-card h3 { font: 600 1.02rem/1.2 var(--sans); }
+.stage-card .summary { margin-bottom: 6px; }
+.stage-card .who { display: block; }
+.stage-card .who dt { float: left; clear: left; margin-right: 8px; padding-top: 4px; }
+.stage-card .who dd { margin: 0 0 4px; }
+.stage-card details { margin-top: 6px; border-top: 1px dashed var(--rule); padding-top: 6px; }
+.stage-card summary { cursor: pointer; font: 500 0.7rem/1.6 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+
+/* Gaps */
+.gaps { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; max-width: 60em; }
+@media (min-width: 980px) { .gaps { grid-template-columns: 1fr 1fr; column-gap: 40px; } }
+.gaps li b { font-weight: 600; }
+
+/* Caught */
+.caught-grid { display: grid; gap: 20px; }
+@media (min-width: 900px) {
+  .log { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
+  .log li:nth-last-child(2) { border-bottom: 0; }
+  .review-catches { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.log { list-style: none; margin: 0; padding: 2px 14px 8px; }
+.log li { padding: 10px 0; border-bottom: 1px solid var(--rule); transition: opacity 0.5s, transform 0.5s; }
+.log li:last-child { border-bottom: 0; }
+.js .log.armed li { opacity: 0; transform: translateY(6px); }
+.js .log.armed li.shown { opacity: 1; transform: none; }
+.log .meta { font: 500 0.68rem/1.3 var(--mono); color: var(--muted); margin-bottom: 4px; display: block; }
+.log .line { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; font-size: 0.86rem; line-height: 1.42; margin: 2px 0; }
+.log .line i { font-style: normal; font-weight: 700; text-align: center; }
+.log .said i { color: var(--bad); }
+.log .how i { color: var(--done); }
+.log .now i { color: var(--accent); }
+.kind { font: 500 0.6rem/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 5px; border-radius: 4px; margin-right: 4px; vertical-align: 1px; }
+.kind.mech { background: var(--gate-soft); color: var(--gate); }
+.kind.rule { background: var(--wait-soft); color: var(--wait); }
+.side h3 { font-family: var(--serif); font-size: 1.4rem; margin-bottom: 8px; font-weight: 500; }
+.side p { color: var(--muted); font-size: 0.92rem; }
+.review-catches { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.review-catches li { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; font-size: 0.88rem; }
+.review-catches .who-caught { display: block; font: 500 0.68rem/1.3 var(--mono); color: var(--accent); margin-bottom: 2px; }
+
+/* Skills table */
+.table-wrap { border: 1px solid var(--rule); border-radius: 12px; background: var(--surface); overflow: hidden; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 14px; border-bottom: 1px solid var(--rule); }
+th { font: 500 0.64rem/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+tr:last-child td { border-bottom: 0; }
+@media (max-width: 640px) {
+  .stack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .stack-table tr { display: block; padding: 8px 0; border-bottom: 1px solid var(--rule); }
+  .stack-table tr:last-child { border-bottom: 0; }
+  .stack-table td { display: block; border: 0; padding: 2px 14px; }
+  .stack-table td:first-child { font: 500 0.68rem/1.4 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+}
+
+/* Skills */
+.skills-grid { display: grid; gap: 24px; }
+@media (min-width: 980px) { .skills-grid { grid-template-columns: 1fr 1fr; gap: 32px; } }
+.sub { font: 600 1rem/1.3 var(--sans); margin-bottom: 6px; }
+.skills-grid .intro { margin-bottom: 12px; font-size: 0.92rem; }
+.skill-card + .skill-card { margin-top: 10px; }
+.skill-card h4 { margin: 0; font: 600 1rem/1.2 var(--mono); color: var(--accent); }
+.skill-card p { margin: 0; }
+
+/* Analyst side */
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 18px; font: 500 0.76rem/1.3 var(--mono); }
+.flow span { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 6px 9px; }
+.flow span.k { border-color: var(--accent); color: var(--accent); }
+.flow b { color: var(--muted); font-weight: 400; }
+.skill-grid { display: grid; gap: 12px; }
+@media (min-width: 900px) { .skill-grid { grid-template-columns: 1fr 1fr; } }
+.skill-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; font-size: 0.92rem; }
+.skill-card h3 { font: 600 1.05rem/1.2 var(--mono); color: var(--accent); margin-bottom: 4px; }
+.skill-card .allowed { display: block; margin: 6px 0 8px; padding: 8px 10px; font-size: 0.76rem; line-height: 1.5; }
+.skill-card ul { margin: 0; padding-left: 1.1em; }
+.skill-card li { margin: 3px 0; }
+.both { margin: 12px 0 0; font-size: 0.92rem; color: var(--muted); }
+
+/* Numbers */
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 720px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stat { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; }
+.stat .n { font-family: var(--serif); font-size: clamp(1.7rem, 5vw, 2.3rem); line-height: 1; display: block; }
+.stat .l { font-size: 0.84rem; color: var(--muted); display: block; margin-top: 4px; line-height: 1.35; }
+
+footer { border-top: 1px solid var(--rule); padding: 22px 0 32px; color: var(--muted); font-size: 0.88rem; }
+footer p { margin: 0; max-width: 52em; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+@media print {
+  :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
+    --bg: #fff; --bg-rule: transparent; --surface: #fff; --surface-2: #f4f5f1; --ink: #000; --muted: #333;
+    --rule: #bbb; --accent: #0d6b59; --accent-soft: #dcece6; --wait: #8a5200; --wait-dot: #c77c0a;
+    --wait-soft: #f7e8c9; --gate: #2c3a52; --gate-soft: #e1e6ef; --done: #1d7a3b; --bad: #a3392a;
+    --pending: #777; --code-bg: #eee; color-scheme: light;
+  }
+  .top, .theme, .replay, .skip { display: none !important; }
+  body { background: #fff; color: #000; }
+  .js .log.armed li { opacity: 1 !important; transform: none !important; }
+  .card { box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top">cmbs-surveillance <span>/ lifecycle</span></a>
+    <nav aria-label="Sections">
+      <a href="#stages">Stages</a>
+      <a href="#gaps">Gaps</a>
+      <a href="#caught">Caught</a>
+      <a href="#skills">Skills</a>
+      <a href="#analyst">Analyst side</a>
+      <a href="#numbers">Numbers</a>
+    </nav>
+    <button class="theme" type="button" id="theme" aria-label="Switch colour theme">Theme</button>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow"><b>CMBS surveillance</b> &middot; AI development lifecycle</p>
+      <h1>An agent writes the&nbsp;code. <em>Nothing reaches main until the required checks pass.</em></h1>
+      <p class="lede">This project turns public SEC filings (ABS-EE loan tapes and 10-D servicer reports) into a point-in-time surveillance panel. A coding agent, Claude Code, wrote the code. <strong>A person makes the design decisions and approves each requirement, which the agent is blocked from changing directly. Hooks, proofs, tests, reviews and required checks decide whether code may merge.</strong></p>
+      <ul class="legend">
+        <li><span class="chip agent-c">Agent</span><span>Claude Code: asks, drafts, builds, fixes, logs its own mistakes.</span></li>
+        <li><span class="chip person-c">Person</span><span>The reviewer: decides, approves requirements, sets the merge bar.</span></li>
+        <li><span class="chip gate-c">Gate</span><span>A hook, test or CI check that fails without anyone having to remember it.</span></li>
+      </ul>
+      <aside class="actual" aria-labelledby="actual-h">
+        <h2 id="actual-h">How it actually went</h2>
+        <p>The card shows the stages a change must clear. The Q87 fix could not merge until the reviewer approved its revision (#28). It is the only change to an approved requirement so far. The features themselves were not approved first: all 29 were built and reviewed against <code>@draft</code> files, whose scenarios CI does not run, and the reviewer approved them in four commits once they were built (d3ca045, 689270a with 21 features at once, e6fe2cf, 557d366).</p>
+        <p>Approval freezes a requirement: since then, changing one needs a revision file the reviewer approves.</p>
+      </aside>
+    </div>
+
+    <div class="card pipeline" id="pipeline">
+      <div class="card-head">
+        <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="title">Stages a change must clear</span>
+      </div>
+      <p class="cmd"><span class="prompt">e.g. fix &rsaquo;</span> <span id="cmd-text">fields a comment never mentions were sent to review (Q87)</span><span class="caret off" id="caret" aria-hidden="true"></span></p>
+      <ol class="stages" id="stage-rows">
+        <li class="stage done" data-stage="grill" data-status="Q87 recorded in docs/GRILL-LOG.md and decided by the reviewer.">
+          <a class="row" href="#stage-grill"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Grill</span><span class="tag agent-c">agent asks</span><span class="tag person-c">person decides</span></span><span class="desc">Each design choice is argued out and numbered before code.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <li class="stage done" data-stage="specify" data-status="abstention_and_review.revision.feature written as @draft.">
+          <a class="row" href="#stage-specify"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Specify</span><span class="tag agent-c">agent</span></span><span class="desc">The requirement is written as Gherkin scenarios tagged @draft.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <li class="stage done human" data-stage="approve" data-wait="Waiting on a person. The agent's direct paths to approval are blocked; only the reviewer runs the approval tool." data-status="Approved: @approved, manifest hash updated, commit carries Approved-by.">
+          <a class="row" href="#stage-approve"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Approve</span><span class="tag person-c">person only</span><span class="wait-badge">waiting</span></span><span class="desc">Only the reviewer turns a draft into a requirement.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <li class="stage done" data-stage="build" data-status="Scenarios pass on replayed model answers; no provider is called.">
+          <a class="row" href="#stage-build"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Build, test-first</span><span class="tag agent-c">agent</span></span><span class="desc">Code is written to make the scenarios pass, on replayed model answers.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <!-- grep -cE '^\s+- id: ' .pre-commit-config.yaml -> 27 hooks; grep -c 'stages: \[pre-push\]' -> 2 on push, so 25 on commit -->
+        <li class="stage done" data-stage="local" data-status="pre-commit: 25 hooks on commit; pytest and web coverage on push.">
+          <a class="row" href="#stage-local"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Local gates</span><span class="tag gate-c">pre-commit</span></span><span class="desc">Lint, types, secrets, private terms on commit; tests with coverage floors on push.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <li class="stage done" data-stage="review" data-status="Independent review: findings fixed with tests before merge.">
+          <a class="row" href="#stage-review"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Independent review</span><span class="tag agent-c">second agent</span><span class="tag gate-c">Copilot</span></span><span class="desc">A fresh agent, not shown the author's reasoning, reviews the PR.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <li class="stage done" data-stage="ci" data-status="py &#10003; lint &#10003; web &#10003; pre-commit.ci &#10003; CodeQL &#10003; secret scan &#10003;">
+          <a class="row" href="#stage-ci"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">CI</span><span class="tag gate-c">required checks</span></span><span class="desc">Six required checks, Lean proofs included; the branch must be up to date.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <li class="stage done" data-stage="merge" data-status="Ruleset satisfied; the agent merges. CI runs again on main.">
+          <a class="row" href="#stage-merge"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Merge</span><span class="tag agent-c">agent merges</span><span class="tag gate-c">ruleset</span></span><span class="desc">Main takes only pull requests that pass the ruleset.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+        <li class="stage done" data-stage="learn" data-status="Mistakes go in the catch log; mutation testing runs nightly.">
+          <a class="row" href="#stage-learn"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Learn</span><span class="tag agent-c">catch log</span><span class="tag gate-c">nightly</span></span><span class="desc">Each caught mistake gets a guardrail. Quality floors only rise.</span></span><span class="mark" aria-hidden="true">&#10003;</span></a>
+        </li>
+      </ol>
+      <div class="status" id="status"><span class="s-text" id="status-text">Nine stages, each with a gate.</span><button class="replay" type="button" id="replay">Replay</button></div>
+      <div class="detail" id="detail" aria-live="polite">
+        <p class="hint hint-nojs">Each stage links to its card below.</p>
+        <p class="hint hint-js"><span class="hint-wide">Select a stage for what the agent does, what a person decides, the gate and the evidence.</span><span class="hint-narrow">Tap a stage to jump to its card.</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="stages">
+  <div class="wrap">
+    <p class="eyebrow"><b>01&ndash;09</b> &middot; the stages</p>
+    <h2>Who acts, and <em>what stops them</em></h2>
+    <p class="intro">Each card gives the gate and the files that show it; open "Agent and person" for who does what. Q-numbers are entries in <code>docs/GRILL-LOG.md</code>; # numbers are pull requests.</p>
+
+    <ol class="stage-list">
+      <li class="stage-card" id="stage-grill">
+        <header><span class="num">01</span><h3>Grill</h3><span class="tag agent-c">agent asks</span><span class="tag person-c">person decides</span></header>
+        <p class="summary">Design choices are argued out and logged with a number, the answer and who decided.</p>
+        <dl class="who ge">
+          <dt class="gate">Rule</dt><dd>A written rule, not a gate: the log is binding, so a change gets a new number. Review holds entries to what was built (#52).</dd>
+          <dt class="evidence">Evidence</dt><dd><code>docs/GRILL-LOG.md</code></dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Asks the questions with the <code>grilling</code> skill and writes each answer into the log.</dd>
+          <dt class="person">Person</dt><dd>Answers and decides, Q1 to Q95.</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card" id="stage-specify">
+        <header><span class="num">02</span><h3>Specify</h3><span class="tag agent-c">agent</span></header>
+        <p class="summary">Requirements are Gherkin scenarios with concrete values in every step, tagged <code>@draft</code>.</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>One status tag per file; only <code>@approved</code> scenarios run.</dd>
+          <dt class="evidence">Evidence</dt><dd><code>features/README.md</code>, <code>behave.ini</code></dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Writes the scenarios, re-read as a PM, analyst, quant, risk officer, operator and compliance reviewer would (Q36 to Q50).</dd>
+          <dt class="person">Person</dt><dd>Reads the drafts and asks for changes.</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card human" id="stage-approve">
+        <header><span class="num">03</span><h3>Approve</h3><span class="tag person-c">person only</span></header>
+        <p class="summary">The reviewer runs <code>tools/approve_feature.py</code> (tag flipped, SHA-256 manifest updated) and commits with <code>Approved-by:</code>.</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>A hook blocks the agent's direct paths: edits, and commands naming the tag, the manifest or an approved file. CI rejects a changed approved file without the trailer.</dd>
+          <dt class="evidence">Evidence</dt><dd><code>.claude/hooks/guard_approved_features.py</code>, <code>tools/check_approved_features.py</code></dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Proposes changes as <code>&lt;name&gt;.revision.feature</code>; #28 could not pass CI until the reviewer approved one.</dd>
+          <dt class="person">Person</dt><dd>The only one who approves.</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card" id="stage-build">
+        <header><span class="num">04</span><h3>Build, test-first</h3><span class="tag agent-c">agent</span></header>
+        <p class="summary">Scenarios drive the service layer, each in its own seeded database. Model answers are recorded once and replayed.</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>No test calls a model provider; a missing recording or an unpinned model stops the run. Lean proves the checks' decision logic (Q81).</dd>
+          <dt class="evidence">Evidence</dt><dd><code>features/extraction/model_replay.feature</code>, <code>lean/</code></dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Writes code and tests. Judgments come from Jev (TypeSafe's decision model); decisions are truth tables in code.</dd>
+          <dt class="person">Person</dt><dd>Rules on decisions the build raises (Q80 to Q85).</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card" id="stage-local">
+        <header><span class="num">05</span><h3>Local gates</h3><span class="tag gate-c">pre-commit</span></header>
+        <p class="summary">Hooks run on every commit and push; CI's required <code>lint</code> job re-runs any that were skipped.</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>Commit: ruff, basedpyright, typos, gitleaks, Biome, actionlint, zizmor, <code>check-dependabot</code>, pre-commit.ci config, <code>uv-lock</code>, invisible Unicode, private terms (local only), feature status, file hygiene. Push: pytest and Vitest with coverage floors.</dd>
+          <dt class="evidence">Evidence</dt><dd><code>.pre-commit-config.yaml</code></dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Commits through the hooks and fixes what they report.</dd>
+          <dt class="person">Person</dt><dd>Chose the hook set (Q56).</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card" id="stage-review">
+        <header><span class="num">06</span><h3>Independent review</h3><span class="tag agent-c">second agent</span><span class="tag gate-c">Copilot</span></header>
+        <p class="summary">Each feature PR: the same model in a fresh context, with a prompt the author agent wrote and none of its reasoning. Dependabot's PRs merge on CI alone (#43).</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>Findings fixed with tests (Q64). Copilot: requested on every push by a repository rule; it reviewed only #3, #51 and #52 (its credits lapsed between #3 and #51).</dd>
+          <dt class="evidence">Evidence</dt><dd>Review texts were not saved: fix PRs #16, #19, #52 and Q90.</dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>The reviewer checks concurrency, permissions and audit, and breaks key logic to see whether a test fails.</dd>
+          <dt class="person">Person</dt><dd>Rules on findings that change a decision.</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card" id="stage-ci">
+        <header><span class="num">07</span><h3>CI</h3><span class="tag gate-c">required checks</span></header>
+        <p class="summary">Required: <code>py</code> (pytest, non-draft scenarios, approval check, Lean), <code>lint</code>, <code>web</code>, pre-commit.ci, CodeQL, a secret scan. The <code>api</code> job is not required.</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>Lean builds with <code>--wfail</code>, an axiom audit and a <code>sorry</code> grep; its oracle tests may not skip.</dd>
+          <dt class="evidence">Evidence</dt><dd><code>.github/workflows/ci.yml</code></dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Reads a failed run's log, reproduces it and fixes the cause.</dd>
+          <dt class="person">Person</dt><dd>Set the repository rules. The agent's credential could change them too (see Known gaps).</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card" id="stage-merge">
+        <header><span class="num">08</span><h3>Merge</h3><span class="tag agent-c">agent merges</span><span class="tag gate-c">ruleset</span></header>
+        <p class="summary">Main takes only pull requests whose required checks pass on a branch up to date with main.</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>The ruleset on main: no bypass list, no force-push, no deletion. CI re-runs on main after each merge.</dd>
+          <dt class="evidence">Evidence</dt><dd>GitHub ruleset "main", <code>ci.yml</code>, Q95</dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Presses merge with a script that checks the head branch and subject line, added after it merged the wrong PR. The script lives outside the repo.</dd>
+          <dt class="person">Person</dt><dd>Sets the bar (Q95): CI green, review findings fixed with tests, full suite and every scenario re-run on the merged result. Approves features.</dd>
+        </dl></details>
+      </li>
+
+      <li class="stage-card" id="stage-learn">
+        <header><span class="num">09</span><h3>Learn</h3><span class="tag agent-c">catch log</span><span class="tag gate-c">nightly</span></header>
+        <p class="summary">Each caught mistake is logged with its guardrail. Floors only rise: mutmut's went 58, 68, 71, 90%.</p>
+        <dl class="who ge">
+          <dt class="gate">Gate</dt><dd>Nightly mutmut (floor 90%) and Stryker (break 95%); coverage floors web 100%, Python 55%.</dd>
+          <dt class="evidence">Evidence</dt><dd><code>docs/ai-catch-log.md</code>, <code>mutation.yml</code></dd>
+        </dl>
+        <details><summary>Agent and person</summary><dl class="who ap">
+          <dt class="agent">Agent</dt><dd>Writes each entry: what it said, what was true, how it was caught, the guardrail.</dd>
+          <dt class="person">Person</dt><dd>Catches what checks miss, like the sleeping machine below.</dd>
+        </dl></details>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="block" id="gaps">
+  <div class="wrap">
+    <p class="eyebrow"><b>Read this before trusting the rest</b></p>
+    <h2>Known <em>gaps</em></h2>
+    <ul class="gaps">
+      <li><b>Nothing stops code for a draft feature from merging:</b> CI runs only non-draft scenarios, and every feature was approved after it was built.</li>
+      <li><b>The hook matches text,</b> so indirection (a wildcard, a script) gets past it. A script that edits an approved file, plus a typed <code>Approved-by:</code> trailer, would pass CI; only someone reading the diff would catch it.</li>
+      <li><b>The agent works with the owner's GitHub credential, which has admin rights.</b> GitHub cannot tell the agent's merges from the person's, and the agent could edit or turn off the ruleset the Merge stage relies on. The remedy is a separate bot identity or a fine-grained token with write access but no admin, so only the person can change the ruleset.</li>
+      <li><b>Approval is not bound to a person:</b> the <code>Approved-by:</code> trailer is typed text, there is no CODEOWNERS file, and local commits are unsigned.</li>
+      <li><b>No human approves code diffs:</b> the ruleset requires zero approving reviews.</li>
+      <li><b>Review texts were not saved;</b> the evidence is the fix PRs and the grill-log entries they produced.</li>
+      <li><b>The merge script lives outside the repo,</b> unreviewed and untested.</li>
+      <li><b>The private-terms check is local only:</b> its term list is gitignored, so CI and pre-commit.ci cannot run it, and a commit that skips the hook could merge a blocked term with every required check green.</li>
+      <li><b>The analyst skills are not sandboxed:</b> <code>allowed-tools</code> pre-approves their <code>cmbs</code> commands but does not take other tools away; "only call the CLI" is a written rule, and anything else asks the user for permission.</li>
+      <li><b>Extraction accuracy is unmeasured beyond five live comments;</b> a change in the model's answers is caught only by the version pin and the recordings.</li>
+      <li><b>Lean proves the checks' decision logic</b> (for the roll-forward: scheduled balance, with loss months not checked, Q81). The Python is tested against it on random inputs, not proved.</li>
+      <li><b>Scenarios run in process,</b> not through the CLI and API (deferred, Q61).</li>
+      <li><b>Python's coverage floor is 55%,</b> and the nightly mutation run has failed before scoring since 2026-10-31; the last full run scored 92.0%.</li>
+      <li><b>A wrong requirement passes every gate.</b> Only the grill log, the stakeholder readings and the reviewer guard against it.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="block" id="caught">
+  <div class="wrap">
+    <p class="eyebrow"><b>Evidence</b> &middot; <code>docs/ai-catch-log.md</code> and the PR history</p>
+    <h2>What the gates <em>caught</em></h2>
+    <p class="intro">Six of the catch log's thirteen entries, condensed. Each guardrail is marked <span class="kind mech">mechanical</span> when a hook, test, script or CI enforces it, or <span class="kind rule">written rule</span> when it relies on the agent following an instruction.</p>
+    <div class="caught-grid">
+      <div class="card">
+        <div class="card-head"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="title">Catch log</span></div>
+        <ol class="log" id="log">
+          <li>
+            <span class="meta">2026-10-24 &middot; research on the Claude Code hooks docs</span>
+            <span class="line said"><i>&#10007;</i><span>Said a hooks setting "is not documented". It is; the fetch had read 100,000 of 281,770 characters. The log calls it a repeat of an earlier failure.</span></span>
+            <span class="line how"><i>&#10003;</i><span>The agent fetched the full page and searched it.</span></span>
+            <span class="line now"><i>+</i><span><span class="kind rule">written rule</span>Search the full source before calling anything absent. Nothing enforces it.</span></span>
+          </li>
+          <li>
+            <span class="meta">2026-10-27 &middot; the agent-written approval check</span>
+            <span class="line said"><i>&#10007;</i><span>Required a trailer on any commit touching approved features, which failed the commit that added the empty manifest.</span></span>
+            <span class="line how"><i>&#10003;</i><span>CI failed on push; reproduced locally.</span></span>
+            <span class="line now"><i>+</i><span><span class="kind mech">mechanical: CI</span>The rule targets feature files, with tamper tests.</span></span>
+          </li>
+          <li>
+            <span class="meta">2026-10-28 &middot; a slow mutation run</span>
+            <span class="line said"><i>&#10007;</i><span>Blamed database lock waits for 53 minutes. The machine was asleep; awake, the run took 75 seconds.</span></span>
+            <span class="line how"><i>&#10003;</i><span>The user asked; the power log showed the sleep.</span></span>
+            <span class="line now"><i>+</i><span><span class="kind rule">written rule</span>State a cause only when the evidence rules out the alternatives.</span></span>
+          </li>
+          <li>
+            <span class="meta">2026-10-28 &middot; mutation shards timing out</span>
+            <span class="line said"><i>&#10007;</i><span>Blamed one mutant, then a Docker outage. Mutants forked after Polars started its threads were hanging.</span></span>
+            <span class="line how"><i>&#10003;</i><span>Compared plain pytest with mutmut, then dumped the hung child's stack.</span></span>
+            <span class="line now"><i>+</i><span><span class="kind mech">mechanical: config</span>mutmut uses fork-server isolation (<code>pyproject.toml</code>).</span></span>
+          </li>
+          <li>
+            <span class="meta">2026-10-29 &middot; merging PR 28</span>
+            <span class="line said"><i>&#10007;</i><span>Chained a branch cleanup after the merge script with <code>;</code>. The script stopped; the cleanup ran and closed the PR.</span></span>
+            <span class="line how"><i>&#10003;</i><span>Read the output; recreated the branch and reopened the PR.</span></span>
+            <span class="line now"><i>+</i><span><span class="kind mech">mechanical: script</span>Cleanup only after GitHub reports MERGED (script outside the repo).</span></span>
+          </li>
+          <li>
+            <span class="meta">2026-10-31 &middot; merging a docs PR</span>
+            <span class="line said"><i>&#10007;</i><span>Predicted the new PR would be #43. Dependabot held #43, so the script merged a dependency bump under the docs PR's title.</span></span>
+            <span class="line how"><i>&#10003;</i><span>The output showed #45 created and #43 merged; tests re-run on main passed.</span></span>
+            <span class="line now"><i>+</i><span><span class="kind mech">mechanical: script</span>The script checks head branch and subject; PR numbers are read, never predicted.</span></span>
+          </li>
+        </ol>
+      </div>
+
+      <div class="side">
+        <h3>Caught in review</h3>
+        <ul class="review-catches">
+          <li><span class="who-caught">review agent &middot; PR 42</span>An HTTP proxy could carry "local" model requests off the machine. Now only an in-process model counts as local, and local-model calls bypass any proxy (Q90).</li>
+          <li><span class="who-caught">review agent &middot; PR 12</span>The sentence splitter broke on "Dec. 31", initials and "No. 5". Fixed there; the alerts moved onto it in #19.</li>
+          <li><span class="who-caught">review agent &middot; PR 14</span>Pure planning code was tested only through database tests, so its mutants died slowly. Database tests now run last (#16).</li>
+          <li><span class="who-caught">GitHub Copilot &middot; PR 51</span>Two decision entries described more than was built; #52 corrected three.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="skills">
+  <div class="wrap">
+    <p class="eyebrow"><b>Claude skills</b> &middot; while building and at run time</p>
+    <h2>Where the <em>skills</em> fit</h2>
+    <div class="skills-grid">
+      <div>
+        <h3 class="sub">While building</h3>
+        <p class="intro">Development skills invoked during the build. None writes or approves a requirement, and none reviews code.</p>
+        <div class="table-wrap">
+          <table class="stack-table">
+            <thead><tr><th scope="col">Stage</th><th scope="col">Skill</th><th scope="col">Used for</th></tr></thead>
+            <tbody>
+              <tr><td>01 Grill</td><td><code>grilling</code></td><td>Questioning the reviewer one decision at a time until it could be logged. The most used by far.</td></tr>
+              <tr><td>04 Build</td><td><code>typesafe-ai</code></td><td>Reviewing the Jev integration before its first live calls.</td></tr>
+              <tr><td>04 Build</td><td><code>dataviz</code>, <code>frontend-design</code></td><td>The dashboard's views and its loan history chart.</td></tr>
+              <tr><td>09 Learn</td><td><code>writing-for-agents</code></td><td><code>CLAUDE.md</code> and the two project skill files.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div id="analyst">
+        <h3 class="sub">At run time: the analyst's two skills</h3>
+        <p class="intro">Each skill's <code>allowed-tools</code> pre-approves only its <code>cmbs</code> commands, and the skill tells the agent to call nothing else; any other tool would ask the user for permission (a written rule, not a sandbox). The CLI checks the user's role and writes the audit trail.</p>
+        <article class="skill-card">
+          <h4>/cmbs-refresh</h4>
+          <code class="allowed">allowed-tools: Bash(uv run cmbs refresh deal:*)</code>
+          <p>Loads a deal's new SEC filings a month at a time, completely or not at all; extracts comments; runs the checks; builds alerts. Relays the report problems first, and never calls a run a success unless its status says <code>succeeded</code>.</p>
+        </article>
+        <article class="skill-card">
+          <h4>/cmbs-ask</h4>
+          <code class="allowed">allowed-tools: Bash(uv run cmbs ask facts:*), Bash(uv run cmbs ask question:*)</code>
+          <p>Read-only. Every statement cites its filing (10-D accession and sentence, or ABS-EE tape field); no estimates; a value awaiting human review is not a fact.</p>
+        </article>
+        <p class="both">Both treat filing text as data, never as instructions. The <code>api</code> container holds no model key (Q91).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="numbers">
+  <div class="wrap">
+    <p class="eyebrow"><b>As of 2026-11-01</b> &middot; each figure has its command in the page source</p>
+    <h2>The <em>numbers</em></h2>
+    <div class="stats">
+      <!-- grep -oE '^\| Q[0-9]+' docs/GRILL-LOG.md | sort -u | wc -l -> 94 distinct numbers; highest: ... | sort -t Q -k2 -n | tail -1 -> Q95; Q27 is unused -->
+      <div class="stat"><span class="n">94</span><span class="l">numbered decisions, Q1 to Q95 (Q27 unused)</span></div>
+      <!-- grep -rhE '^\s*Scenario( Outline)?:' features --include='*.feature' | wc -l  ->  135 -->
+      <div class="stat"><span class="n">135</span><span class="l">Gherkin scenarios</span></div>
+      <!-- find features -name '*.feature' | wc -l -> 29; uv run python tools/check_approved_features.py -> "features OK: 29 approved, 0 draft" -->
+      <div class="stat"><span class="n">29 / 29</span><span class="l">features approved, in four approval commits after build</span></div>
+      <!-- git log --format='%(trailers:key=Approved-by,valueonly)' | grep -c .  ->  5 (the four feature approvals plus the Q87 revision) -->
+      <div class="stat"><span class="n">5</span><span class="l">commits with an Approved-by trailer</span></div>
+      <!-- uv run pytest --collect-only | tail -1  ->  2178 tests collected -->
+      <div class="stat"><span class="n">2,178</span><span class="l">Python tests</span></div>
+      <!-- grep -rhE '^\s*theorem ' lean --include='*.lean' | wc -l -> 34; the #audit list in lean/Invariants/Audit.lean names the same 34 -->
+      <div class="stat"><span class="n">34</span><span class="l">Lean theorems, each audited for axioms</span></div>
+      <!-- gh pr list --state merged --limit 300 --json number --jq length -> 50; with --json author, 3 are from Dependabot -->
+      <div class="stat"><span class="n">50</span><span class="l">merged pull requests, 3 of them Dependabot's</span></div>
+      <!-- grep -cE '^\| 2026-' docs/ai-catch-log.md  ->  13 -->
+      <div class="stat"><span class="n">13</span><span class="l">catch-log entries</span></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>This page is updated whenever a skill or a gate changes, as <code>CLAUDE.md</code> requires.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var root = document.documentElement;
+  root.classList.add("js");
+
+  /* Theme toggle: remembers the choice when storage is available. */
+  var themeBtn = document.getElementById("theme");
+  function store(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* no storage */ } }
+  function load(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function currentTheme() {
+    var set = root.getAttribute("data-theme");
+    if (set) return set;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function labelTheme() {
+    var next = currentTheme() === "dark" ? "light" : "dark";
+    themeBtn.textContent = next === "dark" ? "Dark mode" : "Light mode";
+    themeBtn.setAttribute("aria-label", "Switch to " + next + " theme");
+  }
+  var saved = load("aidlc-theme");
+  if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved);
+  labelTheme();
+  themeBtn.addEventListener("click", function () {
+    var next = currentTheme() === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    store("aidlc-theme", next);
+    labelTheme();
+  });
+
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var narrow = window.matchMedia ? window.matchMedia("(max-width: 979px)") : { matches: false };
+
+  /* Detail panel: copies a stage card's agent, person, gate and evidence into the hero card. */
+  var rows = Array.prototype.slice.call(document.querySelectorAll("#stage-rows .stage"));
+  var detail = document.getElementById("detail");
+  function showDetail(li) {
+    var key = li.getAttribute("data-stage");
+    var card = document.getElementById("stage-" + key);
+    if (!card) return;
+    rows.forEach(function (r) { r.classList.toggle("selected", r === li); });
+    var h = document.createElement("h3");
+    h.textContent = card.querySelector("h3").textContent;
+    var dl = document.createElement("dl");
+    dl.className = "who";
+    [card.querySelector("dl.ap"), card.querySelector("dl.ge")].forEach(function (src) {
+      Array.prototype.forEach.call(src.children, function (node) { dl.appendChild(node.cloneNode(true)); });
+    });
+    /* A copy of the row's own link, so no page text is turned into a URL. */
+    var more = li.querySelector("a.row").cloneNode(false);
+    more.className = "more";
+    more.textContent = "Stage card ↓";
+    detail.textContent = "";
+    detail.appendChild(h);
+    detail.appendChild(dl);
+    detail.appendChild(more);
+  }
+  rows.forEach(function (li) {
+    var a = li.querySelector("a.row");
+    a.addEventListener("click", function (ev) {
+      /* On narrow screens the panel sits below all nine rows, so the link jumps to the card instead. */
+      if (narrow.matches) return;
+      ev.preventDefault();
+      showDetail(li);
+    });
+    a.addEventListener("focus", function () { if (!narrow.matches) showDetail(li); });
+    a.addEventListener("mouseenter", function () { if (!narrow.matches) showDetail(li); });
+  });
+
+  /* Pipeline animation. Without JS, or with reduced motion, every stage shows as done. */
+  var statusBox = document.getElementById("status");
+  var statusText = document.getElementById("status-text");
+  var replay = document.getElementById("replay");
+  var cmdText = document.getElementById("cmd-text");
+  var caret = document.getElementById("caret");
+  var fullCmd = cmdText.textContent;
+  var timers = [];
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+  function setState(li, state) {
+    li.classList.remove("pending", "active", "waiting", "done");
+    li.classList.add(state);
+  }
+  function setStatus(text, waiting) {
+    statusText.textContent = text;
+    statusBox.classList.toggle("waiting", !!waiting);
+  }
+  var running = false;
+  function finish() {
+    clearTimers();
+    running = false;
+    cmdText.textContent = fullCmd;
+    caret.classList.add("off");
+    rows.forEach(function (li) { setState(li, "done"); });
+    setStatus("Merged; CI ran again on main.", false);
+    replay.textContent = "Replay";
+    replay.setAttribute("aria-label", "Replay the animation");
+  }
+  function run() {
+    clearTimers();
+    running = true;
+    /* The control is shown for the whole run, so the motion can be stopped at any point. */
+    replay.classList.add("show");
+    replay.textContent = "Stop";
+    replay.setAttribute("aria-label", "Stop the animation and show every stage");
+    rows.forEach(function (li) { setState(li, "pending"); });
+    cmdText.textContent = "";
+    caret.classList.remove("off");
+    setStatus("Running the lifecycle…", false);
+    var t = 0;
+    for (var i = 1; i <= fullCmd.length; i++) {
+      (function (n) { later(function () { cmdText.textContent = fullCmd.slice(0, n); }, t); })(i);
+      t += 24;
+    }
+    t += 350;
+    later(function () { caret.classList.add("off"); }, t);
+    rows.forEach(function (li) {
+      var waitText = li.getAttribute("data-wait");
+      var doneText = li.getAttribute("data-status");
+      later(function () { setState(li, waitText ? "waiting" : "active"); setStatus(waitText || doneText, !!waitText); }, t);
+      t += waitText ? 2600 : 1100;
+      if (waitText) {
+        later(function () { setStatus(doneText, false); }, t);
+        t += 900;
+      }
+      later(function () { setState(li, "done"); }, t);
+    });
+    later(finish, t + 200);
+  }
+
+  var card = document.getElementById("pipeline");
+  if (reduce) {
+    setStatus("Nine stages, each with a gate.", false);
+  } else {
+    replay.addEventListener("click", function () { if (running) { finish(); } else { run(); } });
+    if ("IntersectionObserver" in window) {
+      var started = false;
+      var io = new IntersectionObserver(function (entries) {
+        if (!started && entries[0].isIntersecting) { started = true; io.disconnect(); run(); }
+      }, { threshold: 0.25 });
+      io.observe(card);
+    } else {
+      run();
+    }
+  }
+
+  /* Catch-log card: entries appear one at a time when the card scrolls into view. */
+  var log = document.getElementById("log");
+  if (!reduce && "IntersectionObserver" in window) {
+    var items = Array.prototype.slice.call(log.children);
+    /* Arm the reveal only when the card starts below the fold; otherwise show it at once. */
+    if (log.getBoundingClientRect().top < window.innerHeight) { items = []; }
+    else { log.classList.add("armed"); }
+    var lio = new IntersectionObserver(function (entries) {
+      if (!entries[0].isIntersecting) return;
+      lio.disconnect();
+      items.forEach(function (li, k) { setTimeout(function () { li.classList.add("shown"); }, 140 * k); });
+    }, { threshold: 0.1 });
+    lio.observe(log);
+  }
+  window.addEventListener("beforeprint", function () {
+    Array.prototype.forEach.call(log.children, function (li) { li.classList.add("shown"); });
+    Array.prototype.forEach.call(document.querySelectorAll(".stage-card details"), function (d) { d.open = true; });
+  });
+})();
+</script>
+</body>
+</html>

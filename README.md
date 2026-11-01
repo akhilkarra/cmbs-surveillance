@@ -19,13 +19,13 @@ Commercial data vendors (Trepp, Intex and the like) already give a desk cleaned 
 
 ## How it is verified
 
-- **Requirements first.** Every behaviour is a Gherkin scenario in `features/`, written before the code and approved by the reviewer. CI runs every approved scenario on every push, the dashboard ones in a real browser.
+- **Requirements first.** Every behaviour is a Gherkin scenario in `features/`, written before the code. The reviewer approved each feature once it was built, which freezes it: a change since then needs a revision the reviewer approves. CI runs every approved scenario on every push, the dashboard ones in a real browser.
 - **Tests** with exact values and a coverage floor, run against a fresh Postgres database per test.
-- **Proofs.** The pool invariants (delinquency buckets partition the pool, the balance rolls forward, the weighted-average coupon lies between the lowest and highest rates) and the extraction decision table are proved in Lean 4 and checked against the Python by differential tests (in progress).
-- **Mutation testing** with mutmut and Stryker (paused in CI for now; `CLAUDE.md` says how to turn it back on).
+- **Proofs.** The pool invariants (delinquency buckets partition the pool, the balance rolls forward, the weighted-average coupon lies between the lowest and highest rates) and the extraction decision table are proved in Lean 4 and checked against the Python by differential tests.
+- **Mutation testing** with mutmut and Stryker, nightly and on demand (`.github/workflows/mutation.yml`), never on pull requests.
 - **Real data.** Real BANK 2018-BNK13 and BANK5 2026-5YR23 filings are test fixtures, and the first live Jev answers are kept as regression tests.
 
-Why each choice was made is in `docs/GRILL-LOG.md`; the quirks of real filings are in `docs/MESS-REGISTER.md`; mistakes caught in AI-written work are in `docs/ai-catch-log.md`.
+Why each choice was made is in `docs/GRILL-LOG.md`; the quirks of real filings are in `docs/MESS-REGISTER.md`; mistakes caught in AI-written work are in `docs/ai-catch-log.md`. How AI-written code gets to main, stage by stage, with its gates and known gaps: open `AIDLC.html` in a browser.
 
 ## Layout
 
