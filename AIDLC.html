@@ -263,7 +263,7 @@ th, td { text-align: left; vertical-align: top; padding: 9px 14px; border-bottom
 th { font: 500 0.64rem/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
 tr:last-child td { border-bottom: 0; }
 @media (max-width: 640px) {
-  .stack-table thead { display: none; }
+  .stack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .stack-table tr { display: block; padding: 8px 0; border-bottom: 1px solid var(--rule); }
   .stack-table tr:last-child { border-bottom: 0; }
   .stack-table td { display: block; border: 0; padding: 2px 14px; }
@@ -308,6 +308,12 @@ footer p { margin: 0; max-width: 52em; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 @media print {
+  :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
+    --bg: #fff; --bg-rule: transparent; --surface: #fff; --surface-2: #f4f5f1; --ink: #000; --muted: #333;
+    --rule: #bbb; --accent: #0d6b59; --accent-soft: #dcece6; --wait: #8a5200; --wait-dot: #c77c0a;
+    --wait-soft: #f7e8c9; --gate: #2c3a52; --gate-soft: #e1e6ef; --done: #1d7a3b; --bad: #a3392a;
+    --pending: #777; --code-bg: #eee; color-scheme: light;
+  }
   .top, .theme, .replay, .skip { display: none !important; }
   body { background: #fff; color: #000; }
   .js .log.armed li { opacity: 1 !important; transform: none !important; }
@@ -459,7 +465,7 @@ footer p { margin: 0; max-width: 52em; }
         <header><span class="num">05</span><h3>Local gates</h3><span class="tag gate-c">pre-commit</span></header>
         <p class="summary">Hooks run on every commit and push; CI's required <code>lint</code> job re-runs any that were skipped.</p>
         <dl class="who ge">
-          <dt class="gate">Gate</dt><dd>Commit: ruff, basedpyright, typos, gitleaks, Biome, actionlint, zizmor, <code>check-dependabot</code>, pre-commit.ci config, <code>uv-lock</code>, invisible Unicode, private terms, feature status, file hygiene. Push: pytest and Vitest with coverage floors.</dd>
+          <dt class="gate">Gate</dt><dd>Commit: ruff, basedpyright, typos, gitleaks, Biome, actionlint, zizmor, <code>check-dependabot</code>, pre-commit.ci config, <code>uv-lock</code>, invisible Unicode, private terms (local only), feature status, file hygiene. Push: pytest and Vitest with coverage floors.</dd>
           <dt class="evidence">Evidence</dt><dd><code>.pre-commit-config.yaml</code></dd>
         </dl>
         <details><summary>Agent and person</summary><dl class="who ap">
@@ -535,6 +541,8 @@ footer p { margin: 0; max-width: 52em; }
       <li><b>No human approves code diffs:</b> the ruleset requires zero approving reviews.</li>
       <li><b>Review texts were not saved;</b> the evidence is the fix PRs and the grill-log entries they produced.</li>
       <li><b>The merge script lives outside the repo,</b> unreviewed and untested.</li>
+      <li><b>The private-terms check is local only:</b> its term list is gitignored, so CI and pre-commit.ci cannot run it, and a commit that skips the hook could merge a blocked term with every required check green.</li>
+      <li><b>The analyst skills are not sandboxed:</b> <code>allowed-tools</code> pre-approves their <code>cmbs</code> commands but does not take other tools away; "only call the CLI" is a written rule, and anything else asks the user for permission.</li>
       <li><b>Extraction accuracy is unmeasured beyond five live comments;</b> a change in the model's answers is caught only by the version pin and the recordings.</li>
       <li><b>Lean proves the checks' decision logic</b> (for the roll-forward: scheduled balance, with loss months not checked, Q81). The Python is tested against it on random inputs, not proved.</li>
       <li><b>Scenarios run in process,</b> not through the CLI and API (deferred, Q61).</li>
@@ -627,7 +635,7 @@ footer p { margin: 0; max-width: 52em; }
       </div>
       <div id="analyst">
         <h3 class="sub">At run time: the analyst's two skills</h3>
-        <p class="intro">Each skill's <code>allowed-tools</code> permits only its <code>cmbs</code> commands, so the agent running it cannot edit files, query the database or run anything else. The CLI checks the user's role and writes the audit trail.</p>
+        <p class="intro">Each skill's <code>allowed-tools</code> pre-approves only its <code>cmbs</code> commands, and the skill tells the agent to call nothing else; any other tool would ask the user for permission (a written rule, not a sandbox). The CLI checks the user's role and writes the audit trail.</p>
         <article class="skill-card">
           <h4>/cmbs-refresh</h4>
           <code class="allowed">allowed-tools: Bash(uv run cmbs refresh deal:*)</code>
@@ -724,9 +732,9 @@ footer p { margin: 0; max-width: 52em; }
     [card.querySelector("dl.ap"), card.querySelector("dl.ge")].forEach(function (src) {
       Array.prototype.forEach.call(src.children, function (node) { dl.appendChild(node.cloneNode(true)); });
     });
-    var more = document.createElement("a");
+    /* A copy of the row's own link, so no page text is turned into a URL. */
+    var more = li.querySelector("a.row").cloneNode(false);
     more.className = "more";
-    more.href = "#stage-" + key;
     more.textContent = "Stage card ↓";
     detail.textContent = "";
     detail.appendChild(h);
@@ -763,14 +771,24 @@ footer p { margin: 0; max-width: 52em; }
     statusText.textContent = text;
     statusBox.classList.toggle("waiting", !!waiting);
   }
+  var running = false;
   function finish() {
+    clearTimers();
+    running = false;
+    cmdText.textContent = fullCmd;
+    caret.classList.add("off");
     rows.forEach(function (li) { setState(li, "done"); });
     setStatus("Merged; CI ran again on main.", false);
-    replay.classList.add("show");
+    replay.textContent = "Replay";
+    replay.setAttribute("aria-label", "Replay the animation");
   }
   function run() {
     clearTimers();
-    replay.classList.remove("show");
+    running = true;
+    /* The control is shown for the whole run, so the motion can be stopped at any point. */
+    replay.classList.add("show");
+    replay.textContent = "Stop";
+    replay.setAttribute("aria-label", "Stop the animation and show every stage");
     rows.forEach(function (li) { setState(li, "pending"); });
     cmdText.textContent = "";
     caret.classList.remove("off");
@@ -800,7 +818,7 @@ footer p { margin: 0; max-width: 52em; }
   if (reduce) {
     setStatus("Nine stages, each with a gate.", false);
   } else {
-    replay.addEventListener("click", run);
+    replay.addEventListener("click", function () { if (running) { finish(); } else { run(); } });
     if ("IntersectionObserver" in window) {
       var started = false;
       var io = new IntersectionObserver(function (entries) {
