@@ -382,7 +382,7 @@ footer p { margin: 0; }
     <h2>Skills: reusable <em>playbooks for the AI.</em></h2>
     <ul class="points">
       <li><b>While building:</b> a questioning skill ran the design debate; the AI vendor's skill reviewed the model calls.</li>
-      <li><b>At run time:</b> analysts type <code>/cmbs-refresh</code> to pull new filings or <code>/cmbs-ask</code> to ask about a loan or a deal's loans; answers cite the SEC filing.</li>
+      <li><b>At run time:</b> analysts type <code>/cmbs-refresh</code> to pull new filings, <code>/cmbs-ask</code> to ask about a loan or a deal's loans, or <code>/cmbs-brief</code> for a committee brief on the specially serviced loans; answers cite the SEC filing.</li>
       <li><b>The limit:</b> each is pre-approved to run only the app's commands; anything else needs the user's OK.</li>
     </ul>
   </div>
@@ -428,7 +428,7 @@ footer p { margin: 0; }
             <tr><td>Admin keys; forgeable sign-off</td><td>Owner's admin <code>gh</code> credential; trailer is typed text, no CODEOWNERS, local commits unsigned</td></tr>
             <tr><td>Accuracy</td><td>Five live Jev recordings in <code>tests/fixtures/model/live/</code>, two from real 10-D filings and three written for the tests; the golden set is synthetic</td></tr>
             <tr><td>Also open</td><td>Hook matches text, so indirection passes it; the private-terms check runs only locally (its list is gitignored, so CI cannot run it); draft-feature code can merge; scenarios run in process (Q61); Python coverage floor 55%</td></tr>
-            <tr><td>Skills</td><td><code>.claude/skills/cmbs-refresh/SKILL.md</code>, <code>.claude/skills/cmbs-ask/SKILL.md</code> (<code>allowed-tools</code> pre-approves only <code>uv run cmbs</code> commands; it does not sandbox); dev skills used: grilling, typesafe-ai, dataviz, frontend-design, writing-for-agents</td></tr>
+            <tr><td>Skills</td><td><code>.claude/skills/cmbs-refresh/SKILL.md</code>, <code>.claude/skills/cmbs-ask/SKILL.md</code>, <code>.claude/skills/cmbs-brief/SKILL.md</code> (<code>allowed-tools</code> pre-approves only <code>uv run cmbs</code> commands; it does not sandbox); dev skills used: grilling, typesafe-ai, dataviz, frontend-design, writing-for-agents</td></tr>
           </tbody>
         </table>
       </div>
