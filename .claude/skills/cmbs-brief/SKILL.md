@@ -10,11 +10,12 @@ The panel composes the brief itself, as known on one day. It opens with how curr
 is. Then it gives one section for each loan of the deal's latest tape that is with the special
 servicer. Each section answers the committee's questions from the loan's own facts, gives how
 many months of history the panel holds and the latest six as filed, and ends with what the panel
-does not hold. Last, a line for each other loan:
-returned to the master servicer, liquidated with its realized loss, paid off, never transferred,
-or not on the current tape or quarantined, with why and its last known state. Relay those as
-they read: a loan off the tape or quarantined may have been in special servicing when last
-seen, and the brief says so rather than briefing it. Every value in it cites the
+does not hold. Last, the other loans: a line each for a loan returned to the master servicer,
+liquidated with its realized loss, paid off, quarantined, or not on the current tape with why
+and its last known state; then one line naming the loans never transferred, and one for the
+loans off the tape and last known never transferred or paid off. Relay those as they read,
+with every loan each grouped line names: a loan off the tape or quarantined may have been in
+special servicing when last seen, and the brief says so rather than briefing it. Every value in it cites the
 filing it came from. Run the one command, relay the brief, and do nothing else. Briefing is
 read-only.
 

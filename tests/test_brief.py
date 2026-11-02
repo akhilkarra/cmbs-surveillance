@@ -38,6 +38,7 @@ from cmbs.brief.service import (
     month_line,
     not_reported,
     other_line,
+    others_lines,
     split_book,
 )
 from cmbs.cli import app as cli
@@ -244,6 +245,47 @@ def test_only_loans_in_special_servicing_on_the_current_tape_get_a_section():
     assert split_book([special, noted, back]) == ([special], [noted, back])
 
 
+def test_the_other_loans_fit_a_page():
+    late = cite(AUGUST_TAPE)
+    off = "not on the October 2026 tape; last reported August 2026, balance $1.00"
+    rows = [
+        row("57", State.SPECIAL_SERVICING, "2025-11-24", ending_balance=None, note=off,
+            citation=late),
+        row("12", State.RETURNED, "2024-05-24"),
+        row("17", State.LIQUIDATED, "2026-01", realized_loss="$2.00",
+            paid_off_citation=cite("Z"), loss_citation=cite("Z")),
+        row("3", State.PAID_OFF, "2024-08", paid_off_citation=cite("P")),
+        row("60", State.PAID_OFF, "2026-04", ending_balance=None, note=off, citation=late),
+        row("9", None, None, ending_balance=None, tape_fields=(), note="quarantined: unreadable"),
+        row("1", State.NEVER_TRANSFERRED, None),
+        row("4", State.NEVER_TRANSFERRED, None),
+        row("20", State.NEVER_TRANSFERRED, None, ending_balance=None, note=off, citation=late),
+        row("26", State.NEVER_TRANSFERRED, None, ending_balance=None, note=off, citation=late),
+        row("30", State.NEVER_TRANSFERRED, None, ending_balance=None, note="not a roster note"),
+    ]  # fmt: skip
+    lines = others_lines(rows)
+    assert lines[0].startswith("loan 57, Harbor: not on the October 2026 tape; last reported ")
+    assert "last known: in special servicing since 2025-11-24" in lines[0]
+    assert [line.split(",")[0] for line in lines[1:5]] == [
+        "loan 12", "loan 17", "loan 3", "loan 9",
+    ]  # fmt: skip
+    # One filing cited for two fields is named once.
+    assert lines[2].endswith(
+        "(ABS-EE Z: reportPeriodEndActualBalanceAmount, realizedLossToTrustAmount)"
+    )
+    # A note the brief cannot read stays a line of its own.
+    assert lines[5].startswith("loan 30, Harbor: not a roster note")
+    assert lines[6:] == [
+        "never transferred: loans 1, 4 (2 loans) (ABS-EE "
+        f"{TAPE}: mostRecentSpecialServicerTransferDate, mostRecentMasterServicerReturnDate)",
+        "not on the October 2026 tape, last known paid off: loan 60 (1 loan; last reported "
+        f"August 2026) (ABS-EE {AUGUST_TAPE}: reportPeriodEndActualBalanceAmount)",
+        "not on the October 2026 tape, last known never transferred: loans 20, 26 (2 loans; "
+        f"last reported August 2026) (ABS-EE {AUGUST_TAPE}: "
+        "mostRecentSpecialServicerTransferDate, mostRecentMasterServicerReturnDate)",
+    ]
+
+
 def test_a_brief_opens_with_freshness_and_ends_each_section_with_the_gaps():
     fresh = "Panel current through September 2026 (run 1, 2026-10-01)"
     day = dt.date(2026, 10, 6)
@@ -256,7 +298,8 @@ def test_a_brief_opens_with_freshness_and_ends_each_section_with_the_gaps():
     ]
     assert quiet.text().splitlines()[-2:] == [
         "The other loans:",
-        f"- {other_line(row('1', State.NEVER_TRANSFERRED, None))}",
+        "- never transferred: loan 1 (1 loan) (ABS-EE "
+        f"{TAPE}: mostRecentSpecialServicerTransferDate, mostRecentMasterServicerReturnDate)",
     ]
     special = row("2", State.SPECIAL_SERVICING, "2025-03-06")
     item = Item("Payment status", Answer("payment status", "F1", "2", Kind.NOT_IN_DATA))

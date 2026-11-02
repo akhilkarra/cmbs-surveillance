@@ -16,17 +16,20 @@ topic the panel holds nothing on for the loan says so, citing the tape fields th
 empty. Then the loan's history, condensed to one page (committee_brief.feature's revision): how
 many months the panel holds, the first and the last, each cited to its tape, then the last
 `SHOWN_MONTHS` months as filed. Last, the topics the panel never holds (`NOT_IN_PANEL`). The
-other loans get one line each: returned with its date, liquidated with its realized loss or
-paid off since its month, never transferred, or (Q99) off the current tape or quarantined, with
-why and the last state the panel knows.
+other loans fit a page (`others_lines`): one line each for a loan of interest (returned with its
+date, liquidated with its realized loss, paid off since its month, or (Q99) quarantined or off
+the current tape, with why and the last state the panel knows), then one cited line for the
+loans never transferred and one for those off the tape and last known never transferred or
+paid off.
 
-Every value is a value asking gives, as it reads there, with one exception the revision asks
-for: the number of months held, which counts the months `history` gives. Nothing is summed,
-compared or estimated, and nothing is written.
+Every value is a value asking gives, as it reads there, with two counts as exceptions: the
+months held, which counts the months `history` gives, and the loans in a grouped line. Nothing
+is summed, compared or estimated, and nothing is written.
 """
 
 import dataclasses
 import datetime as dt
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -197,10 +200,16 @@ def _tags(month: Month) -> tuple[str, ...]:
 
 
 def _cites(*cited: tuple[Citation, Sequence[str]]) -> str:
-    """'ABS-EE <accession>: <field>, <field>; ABS-EE <accession>: <field>'; a tape cited for
-    no field (a month that omits the loan) is named alone."""
+    """'ABS-EE <accession>: <field>, <field>; ABS-EE <accession>: <field>'; a filing cited
+    twice is named once with all its fields, and a tape cited for no field (a month that omits
+    the loan) is named alone."""
+    merged: dict[tuple[str, str], list[str]] = {}
+    for c, tags in cited:
+        fields = merged.setdefault((c.form, c.accession), [])
+        fields += [tag for tag in tags if tag not in fields]
     return "; ".join(
-        f"{c.form} {c.accession}" + (f": {', '.join(tags)}" if tags else "") for c, tags in cited
+        f"{form} {accession}" + (f": {', '.join(tags)}" if tags else "")
+        for (form, accession), tags in merged.items()
     )
 
 
@@ -232,6 +241,54 @@ def other_line(row: RosterLoan) -> str:
     return f"loan {row.loan}, {name}: {what} ({_cites(*cites)})"
 
 
+# A loan off the current tape, as the roster notes it (`cmbs.ask.roster.off_tape`).
+_OFF_TAPE = re.compile(r"^(?P<missing>not on the .+ tape); last reported (?P<last>.+?), balance ")
+# Last known states of a loan off the tape that hold no surveillance interest: grouped.
+_QUIET = (State.NEVER_TRANSFERRED, State.PAID_OFF)
+_QUIET_TAGS = {
+    State.NEVER_TRANSFERRED: (TRANSFER_TAG, RETURN_TAG),
+    State.PAID_OFF: (BALANCE_TAG,),
+}
+
+
+def _loans(rows: Sequence[RosterLoan]) -> str:
+    """'loan 1 (1 loan)', 'loans 1, 4, 5 (3 loans)'."""
+    names = ", ".join(row.loan for row in rows)
+    return f"loan {names} (1 loan" if len(rows) == 1 else f"loans {names} ({len(rows)} loans"
+
+
+def others_lines(rows: Sequence[RosterLoan]) -> list[str]:
+    """The other loans, fitted to a page: one line each for the loans of interest (returned,
+    liquidated, paid off, quarantined, and off the tape when last known in another state),
+    in the roster's order; then one line for the loans never transferred, and one for each
+    month's tape that omits loans last known never transferred or paid off, grouped by that
+    state."""
+    lines: list[str] = []
+    never: list[RosterLoan] = []
+    gone: dict[tuple[str, str, State, str], list[RosterLoan]] = {}
+    for row in rows:
+        found = _OFF_TAPE.match(row.note or "")
+        if row.note is None and row.state is State.NEVER_TRANSFERRED:
+            never.append(row)
+        elif found is not None and row.state is not None and row.state in _QUIET:
+            key = (found["missing"], found["last"], row.state, row.citation.accession)
+            gone.setdefault(key, []).append(row)
+        else:
+            lines.append(other_line(row))
+    by_tape: dict[str, list[RosterLoan]] = {}
+    for row in never:
+        by_tape.setdefault(row.citation.accession, []).append(row)
+    for group in by_tape.values():
+        tags = (TRANSFER_TAG, RETURN_TAG)
+        lines.append(f"never transferred: {_loans(group)}) ({_cites((group[0].citation, tags))})")
+    for (missing, last, state, _), group in gone.items():
+        cited = _cites((group[0].citation, _QUIET_TAGS[state]))
+        lines.append(
+            f"{missing}, last known {state.value}: {_loans(group)}; last reported {last}) ({cited})"
+        )
+    return lines
+
+
 @dataclass(frozen=True)
 class Brief:
     deal: str
@@ -259,7 +316,7 @@ class Brief:
             lines += ["", *section.lines()]
         if self.others:
             lines += ["", "The other loans:"]
-            lines += [f"- {other_line(row)}" for row in self.others]
+            lines += [f"- {line}" for line in others_lines(self.others)]
         return "\n".join(lines)
 
 

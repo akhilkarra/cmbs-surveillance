@@ -101,16 +101,29 @@ def step_one_section(context, loan, name):
     '"{never}" was never transferred'
 )
 def step_notes_others(context, returned, day, never):
+    """The returned loan has a line of its own; the never-transferred loan is named in the one
+    line for the loans never transferred, citing the tape the roster read."""
     others = {row.loan: row for row in context.brief.others}
     assert sorted(others) == sorted([returned, never]), _text(context)
     lines = _text(context).splitlines()
+    tape = _accession(context, TAPE_FORM)
     back = other_line(others[returned])
     assert f"- {back}" in lines, _text(context)
     assert f"loan {returned}, " in back and f"returned to the master servicer on {day}" in back
-    assert f"{TAPE_FORM} {_accession(context, TAPE_FORM)}" in back, back
-    stayed = other_line(others[never])
-    assert f"- {stayed}" in lines, _text(context)
-    assert f"loan {never}, " in stayed and "never transferred" in stayed, stayed
+    assert f"{TAPE_FORM} {tape}" in back, back
+    grouped = [line for line in lines if line.startswith("- never transferred: ")]
+    assert len(grouped) == 1, _text(context)
+    assert never in _named_loans(grouped[0]), grouped[0]
+    assert f"({TAPE_FORM} {tape}: " in grouped[0], grouped[0]
+
+
+def _named_loans(line: str) -> list[str]:
+    """The loans a grouped line names: 'never transferred: loans 1, 4 (2 loans) (...)'."""
+    found = re.search(r": loans? ([^()]+?) \((\d+) loans?[;)]", line)
+    assert found is not None, line
+    names = found.group(1).split(", ")
+    assert int(found.group(2)) == len(names), line
+    return names
 
 
 # ---------------------------------------------------------------------------- a loan's section
@@ -398,6 +411,11 @@ def step_no_computed_figure(context):
             _history_shown(context, section)
             count = section.held.text().split(" ", 1)[0]
             text = text.replace(f"- {section.held.text()}", section.held.text()[len(count) :])
+    # And the loans a grouped line of the other loans names, checked against its list.
+    for line in text.splitlines():
+        if re.search(r"\(\d+ loans?[;)]", line):
+            _named_loans(line)
+            text = text.replace(line, re.sub(r"\(\d+ loans?", "(loans", line))
     figures = set(_FIGURE.findall(text))
     computed = sorted(figure for figure in figures if figure not in given)
     assert computed == [], computed
