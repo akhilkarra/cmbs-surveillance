@@ -64,7 +64,6 @@ class State(StrEnum):
 # the panel does not know (quarantined in every month it holds) last.
 ORDER = tuple(State)
 NOT_REPORTED = "not reported"
-NOT_ON_TAPE = "not on the tape"
 # The Schedule AL fields every row reads.
 ROSTER_FIELDS = (
     "propertyName",
@@ -138,7 +137,8 @@ class RosterLoan:
 
     loan: str
     property_name: str | None
-    ending_balance: str
+    # The current tape's balance; None for a loan it omits or that its load quarantined.
+    ending_balance: str | None
     state: State | None
     since: str | None
     workout_strategy: str | None
@@ -185,7 +185,13 @@ class RosterLoan:
         ):
             if other is not None:
                 cited += f"; {what} in {other.form} {other.accession}"
-        return f"loan {self.loan}, {name}, {self.ending_balance}: {self.reading()} ({cited})"
+        # A loan off the tape or quarantined has no balance on it: its note says why.
+        head = f"loan {self.loan}, {name}"
+        if self.ending_balance is not None:
+            head += f", {self.ending_balance}:"
+        else:
+            head += ","
+        return f"{head} {self.reading()} ({cited})"
 
 
 @dataclass(frozen=True)
@@ -264,7 +270,7 @@ def off_tape(last: RosterLoan, row: LoanPeriod, tape_period: Period) -> RosterLo
     return RosterLoan(
         loan=last.loan,
         property_name=last.property_name,
-        ending_balance=NOT_ON_TAPE,
+        ending_balance=None,
         state=last.state,
         since=last.since,
         workout_strategy=last.workout_strategy,
@@ -287,7 +293,7 @@ def quarantined(
     return RosterLoan(
         loan=loan,
         property_name=property_name or (last.property_name if last else None),
-        ending_balance=NOT_ON_TAPE,
+        ending_balance=None,
         state=last.state if last else None,
         since=last.since if last else None,
         workout_strategy=last.workout_strategy if last else None,
