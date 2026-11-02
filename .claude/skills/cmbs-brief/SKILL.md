@@ -1,6 +1,6 @@
 ---
 name: cmbs-brief
-description: Write a risk-committee brief on a CMBS deal's special-servicing book from the surveillance panel only, every line cited to its SEC filing, and never changing data. One section per loan with the special servicer (transfer date and reason, payment status, DSCR and occupancy, the servicer's plan, the borrower's request, advances, its months of history, what the panel does not know), then a line for each other loan. Use whenever the user wants to brief committee, summarize the special-servicing book, write up the deal for risk, prepare an escalation memo or a committee pack on a deal's troubled loans, or asks "what does committee need to know about <deal>?", even if they don't say "brief".
+description: Write a risk-committee brief on a CMBS deal's special-servicing book from the surveillance panel only, every line cited to its SEC filing, and never changing data. One section per loan with the special servicer (transfer date and reason, payment status, DSCR and occupancy, the servicer's plan, the borrower's request, advances, the appraisal reduction, its history, what the panel does not know), then a line for each other loan. Use whenever the user wants to brief committee, summarize the special-servicing book, write up the deal for risk, prepare an escalation memo or a committee pack on a deal's troubled loans, or asks "what does committee need to know about <deal>?", even if they don't say "brief".
 allowed-tools: Bash(uv run cmbs brief deal:*)
 ---
 
@@ -8,8 +8,9 @@ allowed-tools: Bash(uv run cmbs brief deal:*)
 
 The panel composes the brief itself, as known on one day. It opens with how current the panel
 is. Then it gives one section for each loan of the deal's latest tape that is with the special
-servicer. Each section answers the committee's questions from the loan's own facts and its months
-as filed, and ends with what the panel does not hold. Last, a line for each other loan:
+servicer. Each section answers the committee's questions from the loan's own facts, gives how
+many months of history the panel holds and the latest six as filed, and ends with what the panel
+does not hold. Last, a line for each other loan:
 returned to the master servicer, paid off, or never transferred. Every value in it cites the
 filing it came from. Run the one command, relay the brief, and do nothing else. Briefing is
 read-only.
@@ -45,7 +46,8 @@ Follow these rules; they are what makes the brief trustworthy:
 
 1. **Relay it as it reads, in its order.** Open with its first line, the freshness ("Panel
    current through September 2026 (run 42, 2026-10-01)"), as it reads. Then each section in
-   order: the loan's line, its questions in order, its months, and its "Not in the panel:" line.
+   order: the loan's line, its questions in order, its history (the months held, then the latest
+   six months), and its "Not in the panel:" line.
    Then the other loans. You may lay it out with headings, bullets or a table of the months, but
    keep every value's wording and its citation, and drop no line.
 2. **Add nothing.** No fact, figure or estimate that is not a line of the brief: no sums, ratios,
@@ -82,6 +84,12 @@ Follow these rules; they are what makes the brief trustworthy:
    The dashboard has no buttons: both its views only read. Never describe what a screen or
    command can do beyond this list, and never infer a capability from its name.
 
+   **Follow-up questions go to `/cmbs-ask`.** It is a skill, not a screen, so pointing to it does
+   not break this rule. For a question about one loan that the brief does not answer (an older
+   month of its history, a fact of a loan outside the special-servicing book, a detail behind a
+   line), tell the user to ask it with `/cmbs-ask`: it answers from the same panel, citing every
+   fact, and reads only. Never run it, or anything else, from this skill.
+
 If the freshness line names a month older than the user expects, say so as it reads and point
 to `/cmbs-refresh` as rule 7 describes it.
 
@@ -98,6 +106,9 @@ loan 2, Lakeside Hotel, $30,000,000.00: in special servicing since 2025-03-06; t
 Transfer date and reason:
 - transfer reason: imminent monetary default (September 2026, auto-accepted; 10-D 0009900002-26-000418, sentence 1: "The loan transferred to Special Servicing effective 3/6/2025 due to imminent monetary default.")
 ...
+History the panel holds (up to the latest six months as filed):
+- 1 month held, September 2026 (ABS-EE 0009900002-26-000419)
+- September 2026: ending balance $30,000,000.00; payment status 90+ days (code 3); ... (ABS-EE 0009900002-26-000419: reportPeriodEndActualBalanceAmount, ...)
 Not in the panel: ASER, appraised value, LTV, cap rate, sponsor equity, guarantor, reserves, tenants and leases, maturity date, interest rate, market.
 
 The other loans:
