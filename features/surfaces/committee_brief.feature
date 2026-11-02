@@ -9,6 +9,12 @@ Feature: A committee brief on a deal's special-servicing book
   table, and condenses the history to fit one page: the first and last months the panel holds,
   then the last six months as filed. A real loan can hold eight years of monthly tapes.
 
+  Revision (grill log Q100): the section also gives the latest valuation, the maturity date, the
+  interest rate and the largest tenant, which the tape holds, so "Not in the panel" no longer
+  names them. And a loan the current tape does not show, but that was last known in special
+  servicing, gets a short section marked as last known, so the brief never says no loan is in
+  special servicing while one may be.
+
   Background:
     Given "Fixture Trust 2026-F2" reported these loans in September 2026, filed 2026-09-29:
       | loan | property            | ending balance | transfer date | return date | workout strategy |
@@ -29,6 +35,11 @@ Feature: A committee brief on a deal's special-servicing book
     Then loan "2"'s section gives, each with its citation, the transfer date and reason, the payment status, the latest DSCR and occupancy with their dates, the servicer's stated plan, the borrower's request, the advances outstanding, the appraisal reduction and the history the panel holds
     And every line of the section that states a value cites an ABS-EE field, a 10-D sentence or a 10-D report table
 
+  Scenario: The section gives the valuation, maturity, rate and largest tenant the tape holds
+    Given loan "2" of "Fixture Trust 2026-F2" was reported in September 2026 with a latest valuation of 19,000,000.00 dated 07-31-2026 from MAI, maturity date 08-01-2028, interest rate 0.0543 and largest tenant "Harbor University Center" with its lease expiring 09-30-2026
+    When "pat" asks for the committee brief of "Fixture Trust 2026-F2"
+    Then loan "2"'s section gives the latest valuation $19,000,000.00 dated 2026-07-31 from MAI, the maturity date 2028-08-01, the interest rate 5.43% and the largest tenant Harbor University Center with its lease expiring 2026-09-30, each cited to its ABS-EE field
+
   Scenario: A long history is condensed to one page
     Given loan "2" of "Fixture Trust 2026-F2" was reported in each month from January 2025 to September 2026
     When "pat" asks for the committee brief of "Fixture Trust 2026-F2"
@@ -38,8 +49,15 @@ Feature: A committee brief on a deal's special-servicing book
 
   Scenario: What the panel does not know is listed, not filled in
     When "pat" asks for the committee brief of "Fixture Trust 2026-F2"
-    Then loan "2"'s section ends with "Not in the panel:" followed by "ASER" and "appraised value"
+    Then loan "2"'s section ends with "Not in the panel:" followed by "ASER" and "LTV"
+    And the "Not in the panel" list names no valuation, maturity date, interest rate or tenant
     And no figure in the brief is computed from others
+
+  Scenario: A loan last known in special servicing is not dropped
+    Given loan "5" of "Fixture Trust 2026-F2" was reported in August 2026, filed 2026-08-28, in special servicing since 2024-02-01, and is not on the September 2026 tape
+    When "pat" asks for the committee brief of "Fixture Trust 2026-F2"
+    Then the brief says 1 loan is not on the September 2026 tape and was last known in special servicing
+    And loan "5" has a short section marked "last known on the August 2026 tape", citing that tape
 
   Scenario: A field awaiting review shows the filer's words, labelled
     Given loan "2"'s workout strategy is waiting for review
