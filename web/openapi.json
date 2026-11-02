@@ -4382,6 +4382,86 @@
         ]
       }
     },
+    "/brief/deal": {
+      "get": {
+        "description": "The committee brief on the deal's loans in special servicing, every value cited.",
+        "operationId": "deal_brief_deal_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "deal",
+            "required": true,
+            "schema": {
+              "title": "Deal",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Known on this date.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Known on this date.",
+              "title": "As Of"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-cmbs-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cmbs-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Deal Brief Deal Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deal",
+        "tags": [
+          "brief"
+        ]
+      }
+    },
     "/checks/flags": {
       "get": {
         "operationId": "flags_checks_flags_get",
