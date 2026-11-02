@@ -1,0 +1,1004 @@
+{
+ "data": {
+  "deals_loaded": 109,
+  "vintages": {
+   "2017": 36,
+   "2018": 31,
+   "2019": 42
+  },
+  "tape_periods": [
+   "2017-03-01",
+   "2026-10-01"
+  ],
+  "comment_periods": [
+   "2019-01-01",
+   "2026-10-01"
+  ],
+  "loan_months": 455314,
+  "comments": 16710,
+  "jev_extractions": 16710,
+  "run_months_by_outcome": {
+   "not loaded": 205,
+   "loaded": 9986
+  },
+  "deals_failed": 19,
+  "deals_failed_by_reason": {
+   "shared filing already registered (ConflictingFiling)": 18,
+   "EDGAR search error (KeyError 'hits')": 1
+  },
+  "deals_failed_list": [
+   {
+    "deal": "BANK 2018-BNK12",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002212 is already registered with different facts"
+   },
+   {
+    "deal": "UBS Commercial Mortgage Trust 2017-C4",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002204 is already registered with different facts"
+   },
+   {
+    "deal": "GS Mortgage Securities Trust 2018-GS9",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002237 is already registered with different facts"
+   },
+   {
+    "deal": "Morgan Stanley Bank of America Merrill Lynch Trust 2017-C34",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002212 is already registered with different facts"
+   },
+   {
+    "deal": "UBS Commercial Mortgage Trust 2018-C8",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002204 is already registered with different facts"
+   },
+   {
+    "deal": "Wells Fargo Commercial Mortgage Trust 2017-C41",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002244 is already registered with different facts"
+   },
+   {
+    "deal": "Wells Fargo Commercial Mortgage Trust 2017-C42",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002244 is already registered with different facts"
+   },
+   {
+    "deal": "GS Mortgage Securities Trust 2019-GC42",
+    "reason": "EDGAR search error (KeyError 'hits')",
+    "error": "KeyError: 'hits'"
+   },
+   {
+    "deal": "UBS Commercial Mortgage Trust 2018-C12",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002204 is already registered with different facts"
+   },
+   {
+    "deal": "UBS Commercial Mortgage Trust 2018-C9",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002204 is already registered with different facts"
+   },
+   {
+    "deal": "Wells Fargo Commercial Mortgage Trust 2017-C39",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-21-002915 is already registered with different facts"
+   },
+   {
+    "deal": "JPMDB Commercial Mortgage Securities Trust 2017-C7",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002169 is already registered with different facts"
+   },
+   {
+    "deal": "UBS Commercial Mortgage Trust 2017-C6",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002204 is already registered with different facts"
+   },
+   {
+    "deal": "UBS Commercial Mortgage Trust 2018-C10",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002204 is already registered with different facts"
+   },
+   {
+    "deal": "Wells Fargo Commercial Mortgage Trust 2018-C44",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002244 is already registered with different facts"
+   },
+   {
+    "deal": "BANK 2019-BNK16",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-21-002915 is already registered with different facts"
+   },
+   {
+    "deal": "GS Mortgage Securities Trust 2017-GS8",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002237 is already registered with different facts"
+   },
+   {
+    "deal": "JPMDB Commercial Mortgage Securities Trust 2018-C8",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002169 is already registered with different facts"
+   },
+   {
+    "deal": "UBS Commercial Mortgage Trust 2017-C5",
+    "reason": "shared filing already registered (ConflictingFiling)",
+    "error": "cmbs.filings.service.ConflictingFiling: 0000914121-19-002204 is already registered with different facts"
+   }
+  ]
+ },
+ "cleaning": {
+  "wrong_deal": {
+   "deal_months_dropped": 44,
+   "loan_months_dropped": 1987,
+   "deal_months_dropped_that_are_the_deals_first_month": 2,
+   "deals_affected": 37,
+   "dropped_list": [
+    "BANK 2017-BNK4 2021-11-01",
+    "BANK 2017-BNK5 2022-10-01",
+    "BANK 2017-BNK6 2025-08-01",
+    "BANK 2017-BNK7 2024-04-01",
+    "BANK 2017-BNK7 2025-01-01",
+    "BANK 2017-BNK9 2021-05-01",
+    "BANK 2018-BNK13 2021-08-01",
+    "BANK 2018-BNK14 2022-03-01",
+    "BANK 2019-BNK18 2019-07-01",
+    "BANK 2019-BNK18 2019-11-01",
+    "BANK 2019-BNK23 2022-08-01",
+    "BBCMS Mortgage Trust 2017-C1 2020-11-01",
+    "BBCMS Mortgage Trust 2018-C2 2023-04-01",
+    "Benchmark 2018-B1 Mortgage Trust 2020-03-01",
+    "Benchmark 2018-B4 Mortgage Trust 2024-01-01",
+    "Benchmark 2018-B7 Mortgage Trust 2019-05-01",
+    "Benchmark 2018-B7 Mortgage Trust 2022-06-01",
+    "Benchmark 2019-B11 Mortgage Trust 2019-11-01",
+    "Benchmark 2019-B14 Mortgage Trust 2023-11-01",
+    "CCUBS Commercial Mortgage Trust 2017-C1 2019-08-01",
+    "CD 2018-CD7 Mortgage Trust 2021-03-01",
+    "CD 2018-CD7 Mortgage Trust 2022-08-01",
+    "CSAIL 2017-C8 Commercial Mortgage Trust 2024-03-01",
+    "CSAIL 2017-CX10 Commercial Mortgage Trust 2020-12-01",
+    "CSAIL 2017-CX9 Commercial Mortgage Trust 2019-01-01",
+    "CSAIL 2019-C15 Commercial Mortgage Trust 2023-02-01",
+    "CSAIL 2019-C16 Commercial Mortgage Trust 2023-02-01",
+    "CSAIL 2019-C16 Commercial Mortgage Trust 2023-04-01",
+    "CSAIL 2019-C18 Commercial Mortgage Trust 2026-04-01",
+    "DBJPM 2017-C6 Mortgage Trust 2021-04-01",
+    "JPMCC Commercial Mortgage Securities Trust 2017-JP6 2024-02-01",
+    "Morgan Stanley Capital I Trust 2019-H7 2022-12-01",
+    "Morgan Stanley Capital I Trust 2019-L2 2021-01-01",
+    "Morgan Stanley Capital I Trust 2019-L3 2022-07-01",
+    "UBS Commercial Mortgage Trust 2018-C11 2022-08-01",
+    "UBS Commercial Mortgage Trust 2019-C17 2020-09-01",
+    "UBS Commercial Mortgage Trust 2019-C17 2021-06-01",
+    "Wells Fargo Commercial Mortgage Trust 2017-C40 2025-01-01",
+    "Wells Fargo Commercial Mortgage Trust 2017-RC1 2026-01-01",
+    "Wells Fargo Commercial Mortgage Trust 2018-C43 2024-05-01",
+    "Wells Fargo Commercial Mortgage Trust 2018-C45 2019-01-01",
+    "Wells Fargo Commercial Mortgage Trust 2018-C47 2021-03-01",
+    "Wells Fargo Commercial Mortgage Trust 2018-C47 2025-06-01",
+    "Wells Fargo Commercial Mortgage Trust 2019-C54 2024-05-01"
+   ],
+   "new_vs_v1": [
+    "CSAIL 2017-CX9 Commercial Mortgage Trust 2019-01-01",
+    "Wells Fargo Commercial Mortgage Trust 2018-C45 2019-01-01"
+   ],
+   "v1_only": [
+    "CSAIL 2017-CX9 Commercial Mortgage Trust 2019-02-01",
+    "Wells Fargo Commercial Mortgage Trust 2018-C45 2019-02-01"
+   ]
+  },
+  "comments": {
+   "comments_total": 16710,
+   "placeholder_comments_dropped": 1465,
+   "joined_directly": 14516,
+   "joined_by_stripping_note_letter": 728,
+   "still_unjoined": 1,
+   "still_unjoined_top_ids": [
+    [
+     "58",
+     1
+    ]
+   ],
+   "identical_note_texts_merged": 531,
+   "loan_months_with_comment": 14520,
+   "loan_months_with_jev_answer": 12748
+  }
+ },
+ "outcomes": {
+  "episodes": 973,
+  "episodes_with_comment": 868,
+  "outcomes_all": {
+   "open": 325,
+   "cured_returned": 495,
+   "other_exit": 47,
+   "loss": 106
+  },
+  "outcomes_with_comment": {
+   "open": 278,
+   "cured_returned": 449,
+   "other_exit": 40,
+   "loss": 101
+  },
+  "loss_by_route_with_comment": {
+   "realized_loss_rise_only": 55,
+   "liquidation_exit_only": 21,
+   "both": 25
+  },
+  "loss_if_any_liquidation_code_before_exit_counted_with_comment": 103,
+  "cured_returned_by_code_8_or_9_without_return_date_with_comment": 32,
+  "open_with_comment_followup_ge_24": 113,
+  "open_with_comment_followup_lt_24": 165,
+  "open_with_comment_cut_by_next_transfer": 25,
+  "balance_at_transfer_missing": 0
+ },
+ "analysis_a": {
+  "keywords": {
+   "liquidation": {
+    "episodes": 868,
+    "both": 291,
+    "text_first": 110,
+    "same_month": 86,
+    "tape_first": 95,
+    "median_lead_months": 0.0,
+    "lead_iqr_months": [
+     -1.0,
+     2.0
+    ],
+    "share_text_first": 0.37800687285223367,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.3245879926175225,
+     0.43403474756690996
+    ],
+    "deals_with_pairs": 93,
+    "text_only": 131,
+    "tape_only": 38,
+    "neither": 408
+   },
+   "return": {
+    "episodes": 868,
+    "both": 215,
+    "text_first": 101,
+    "same_month": 72,
+    "tape_first": 42,
+    "median_lead_months": 0.0,
+    "lead_iqr_months": [
+     0.0,
+     2.0
+    ],
+    "share_text_first": 0.4697674418604651,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.383885059122026,
+     0.5514410856935367
+    ],
+    "deals_with_pairs": 85,
+    "text_only": 14,
+    "tape_only": 272,
+    "neither": 367
+   },
+   "workout_decided": {
+    "episodes": 868,
+    "both": 199,
+    "text_first": 85,
+    "same_month": 46,
+    "tape_first": 68,
+    "median_lead_months": 0.0,
+    "lead_iqr_months": [
+     -2.0,
+     3.0
+    ],
+    "share_text_first": 0.4271356783919598,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.3160912095765589,
+     0.5481185448782997
+    ],
+    "deals_with_pairs": 83,
+    "text_only": 73,
+    "tape_only": 161,
+    "neither": 435
+   },
+   "borrower_request": {
+    "episodes": 868,
+    "both": 164,
+    "text_first": 91,
+    "same_month": 46,
+    "tape_first": 27,
+    "median_lead_months": 1.0,
+    "lead_iqr_months": [
+     0.0,
+     4.0
+    ],
+    "share_text_first": 0.5548780487804879,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.4736664295874822,
+     0.6343226111636705
+    ],
+    "deals_with_pairs": 82,
+    "text_only": 179,
+    "tape_only": 101,
+    "neither": 424
+   }
+  },
+  "jev": {
+   "liquidation": {
+    "episodes": 868,
+    "both": 236,
+    "text_first": 72,
+    "same_month": 63,
+    "tape_first": 101,
+    "median_lead_months": 0.0,
+    "lead_iqr_months": [
+     -3.0,
+     1.0
+    ],
+    "share_text_first": 0.3050847457627119,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.25206367540834257,
+     0.3658562532433835
+    ],
+    "deals_with_pairs": 88,
+    "text_only": 70,
+    "tape_only": 93,
+    "neither": 469
+   },
+   "return": {
+    "episodes": 868,
+    "both": 106,
+    "text_first": 60,
+    "same_month": 28,
+    "tape_first": 18,
+    "median_lead_months": 1.0,
+    "lead_iqr_months": [
+     0.0,
+     3.75
+    ],
+    "share_text_first": 0.5660377358490566,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.46427650957290134,
+     0.6603933482571154
+    ],
+    "deals_with_pairs": 60,
+    "text_only": 9,
+    "tape_only": 381,
+    "neither": 372
+   },
+   "workout_decided": {
+    "episodes": 868,
+    "both": 155,
+    "text_first": 52,
+    "same_month": 36,
+    "tape_first": 67,
+    "median_lead_months": 0.0,
+    "lead_iqr_months": [
+     -4.0,
+     1.0
+    ],
+    "share_text_first": 0.33548387096774196,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.20300226089699772,
+     0.47397806186868674
+    ],
+    "deals_with_pairs": 71,
+    "text_only": 22,
+    "tape_only": 205,
+    "neither": 486
+   },
+   "borrower_request": {
+    "episodes": 868,
+    "both": 170,
+    "text_first": 99,
+    "same_month": 44,
+    "tape_first": 27,
+    "median_lead_months": 1.0,
+    "lead_iqr_months": [
+     0.0,
+     4.0
+    ],
+    "share_text_first": 0.5823529411764706,
+    "share_text_first_ci95_deal_bootstrap": [
+     0.5,
+     0.6644803392150898
+    ],
+    "deals_with_pairs": 85,
+    "text_only": 258,
+    "tape_only": 95,
+    "neither": 345
+   }
+  }
+ },
+ "keyword_precision": {
+  "first_liquidation_hits": 422,
+  "negated_or_contingent": 50,
+  "share_negated_or_contingent": 0.11848341232227488,
+  "share_ci95_wilson": [
+   0.09103764791127499,
+   0.15281239701880772
+  ],
+  "by_pattern": {
+   "to avoid": 1,
+   "moratorium": 12,
+   "if necessary": 12,
+   "potential": 22,
+   "may": 4
+  },
+  "unit": "the sentence holding the first liquidation keyword in the episode's first liquidation-keyword month"
+ },
+ "analysis_b": {
+  "primary": {
+   "landmark_0": {
+    "n": 532,
+    "losses": 92,
+    "deals": 106,
+    "bootstrap_resamples_used": 2000,
+    "models": {
+     "tape": {
+      "auc": 0.5751482213438734,
+      "auc_ci95": [
+       0.5104102718496047,
+       0.6448159563494182
+      ],
+      "brier": 0.14556828031790345,
+      "C_by_outer_fold": [
+       1.0,
+       0.01,
+       0.1,
+       1.0,
+       0.1
+      ]
+     },
+     "tape_keywords": {
+      "auc": 0.5601531620553359,
+      "auc_ci95": [
+       0.49443658788744493,
+       0.6286346011726022
+      ],
+      "brier": 0.14397924893920322,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       0.1,
+       0.01,
+       0.1
+      ],
+      "delta_auc_vs_tape": -0.014995059288537504,
+      "delta_auc_ci95": [
+       -0.058495302962731144,
+       0.025956144087155606
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.231
+     },
+     "tape_jev": {
+      "auc": 0.5112401185770752,
+      "auc_ci95": [
+       0.4464060872449967,
+       0.5862833027439487
+      ],
+      "brier": 0.1473606756811826,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       0.1,
+       1.0,
+       0.01
+      ],
+      "delta_auc_vs_tape": -0.06390810276679826,
+      "delta_auc_ci95": [
+       -0.09763658734040144,
+       -0.029461583124318673
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.001
+     }
+    },
+    "base_rate_brier": 0.1430267397817853,
+    "sample_exclusions": {
+     "no_comment_by_landmark": 75,
+     "open_dropped_ge_24": 97,
+     "open_dropped_lt_24": 143,
+     "resolved_by_landmark": 21
+    }
+   },
+   "landmark_3": {
+    "n": 464,
+    "losses": 93,
+    "deals": 103,
+    "bootstrap_resamples_used": 2000,
+    "models": {
+     "tape": {
+      "auc": 0.7158797785699794,
+      "auc_ci95": [
+       0.6536156200949568,
+       0.7736207042147184
+      ],
+      "brier": 0.14221143536523828,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       1.0,
+       1.0,
+       0.01
+      ]
+     },
+     "tape_keywords": {
+      "auc": 0.7413268411442484,
+      "auc_ci95": [
+       0.6659701285936485,
+       0.80530501474854
+      ],
+      "brier": 0.1371126477466401,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       0.01,
+       1.0,
+       0.01
+      ],
+      "delta_auc_vs_tape": 0.025447062574268986,
+      "delta_auc_ci95": [
+       -0.019050371011847166,
+       0.06866952612883152
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.8905
+     },
+     "tape_jev": {
+      "auc": 0.708836912732226,
+      "auc_ci95": [
+       0.6401503058826696,
+       0.774125381491434
+      ],
+      "brier": 0.13820562465610406,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       0.01,
+       1.0,
+       0.01
+      ],
+      "delta_auc_vs_tape": -0.007042865837753376,
+      "delta_auc_ci95": [
+       -0.03787405662306626,
+       0.02181553491556615
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.3185
+     }
+    },
+    "base_rate_brier": 0.16025843489892982,
+    "sample_exclusions": {
+     "open_dropped_lt_24": 112,
+     "open_dropped_ge_24": 105,
+     "window_ended_before_landmark": 47,
+     "resolved_by_landmark": 122,
+     "no_comment_by_landmark": 18
+    }
+   },
+   "landmark_6": {
+    "n": 381,
+    "losses": 91,
+    "deals": 99,
+    "bootstrap_resamples_used": 2000,
+    "models": {
+     "tape": {
+      "auc": 0.6699886320575976,
+      "auc_ci95": [
+       0.6009265246749106,
+       0.7385352357472057
+      ],
+      "brier": 0.16903181493938702,
+      "C_by_outer_fold": [
+       1.0,
+       1.0,
+       0.1,
+       1.0,
+       1.0
+      ]
+     },
+     "tape_keywords": {
+      "auc": 0.6843122394846533,
+      "auc_ci95": [
+       0.6213136718101875,
+       0.743269134982245
+      ],
+      "brier": 0.1645199223824247,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       0.01,
+       0.01,
+       0.1
+      ],
+      "delta_auc_vs_tape": 0.014323607427055629,
+      "delta_auc_ci95": [
+       -0.023583375530136595,
+       0.056085063298352146
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.7675
+     },
+     "tape_jev": {
+      "auc": 0.6493368700265253,
+      "auc_ci95": [
+       0.5833305481283422,
+       0.7145385322025786
+      ],
+      "brier": 0.17504375780042122,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       0.01,
+       1.0,
+       0.01
+      ],
+      "delta_auc_vs_tape": -0.02065176203107233,
+      "delta_auc_ci95": [
+       -0.05831116073065385,
+       0.021843164136573678
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.1695
+     }
+    },
+    "base_rate_brier": 0.18179814137406053,
+    "sample_exclusions": {
+     "open_dropped_lt_24": 91,
+     "open_dropped_ge_24": 109,
+     "window_ended_before_landmark": 70,
+     "resolved_by_landmark": 208,
+     "no_comment_by_landmark": 9
+    }
+   }
+  },
+  "sensitivity_open_ge_24_as_not_loss": {
+   "landmark_0": {
+    "n": 629,
+    "losses": 92,
+    "deals": 108,
+    "bootstrap_resamples_used": 2000,
+    "models": {
+     "tape": {
+      "auc": 0.6174398834102502,
+      "auc_ci95": [
+       0.5479361430625678,
+       0.6844213220216887
+      ],
+      "brier": 0.12429068035531886,
+      "C_by_outer_fold": [
+       1.0,
+       0.1,
+       1.0,
+       0.1,
+       1.0
+      ]
+     },
+     "tape_keywords": {
+      "auc": 0.5618168569346611,
+      "auc_ci95": [
+       0.485366700024431,
+       0.6415021453057438
+      ],
+      "brier": 0.12611669720544055,
+      "C_by_outer_fold": [
+       1.0,
+       0.1,
+       0.01,
+       0.01,
+       0.01
+      ],
+      "delta_auc_vs_tape": -0.055623026475589143,
+      "delta_auc_ci95": [
+       -0.10019318247766518,
+       -0.0132889908554803
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.006
+     },
+     "tape_jev": {
+      "auc": 0.5328920735163145,
+      "auc_ci95": [
+       0.45120944303761007,
+       0.6144235509911419
+      ],
+      "brier": 0.1272890885416363,
+      "C_by_outer_fold": [
+       1.0,
+       0.01,
+       0.01,
+       0.1,
+       0.01
+      ],
+      "delta_auc_vs_tape": -0.08454780989393573,
+      "delta_auc_ci95": [
+       -0.12402293595786078,
+       -0.04910826851810195
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.0
+     }
+    },
+    "base_rate_brier": 0.12487077931761369,
+    "sample_exclusions": {
+     "no_comment_by_landmark": 75,
+     "open_ge_24_as_not_loss": 97,
+     "open_dropped_lt_24": 143,
+     "resolved_by_landmark": 21
+    }
+   },
+   "landmark_3": {
+    "n": 569,
+    "losses": 93,
+    "deals": 105,
+    "bootstrap_resamples_used": 2000,
+    "models": {
+     "tape": {
+      "auc": 0.6996927803379416,
+      "auc_ci95": [
+       0.6336531943840666,
+       0.7625312531094566
+      ],
+      "brier": 0.12576751305891676,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       1.0,
+       0.1,
+       0.01
+      ]
+     },
+     "tape_keywords": {
+      "auc": 0.7258516309749706,
+      "auc_ci95": [
+       0.6521492908944855,
+       0.7906216129189627
+      ],
+      "brier": 0.12370105642918851,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       1.0,
+       0.01,
+       0.01
+      ],
+      "delta_auc_vs_tape": 0.026158850637029052,
+      "delta_auc_ci95": [
+       -0.013235217191983173,
+       0.06959461760323038
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.8965
+     },
+     "tape_jev": {
+      "auc": 0.6883075810969549,
+      "auc_ci95": [
+       0.6167222183123492,
+       0.7525975967304893
+      ],
+      "brier": 0.12693285078776007,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       1.0,
+       0.01,
+       0.01
+      ],
+      "delta_auc_vs_tape": -0.011385199240986688,
+      "delta_auc_ci95": [
+       -0.039474928122849286,
+       0.01731095128972269
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.208
+     }
+    },
+    "base_rate_brier": 0.13673048946599495,
+    "sample_exclusions": {
+     "open_dropped_lt_24": 112,
+     "open_ge_24_as_not_loss": 105,
+     "window_ended_before_landmark": 47,
+     "resolved_by_landmark": 122,
+     "no_comment_by_landmark": 18
+    }
+   },
+   "landmark_6": {
+    "n": 490,
+    "losses": 91,
+    "deals": 103,
+    "bootstrap_resamples_used": 2000,
+    "models": {
+     "tape": {
+      "auc": 0.6615715111955713,
+      "auc_ci95": [
+       0.5885381531917037,
+       0.7257038159089942
+      ],
+      "brier": 0.14711021616373035,
+      "C_by_outer_fold": [
+       1.0,
+       1.0,
+       0.1,
+       1.0,
+       1.0
+      ]
+     },
+     "tape_keywords": {
+      "auc": 0.68239279517475,
+      "auc_ci95": [
+       0.6127024863634306,
+       0.7416821533642546
+      ],
+      "brier": 0.14369483706347674,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       0.01,
+       0.01,
+       0.01
+      ],
+      "delta_auc_vs_tape": 0.020821283979178706,
+      "delta_auc_ci95": [
+       -0.019338268798948417,
+       0.0631452389762172
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.8305
+     },
+     "tape_jev": {
+      "auc": 0.640199399597896,
+      "auc_ci95": [
+       0.5733208935234045,
+       0.7058256484111393
+      ],
+      "brier": 0.14778779122963087,
+      "C_by_outer_fold": [
+       0.01,
+       0.01,
+       1.0,
+       0.01,
+       1.0
+      ],
+      "delta_auc_vs_tape": -0.02137211159767538,
+      "delta_auc_ci95": [
+       -0.07014244339929317,
+       0.02629434465839404
+      ],
+      "delta_auc_share_of_resamples_above_0": 0.192
+     }
+    },
+    "base_rate_brier": 0.15122448979591835,
+    "sample_exclusions": {
+     "open_dropped_lt_24": 91,
+     "open_ge_24_as_not_loss": 109,
+     "window_ended_before_landmark": 70,
+     "resolved_by_landmark": 208,
+     "no_comment_by_landmark": 9
+    }
+   }
+  }
+ },
+ "analysis_c": {
+  "landmark": 3,
+  "sample": "Analysis B primary landmark-3 set, loans whose tape coded no liquidation by the landmark",
+  "n": 389,
+  "excluded_tape_already_coded_liquidation": 75,
+  "keywords": {
+   "text_names_liquidation": {
+    "n": 54,
+    "losses": 20,
+    "loss_rate": 0.37037037037037035,
+    "wilson_ci95": [
+     0.25423375112039415,
+     0.503725327527134
+    ]
+   },
+   "text_does_not": {
+    "n": 335,
+    "losses": 34,
+    "loss_rate": 0.10149253731343283,
+    "wilson_ci95": [
+     0.07354111722327969,
+     0.13847974680700925
+    ]
+   }
+  },
+  "jev_added_not_in_plan": {
+   "text_names_liquidation": {
+    "n": 26,
+    "losses": 10,
+    "loss_rate": 0.38461538461538464,
+    "wilson_ci95": [
+     0.22428594334869204,
+     0.5746515005655976
+    ]
+   },
+   "text_does_not": {
+    "n": 363,
+    "losses": 44,
+    "loss_rate": 0.12121212121212122,
+    "wilson_ci95": [
+     0.09154569161500396,
+     0.1588116675596427
+    ]
+   }
+  }
+ },
+ "sanity": {
+  "hand_check_episodes": [
+   {
+    "deal": "UBS Commercial Mortgage Trust 2018-C11",
+    "loan": "37",
+    "transfer": "2021-08-24",
+    "label": "loss"
+   },
+   {
+    "deal": "BBCMS Mortgage Trust 2017-C1",
+    "loan": "52",
+    "transfer": "2019-06-07",
+    "label": "loss"
+   },
+   {
+    "deal": "JPMCC Commercial Mortgage Securities Trust 2017-JP5",
+    "loan": "15",
+    "transfer": "2020-05-14",
+    "label": "loss"
+   },
+   {
+    "deal": "Morgan Stanley Capital I Trust 2019-H7",
+    "loan": "14",
+    "transfer": "2020-06-18",
+    "label": "cured_returned"
+   },
+   {
+    "deal": "Morgan Stanley Capital I Trust 2019-L2",
+    "loan": "31",
+    "transfer": "2023-12-01",
+    "label": "cured_returned"
+   },
+   {
+    "deal": "Benchmark 2018-B4 Mortgage Trust",
+    "loan": "22",
+    "transfer": "2020-06-11",
+    "label": "cured_returned"
+   },
+   {
+    "deal": "CD 2017-CD3 Mortgage Trust",
+    "loan": "19",
+    "transfer": "2026-05-18",
+    "label": "other_exit"
+   },
+   {
+    "deal": "Morgan Stanley Capital I Trust 2018-H3",
+    "loan": "20",
+    "transfer": "2025-01-13",
+    "label": "other_exit"
+   },
+   {
+    "deal": "BANK 2019-BNK20",
+    "loan": "53",
+    "transfer": "2025-01-03",
+    "label": "open"
+   },
+   {
+    "deal": "COMM 2017-COR2 Mortgage Trust",
+    "loan": "23",
+    "transfer": "2026-07-06",
+    "label": "open"
+   }
+  ],
+  "window_bug": {
+   "v2_cleaning_v1bug_window_v1_label_loss": 97,
+   "v2_cleaning_v1bug_window_v2_label_loss": 98,
+   "v2_cleaning_v1bug_window_episodes_with_comment": 872,
+   "v2_cleaning_fixed_window_v1_label_loss": 91,
+   "v2_cleaning_fixed_window_v2_label_loss": 101,
+   "v2_cleaning_fixed_window_episodes_with_comment": 868,
+   "v1_pipeline_v1_window_v1_label_loss": 107,
+   "v1_pipeline_fixed_window_v1_label_loss_same_episodes": 91,
+   "v1_pipeline_fixed_window_v1_label_loss_comment_in_fixed_window": 91
+  }
+ },
+ "deviations": [
+  "Placeholder pattern: a comment is dropped only when its whole text (after removing the report's '(1) Resolution Strategy Code' legend, a leading date or loan number, and trailing punctuation) is a 'too lengthy' / 'not available' / 'no comment provided' notice. 'Special Servicer comments were not provided, as this loan returned to Master Servicing' is kept, because it states a fact (the return); cross-references ('refer to commentary on loan N') are kept, as the plan names only unavailable-comment notices.",
+  "Wrong-deal months: only the tape rows are dropped; the 10-D comments for those months are kept, because M-029 concerns the ABS-EE tape, not the distribution report. Loans present = loans with a property name that month.",
+  "A-note join: a single trailing letter is stripped, and only when the stripped ID is on the deal's tape and the original ID is not (judged over the deal's whole tape). Comments of several notes of one loan in one month are joined, identical texts once.",
+  "Exit from the tape: after liquidation the tape keeps most loans with a zero balance and the loss carried forward, so 'exits the tape' is read as the first month with an ending balance of zero, or, for a loan that disappears while the deal keeps reporting, the month after its last row.",
+  "Liquidation exit: the loan's latest non-blank workout code at or before its exit row is 5, 6, 7 or 10. (The count under the alternative reading, any such code in the window before the exit, is reported, not used.)",
+  "Loss by realized loss: a month's realized loss minus the last reported value before it (zero if none) is at least 2% of the balance at transfer. Balance at transfer = ending balance in the episode's first month, else the latest positive earlier ending balance, else that month's beginning balance.",
+  "Cured or returned: read as a return date on or after the transfer date, or workout code 8 or 9, anywhere in the window, with no loss; 'followed by the return' is read as description. The episodes labelled by code 8 or 9 alone are counted.",
+  "Loss takes precedence over a return in the same window (the plan's 'with no loss').",
+  "Found by the hand check and fixed before Analyses A-C were first run: return evidence (a return date or code 8/9) counts only up to the exit row, because the tape keeps paid-off loans as zero-balance carry rows that can show code 8 after the payoff.",
+  "Resolution date for landmark eligibility = the earliest of the loss month, the cure/return month and the exit month, so a loan cured before the landmark is out of that landmark's set even if it later takes a loss.",
+  "Open episodes: the plan's '24 months' is read as follow-up from the episode's first month to its window end. Primary: every open episode is dropped (none has a label); the counts with >= 24 and < 24 months are reported. Sensitivity: open episodes with >= 24 months are 'not loss'; those with < 24 stay dropped.",
+  "Workout decided, tape side: a modification code counts only when it is new in the window (blank/0 or different from the last code reported before the episode), so a code carried from an earlier modification is not read as this episode's decision.",
+  "Workout keywords: a sentence with modif/extension/extend counts as decided only if it has no request word (request, propos, seek, sought, asked, asking). Borrower request: a sentence with a request word and a workout term. The same borrower-request family is the 'workout-request' feature in Analysis B.",
+  "Jev families: liquidation = foreclosure, property in REO, deed in lieu, note sale, discounted payoff; return = pending return to master servicer, resolved; workout decided = modification, extension; borrower request = any auto-accepted borrower_request value. When several notes of one loan have answers in one month, each family is set if any note's answer is in it.",
+  "Analysis B features: a missing indicator is added for months since financials end (needed to impute it); payment-status rank uses v1's map with blank as current; property-type dummies cover every code on the tape (blank is the base); log length is of all comments up to the landmark; the tape row used is the landmark month's, else the latest before it in the window. Features are standardised inside each fit; inner CV scores by AUC.",
+  "Analysis C: 'tape has not coded liquidation' = no workout code 2, 5, 6, 7 or 10 in any window month up to the landmark; 'text names liquidation' = the liquidation keyword family in any comment up to the landmark. The Jev split is added as a labelled extra."
+ ]
+}
