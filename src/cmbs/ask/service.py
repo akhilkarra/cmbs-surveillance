@@ -7,12 +7,13 @@
   by the ABS-EE accession and the field;
 - from the same tape asset as stored in bronze (`bronze.loan_tape_asset.tags`, the asset the
   row was typed from, so the same filing): the advances outstanding, the non-recoverability
-  indicator and the liquidation date and code (`ASSET_TAGS`). They are read at ask time rather
-  than typed into silver: the silver contract quarantines a loan whose typed value cannot be
-  read, and these are facts to cite, not values the panel computes with, so an unreadable one
-  is shown as reported instead of dropping the loan;
-- the latest 10-D appraisal reduction of the loan filed by that day
-  (`cmbs.distribution.service.appraisal_reductions`), cited by its report table and date;
+  indicator and the liquidation/prepayment date and code (`ASSET_TAGS`). They are read at ask
+  time rather than typed into silver: the silver contract quarantines a loan whose typed value
+  cannot be read, and these are facts to cite, not values the panel computes with, so an
+  unreadable one is shown as reported instead of dropping the loan;
+- the appraisal reductions the deal's latest 10-D filed by that day lists for the loan
+  (`cmbs.distribution.service.appraisal_reductions`), cited by its report table and date: a
+  reduction an earlier 10-D listed but the latest omits is no longer stated;
 - the latest extracted comment of the loan (`cmbs.extraction.service.comment_view`, which shows
   review decisions and overrides made by that day): each field with a value, cited by the 10-D
   accession, the sentence number and the sentence; a field awaiting review is listed without a
@@ -51,6 +52,7 @@ from cmbs.ask.answer import (
 from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
 from cmbs.distribution.service import appraisal_reductions, canonical_loan
+from cmbs.distribution.tables import DistributionReport
 from cmbs.domain import Period, format_money
 from cmbs.edgar.archives import filing_base_url
 from cmbs.errors import Refused
@@ -59,7 +61,7 @@ from cmbs.extraction.service import CommentView, comment_view
 from cmbs.extraction.tables import Extraction
 from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
-from cmbs.settings.service import NoSettings, in_force
+from cmbs.settings.tables import SettingsVersion
 from cmbs.settings.values import Settings
 from cmbs.tape.convert import Unreadable, read_date, read_money
 from cmbs.tape.tables import LoanPeriod, TapeAsset
@@ -240,8 +242,15 @@ ASSET_TAGS = (
         "advances",
         TagKind.INDICATOR,
     ),
-    AssetTag("liquidationPrepaymentDate", "liquidation date", "liquidation", TagKind.DATE),
-    AssetTag("liquidationPrepaymentCode", "liquidation code", "liquidation", TagKind.CODE),
+    # A payoff and a liquidation share these tags: the code says which. Schedule AL's code list
+    # is not in any stored 10-D (BANK 2018-BNK13's Computershare reports print the kind as a word,
+    # such as "Disposition", with no numbered legend), so the code reads "code 3", undecoded.
+    AssetTag(
+        "liquidationPrepaymentDate", "liquidation/prepayment date", "liquidation", TagKind.DATE
+    ),
+    AssetTag(
+        "liquidationPrepaymentCode", "liquidation/prepayment code", "liquidation", TagKind.CODE
+    ),
 )
 # XML Schema booleans, as Schedule AL indicators are written.
 _YES = frozenset({"true", "1"})
@@ -305,19 +314,38 @@ def stored_asset(db: Session, row: LoanPeriod) -> TapeAsset | None:
     return db.get(TapeAsset, (row.accession, row.file_name, row.asset_position))
 
 
+def latest_report(db: Session, deal: Deal, day: dt.date) -> str | None:
+    """The accession of the deal's latest 10-D filed by `day`: its latest month, then its
+    latest filing (an amendment filed later wins); None before any."""
+    return db.scalars(
+        select(DistributionReport.accession)
+        .join(Filing, Filing.accession == DistributionReport.accession)
+        .where(DistributionReport.deal_id == deal.id, Filing.filing_date <= day)
+        .order_by(
+            DistributionReport.period.desc(),
+            Filing.filing_date.desc(),
+            DistributionReport.accession.desc(),
+        )
+        .limit(1)
+    ).one_or_none()
+
+
 def appraisal_facts(db: Session, deal: Deal, loan: str, day: dt.date) -> list[Fact]:
-    """The appraisal reductions the latest 10-D filed by `day` lists for the loan, each cited
-    by its report table and dated as the report dates it. The same amount and date in two
-    tables of one report is one fact."""
-    found = appraisal_reductions(db, deal=deal.name, loan=loan, as_of=day)
-    if not found:
-        return []
-    latest = max(item.period for item in found)
+    """The appraisal reductions the deal's latest 10-D filed by `day` lists for the loan, each
+    cited by its report table and dated as the report dates it. A reduction an earlier 10-D
+    listed but the latest does not is no longer in effect, and is not stated. The same amount
+    and date in two tables of one report is one fact."""
+    report = latest_report(db, deal, day)
+    found = [
+        item
+        for item in appraisal_reductions(db, deal=deal.name, loan=loan, as_of=day)
+        if item.accession == report
+    ]
     facts: list[Fact] = []
-    seen: set[tuple[str, Decimal, dt.date | None]] = set()
+    seen: set[tuple[Decimal, dt.date | None]] = set()
     for item in found:
-        key = (item.accession, item.amount, item.reduction_date)
-        if item.period != latest or key in seen:
+        key = (item.amount, item.reduction_date)
+        if key in seen:
             continue
         seen.add(key)
         facts.append(
@@ -325,7 +353,7 @@ def appraisal_facts(db: Session, deal: Deal, loan: str, day: dt.date) -> list[Fa
                 name="report.appraisal_reduction",
                 label="appraisal reduction amount",
                 topic="appraisal reduction",
-                period=latest.label,
+                period=item.period.label,
                 value=format_money(item.amount),
                 status="reported",
                 citation=Citation(
@@ -355,8 +383,9 @@ def comment_facts(view: CommentView, cik: int, band: Settings | None = None) -> 
 
     A field awaiting review cites the sentence the model pointed to, the filer's words quoted as
     unreviewed (Q97), never its value; but only when the model's support for it is unsettled or
-    high in `band` (the settings in force). With support low no sentence states the field
-    (Q87), and none is cited; with no band to read it against, none either."""
+    high in `band`, the settings the field was sent to review under (the extraction's version).
+    With support low no sentence states the field (Q87), and none is cited; with no band to
+    read it against, none either."""
     facts = []
     for shown in view.fields.values():
         waiting = shown.status == NEEDS_REVIEW
@@ -397,12 +426,10 @@ def comment_facts(view: CommentView, cik: int, band: Settings | None = None) -> 
     return facts
 
 
-def band_in_force(db: Session, day: dt.date) -> Settings | None:
-    """The settings in force at the end of `day` (UTC), whose abstention band reads support."""
-    try:
-        return in_force(db, dt.datetime.combine(day, dt.time.max, tzinfo=dt.UTC)).values
-    except NoSettings:
-        return None
+def settings_version(db: Session, version: int) -> Settings | None:
+    """A settings version's values, whose abstention band reads support; None if unknown."""
+    row = db.get(SettingsVersion, version)
+    return None if row is None else Settings.model_validate(row.values)
 
 
 @dataclass(frozen=True)
@@ -468,7 +495,7 @@ def loan_facts(
         facts = tape_facts(latest, cik) + asset_facts(stored_asset(db, latest), latest, cik)
     facts += appraisal_facts(db, deal_row, loan, day)
     if view is not None:
-        facts = comment_facts(view, cik, band_in_force(db, day)) + facts
+        facts = comment_facts(view, cik, settings_version(db, view.settings_version)) + facts
     return LoanFacts(deal=deal_row.name, loan=loan, as_of=day, facts=facts)
 
 

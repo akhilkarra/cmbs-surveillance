@@ -19,15 +19,18 @@ from cmbs.ask.service import (
     UnknownDeal,
     UnknownLoan,
     ask,
-    band_in_force,
+    comment_facts,
     loan_facts,
+    settings_version,
     support_band,
     tape_value,
 )
 from cmbs.cli import app as cli
 from cmbs.db.models import SCHEMAS
 from cmbs.domain import Period
+from cmbs.extraction.service import CommentView, field_view
 from cmbs.extraction.tables import ExtractedField
+from cmbs.settings.service import store_version
 from cmbs.testing.bdd import changed_tables, data_snapshot, in_session
 from cmbs.testing.world import BASELINE_SETTINGS, FIXTURE_DEAL
 from tests.conftest import needs_db
@@ -183,6 +186,25 @@ def test_a_field_awaiting_review_is_a_fact_without_a_value(panel):
         f"(10-D {REPORT}, sentence 4)"
     ) in quoted.text()
 
+    # A band approved later does not change it: support is read in the band the field was sent
+    # to review under, its extraction's settings version.
+    stricter = BASELINE_SETTINGS.model_copy(
+        update={"abstention_low": Decimal("0.60"), "abstention_high": Decimal("0.80")}
+    )
+    in_session(
+        lambda db: store_version(
+            db,
+            version=8,
+            values=stricter,
+            proposed_by="quinn",
+            approved_by="rae",
+            approved_at=dt.datetime(2026, 10, 2, tzinfo=dt.UTC),
+        )
+    )
+    later = in_session(lambda db: ask(db, "rae", question, deal=FIXTURE_DEAL))
+    assert later.unreviewed[0].support == "unsettled"
+    assert "unreviewed: not a panel fact" in later.text()
+
 
 def waiting_field_id(db) -> int:
     return db.scalars(
@@ -193,7 +215,7 @@ def waiting_field_id(db) -> int:
     ).one()
 
 
-def test_support_is_read_against_the_band_in_force():
+def test_support_is_read_against_the_band_given():
     band = BASELINE_SETTINGS
     assert support_band(Decimal("0.12"), band) == "low"
     assert support_band(Decimal("0.30"), band) == "unsettled"
@@ -202,10 +224,70 @@ def test_support_is_read_against_the_band_in_force():
     assert support_band(Decimal("0.50"), None) is None
 
 
+def waiting_view(support: Decimal | None, sentence: int | None = 4) -> CommentView:
+    """A comment whose workout strategy waits for review, the model pointing to `sentence`."""
+    sentences = ["One.", "Two.", "Three.", "The servicer is evaluating the request."]
+    row = ExtractedField(
+        field="workout_strategy",
+        status="needs review",
+        value=None,
+        sentence=None,
+        model_value="modification",
+        answer_probability=Decimal("0.55"),
+        support_probability=support,
+        model_sentence=sentence,
+        review_reason="unsettled support",
+        decided_by=None,
+        decided_at=None,
+    )
+    return CommentView(
+        deal=FIXTURE_DEAL,
+        loan="2",
+        period=SEP,
+        accession=REPORT,
+        filing_date=dt.date(2026, 9, 29),
+        comment=" ".join(sentences),
+        sentences=sentences,
+        model="jev-1.14.0",
+        prompt_version=3,
+        settings_version=7,
+        model_call="call",
+        fields={"workout_strategy": field_view(row, sentences, None)},
+    )
+
+
+def test_the_sentence_is_quoted_only_on_support_not_low_in_the_band_given():
+    unsettled = waiting_view(Decimal("0.50"))
+    [quoted] = comment_facts(unsettled, 9900001, BASELINE_SETTINGS)
+    assert (quoted.support, quoted.citation.sentence) == ("unsettled", 4)  # pyright: ignore[reportOptionalMemberAccess]
+    assert quoted.citation.quote == "The servicer is evaluating the request."  # pyright: ignore[reportOptionalMemberAccess]
+    # The same support under a band that starts higher is low: no sentence states the field.
+    stricter = BASELINE_SETTINGS.model_copy(
+        update={"abstention_low": Decimal("0.60"), "abstention_high": Decimal("0.80")}
+    )
+    [low] = comment_facts(unsettled, 9900001, stricter)
+    assert (low.support, low.citation) == ("low", None)
+    assert low.unreviewed_quote() == "the comment has no sentence on it (unreviewed)"
+    # With no band to read the support against, or no support, nothing is quoted.
+    for unknown in (
+        comment_facts(unsettled, 1, None),
+        comment_facts(waiting_view(None), 1, BASELINE_SETTINGS),
+    ):
+        [fact] = unknown
+        assert (fact.support, fact.citation, fact.unreviewed_quote()) == (None, None, None)
+
+
+def test_a_model_sentence_outside_the_comment_quotes_nothing():
+    for outside in (0, 5):
+        [fact] = comment_facts(waiting_view(Decimal("0.50"), outside), 1, BASELINE_SETTINGS)
+        assert (fact.support, fact.citation, fact.unreviewed_quote()) == ("unsettled", None, None)
+    assert waiting_view(Decimal("0.5"), 1).fields["workout_strategy"].model_quote == "One."
+
+
 @needs_db
-def test_no_band_in_force_means_no_band(seeded):
-    assert in_session(lambda db: band_in_force(db, dt.date(2026, 9, 15))) == BASELINE_SETTINGS
-    assert in_session(lambda db: band_in_force(db, dt.date(2026, 9, 14))) is None
+def test_settings_versions_are_read_by_number(seeded):
+    assert in_session(lambda db: settings_version(db, 7)) == BASELINE_SETTINGS
+    assert in_session(lambda db: settings_version(db, 99)) is None
 
 
 @needs_db

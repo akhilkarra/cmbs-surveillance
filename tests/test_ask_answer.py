@@ -314,6 +314,9 @@ def test_loss_topics():
     assert topics_in("Are they non-recoverable? Any P&I?") == ["advances"]
     assert topics_in("Any realized loss or losses?") == ["realized loss"]
     assert topics_in("When was it liquidated?") == ["liquidation"]
+    for payoff in ("Did it prepay?", "Was it paid off?", "The payoff date?", "Paid in full?"):
+        assert topics_in(payoff) == ["liquidation"], payoff
+    assert topics_in("What is it paid through?") == ["payment status"]
     assert topics_in("What is the ARA? The appraisal reduction?") == ["appraisal reduction"]
     assert topics_in("When did it return to the master servicer?") == ["special servicing transfer"]
 

@@ -162,5 +162,6 @@ def step_facts_realized_loss(context, amount, tag):
     "the tape"
 )
 def step_facts_liquidation(context, day, code):
-    _tape_fact(context, "liquidation date", day.isoformat(), "liquidationPrepaymentDate")
-    _tape_fact(context, "liquidation code", f"code {code}", "liquidationPrepaymentCode")
+    # The tape's liquidation/prepayment date and code: a liquidation's, in this scenario.
+    _tape_fact(context, "liquidation/prepayment date", day.isoformat(), "liquidationPrepaymentDate")
+    _tape_fact(context, "liquidation/prepayment code", f"code {code}", "liquidationPrepaymentCode")
