@@ -67,7 +67,7 @@ repos:
 
   # Secrets in staged changes (detect-private-key above only catches key files).
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1
+    rev: v8.30.0
     hooks:
       - id: gitleaks
 
