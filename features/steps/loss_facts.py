@@ -41,6 +41,27 @@ def step_reported_with(context, loan, deal, period, filed):
     publication(context, deal).month(period, filed).tape.append(set_tags(loan, tags))
 
 
+@given(
+    'loan "{loan}" of "{deal:DashName}" was reported in {period:DashMonth} with the asset fields '
+    "maturityDate {maturity} and reportPeriodInterestRatePercentage {rate}"
+)
+def step_reported_asset_fields(context, loan, deal, period, maturity, rate):
+    tags = {"maturityDate": maturity.strip(), "reportPeriodInterestRatePercentage": rate.strip()}
+    publication(context, deal).month(period).tape.append(set_tags(loan, tags))
+    context.asset_month = (deal, loan, period)
+
+
+@given("with these property fields:")
+def step_property_fields(context):
+    """The fields of the loan's property record in the month the step before named."""
+    deal, loan, period = context.asset_month
+    tags = {
+        f"property/{row['property field'].strip()}": _tag_value(row["value"])
+        for row in context.table
+    }
+    publication(context, deal).month(period).tape.append(set_tags(loan, tags))
+
+
 def appraisal_row(loan: str, amount: str, day: dt.date) -> Edit:
     """The 10-D with the loan's row of the appraisal reduction table giving `amount` on `day`."""
     row = re.compile(

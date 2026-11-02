@@ -33,7 +33,9 @@ from cmbs.ask.service import (
     UnknownLoan,
     asset_facts,
     loan_facts,
+    property_facts,
     tag_value,
+    tape_value,
 )
 from cmbs.cli import app as cli
 from cmbs.db.models import SCHEMAS
@@ -176,6 +178,60 @@ def test_tags_read_as_reported_and_never_guessed():
         "'maybe' as reported, not readable as yes or no"
     )
     assert tag_value(TagKind.CODE, "3", "x") == "code 3"
+
+
+def test_property_records_give_the_valuation_and_largest_tenant():
+    """Grill log Q100: one property record states its facts plainly; several are labelled."""
+    row = LoanPeriod(
+        loan="11", period=SEP.first_day, accession=TAPE, filing_date=FILED, file_name="f.xml"
+    )
+    one = TapeAsset(
+        tags={"maturityDate": "08-01-2028"},
+        properties=[
+            {
+                "propertyName": "Ditson",
+                "mostRecentValuationAmount": "19000000.00",
+                "mostRecentValuationDate": "07-31-2026",
+                "mostRecentValuationSourceCode": "MAI",
+                "valuationSecuritizationAmount": "62000000.00",
+                "largestTenant": "Harbor University Center",
+                "leaseExpirationLargestTenantDate": "09-30-2026",
+            }
+        ],
+    )
+    assert property_facts(None, row, 1) == []
+    facts = property_facts(one, row, 9900001)
+    assert [(f.label, f.value, f.topic, f.citation and f.citation.tape_field) for f in facts] == [
+        ("latest valuation", "$19,000,000.00", "valuation", "mostRecentValuationAmount"),
+        ("latest valuation date", "2026-07-31", "valuation", "mostRecentValuationDate"),
+        ("latest valuation source", "MAI", "valuation", "mostRecentValuationSourceCode"),
+        ("valuation at securitization", "$62,000,000.00", "valuation",
+         "valuationSecuritizationAmount"),
+        ("largest tenant", "Harbor University Center", "largest tenant", "largestTenant"),
+        ("largest tenant's lease expires", "2026-09-30", "largest tenant",
+         "leaseExpirationLargestTenantDate"),
+    ]  # fmt: skip
+    maturity = [f for f in asset_facts(one, row, 1) if f.label == "maturity date"]
+    assert [f.value for f in maturity] == ["2028-08-01"]
+    several = TapeAsset(
+        tags={},
+        properties=[
+            {"propertyName": "East", "largestTenant": "A"},
+            {"largestTenant": " ", "mostRecentValuationSourceCode": "BPO"},
+        ],
+    )
+    assert [(f.name, f.label, f.value) for f in property_facts(several, row, 1)] == [
+        ("tape.largestTenant.1", "largest tenant (property 1, East)", "A"),
+        ("tape.mostRecentValuationSourceCode.2",
+         "latest valuation source (property 2, name not reported)", "BPO"),
+    ]  # fmt: skip
+    assert property_facts(TapeAsset(tags={}, properties=None), row, 1) == []
+
+
+def test_the_interest_rate_reads_as_a_percent():
+    assert tape_value("interest_rate", Decimal("0.0543")) == "5.43%"
+    assert tape_value("interest_rate", Decimal("0.04433")) == "4.433%"
+    assert tag_value(TagKind.TEXT, "MAI", "x") == "MAI"
 
 
 def test_asset_facts_cite_the_tape_field():
@@ -490,6 +546,38 @@ def test_the_roster_lists_liquidated_quarantined_and_off_tape_loans(f2):
     assert [row.loan for row in roster.loans] == ["2", "7", "6", "3", "1", "4", "5"]
     special = in_session(lambda db: loans(db, "pat", deal=F2, special_servicing=True))
     assert [row.loan for row in special.loans] == ["2", "7"]
+
+
+@needs_db
+def test_a_loan_the_panel_never_read_is_listed_without_a_state(seeded):
+    """Loan 4 quarantined in July and August, then off the September tape: the panel never read
+    it, and the roster says so, citing the last tape that quarantined it (Q99)."""
+    published = Publication(F2)
+    for period in (JUL, AUG, SEP):
+        published.month(period)
+    for period in (JUL, AUG):
+        published.month(period).tape.append(
+            set_tags("4", {"reportPeriodEndActualBalanceAmount": "xyz"})
+        )
+    published.month(SEP).tape.append(only_loans({"1", "2", "3", "5", "6", "7"}))
+    published.load(LOADED)
+    clock.set_now(ASKED_F2)
+    roster = in_session(lambda db: loans(db, "pat", deal=F2))
+    rows = {row.loan: row for row in roster.loans}
+    unread = rows["4"]
+    assert unread.note == (
+        "never read: every tape that reported it quarantined it, last the August 2026 tape "
+        "(ending balance is not a number: 'xyz')"
+    )
+    assert (unread.state, unread.ending_balance, unread.tape_fields) == (None, None, ())
+    august = in_session(lambda db: history(db, "pat", deal=F2, loan="2")).months[1]
+    assert unread.citation.accession == august.citation.accession
+    assert unread.property_name == "Oak Lane Cooperative"
+    assert roster.loans[-1].loan == "4"
+    # On a day the August tape was current, it is that tape's quarantined loan, not unread.
+    early = in_session(lambda db: loans(db, "pat", deal=F2, as_of=dt.date(2026, 9, 15)))
+    held = {row.loan: row for row in early.loans}["4"]
+    assert held.note is not None and held.note.startswith("quarantined: ")
 
 
 @needs_db

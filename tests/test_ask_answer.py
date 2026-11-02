@@ -286,27 +286,33 @@ def test_no_part_of_a_question_is_answered_by_substituting_another():
 
 
 def test_concepts_outside_the_panel():
-    assert outside_in("What is the LTV, cap rate and appraised value?") == [
-        "appraisal",
-        "LTV",
-        "cap rate",
-    ]
-    assert outside_in("Who is the guarantor? Any tenants or reserves?") == [
+    assert outside_in("What is the LTV, cap rate and appraised value?") == ["LTV", "cap rate"]
+    assert outside_in("Who is the guarantor? Any rent roll or reserves?") == [
         "guarantor",
-        "tenants and leases",
+        "rent roll",
         "reserves",
     ]
-    assert outside_in("When does it mature, and at what interest rate?") == [
-        "interest rate",
-        "maturity date",
-    ]
     assert outside_in("Why is loan 2 in special servicing?") == []
-    assert outside_in("What is the ASER and the latest appraised value?") == [
-        "appraisal",
-        "ASER",
-    ]
+    assert outside_in("What is the ASER and the latest appraised value?") == ["ASER"]
     assert outside_in("What is the appraisal reduction?") == []
     assert outside_in("Any appraisal subordinate entitlement reduction?") == ["ASER"]
+
+
+def test_what_the_tape_gives_of_value_term_and_tenancy_is_a_topic():
+    """Grill log Q100: the tape's valuation, maturity, rate and largest tenant are facts."""
+    assert topics_in("What is the latest appraised value? Its valuation?") == ["valuation"]
+    assert topics_in("What is the property worth?") == ["valuation"]
+    assert topics_in("When does it mature, and at what interest rate?") == [
+        "maturity date",
+        "interest rate",
+    ]
+    assert topics_in("What is the maturity? The coupon?") == ["maturity date", "interest rate"]
+    assert topics_in("Who is the largest tenant, and when does the lease expire?") == [
+        "largest tenant"
+    ]
+    # A maturity extension is the borrower's request, not the maturity date.
+    assert topics_in("Did the borrower ask for a maturity extension?") == ["borrower request"]
+    assert topics_in("What is the appraisal reduction?") == ["appraisal reduction"]
 
 
 def test_loss_topics():

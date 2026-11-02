@@ -8,8 +8,6 @@ loaded when the scenario first asks, by one run the morning after the last filin
 a step names), and asked about at noon that day.
 """
 
-import datetime as dt
-
 from behave import given, then, when  # pyright: ignore[reportAttributeAccessIssue]
 from sqlalchemy import select
 
@@ -19,37 +17,14 @@ from cmbs.domain import format_money, money
 from cmbs.filings.tables import Filing
 from cmbs.testing.bdd import in_session
 from features.steps.published import (
-    Edit,
+    TRANSFER_TAG,
     load_run,
-    only_loans,
     publication,
     publish,
+    roster_edits,
     set_tags,
     tape_date,
 )
-
-TRANSFER_TAG = "mostRecentSpecialServicerTransferDate"
-RETURN_TAG = "mostRecentMasterServicerReturnDate"
-
-
-def _date(text: str) -> str | None:
-    text = text.strip()
-    return tape_date(dt.date.fromisoformat(text)) if text else None
-
-
-def roster_edits(table) -> list[Edit]:
-    """The month's tape with only the table's loans, each reporting the row's values."""
-    edits = [only_loans({row["loan"].strip() for row in table})]
-    for row in table:
-        tags = {
-            "property/propertyName": row["property"].strip(),
-            "reportPeriodEndActualBalanceAmount": str(money(row["ending balance"])),
-            TRANSFER_TAG: _date(row["transfer date"]),
-            RETURN_TAG: _date(row["return date"]),
-            "workoutStrategyCode": row["workout strategy"].strip() or None,
-        }
-        edits.append(set_tags(row["loan"].strip(), tags))
-    return edits
 
 
 @given('"{deal:DashName}" reported these loans in {period:DashMonth}, filed {filed:DashDay}:')

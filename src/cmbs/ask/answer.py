@@ -17,7 +17,7 @@ for another:
   labelled "unreviewed: not a panel fact", and the tape's values on the topic, each labelled as
   the tape's and cited by its Schedule AL field;
 - every other part of the question is "not in the data": a concept the panel does not hold
-  (equity, the sponsor, an appraisal, LTV, ...), and a topic it holds but has no value of for
+  (equity, the sponsor, the ASER, LTV, ...), and a topic it holds but has no value of for
   the loan. A question with no part the panel covers is "not in the data" as a whole.
 Recognising topics by their words is deliberately narrow, and a word that could belong to
 another subject ("coverage", "current", "strategy") names no topic on its own; the `/cmbs-ask`
@@ -150,6 +150,18 @@ TOPIC_WORDS: dict[str, tuple[str, ...]] = {
     "financials": (r"financials", r"noi\b", r"net operating income", r"operating statement"),
     "modification": (r"modif",),
     "property": (r"property type", r"property name", r"kind of property", r"type of property"),
+    # What the tape's property and asset records give (grill log Q100). An appraisal reduction
+    # and the ASER are other things.
+    "valuation": (
+        r"valuation",
+        r"apprais(?!al reduction|al subordinate)",
+        r"value of the property",
+        r"property value",
+        r"worth\b",
+    ),
+    "maturity date": (r"maturity date", r"matures?\b", r"maturity\b(?! extension)"),
+    "interest rate": (r"interest rate", r"coupon"),
+    "largest tenant": (r"tenant", r"lease"),
 }
 
 # Concepts a question may ask about that the panel does not hold, by the words that name them.
@@ -157,18 +169,14 @@ TOPIC_WORDS: dict[str, tuple[str, ...]] = {
 OUTSIDE_WORDS: dict[str, tuple[str, ...]] = {
     "equity": (r"equity",),
     "sponsor": (r"sponsor",),
-    # An appraisal reduction is a fact the 10-D gives; an appraisal itself is not held.
-    "appraisal": (r"apprais(?!al reduction|al subordinate)",),
     "ASER": (r"aser\b", r"appraisal subordinate"),
     "LTV": (r"ltv\b", r"loan.to.value"),
     "cap rate": (r"cap rate", r"capitali[sz]ation rate"),
-    "valuation": (r"valuation", r"value of the property", r"property value", r"worth\b"),
     "guarantor": (r"guarant",),
     "insurance": (r"insur",),
-    "tenants and leases": (r"tenant", r"lease", r"rents?\b", r"rent roll"),
+    # The tape gives the largest tenants, not the rent roll.
+    "rent roll": (r"rents?\b", r"rent roll"),
     "reserves": (r"reserve", r"escrow"),
-    "interest rate": (r"interest rate", r"coupon"),
-    "maturity date": (r"maturity date", r"matures?\b"),
     "market": (r"market", r"comparable", r"sale price", r"sold for"),
 }
 

@@ -3,6 +3,7 @@ export * from "./alerts/alerts";
 export * from "./ask/ask";
 export * from "./audit/audit";
 export * from "./book/book";
+export * from "./brief/brief";
 export * from "./checks/checks";
 export * from "./coverage/coverage";
 export * from "./dashboard/dashboard";

@@ -9,7 +9,8 @@ month's tape (EX-102) and 10-D report (EX-99.1). Accession numbers keep the fixt
 recorded month keeps its recorded accession.
 
 `load` registers the deal and backfills the stated months in one run at the time given; each
-month is still public only from its own filing date, which is what the panel reads.
+month is still public only from its own filing date, which is what the panel reads. A step that
+sets `Publication.model` has that run extract the months' comments too.
 
 No step is defined here; the modules that use it define the steps.
 """
@@ -25,11 +26,11 @@ from typing import Any
 from cmbs import clock
 from cmbs.absee.schedule_al import NAMESPACE, AssetKind, asset_kind
 from cmbs.deals.service import get_or_create
-from cmbs.domain import Period
+from cmbs.domain import Period, money
 from cmbs.edgar.replay import MissingRecording, Replay
 from cmbs.refresh import service as refresh
 from cmbs.refresh.service import RunReport
-from cmbs.refresh.sources import ArchiveReplay, FirstRecorded, Sources
+from cmbs.refresh.sources import ArchiveReplay, FirstRecorded, ModelFor, Sources
 from cmbs.testing.bdd import in_session
 from cmbs.testing.world import FIXTURE_CIKS, set_next_run_number
 from tests.fixtures.refresh import build
@@ -108,6 +109,32 @@ def tape_date(day: dt.date) -> str:
     return build.tape_date(day)
 
 
+TRANSFER_TAG = "mostRecentSpecialServicerTransferDate"
+RETURN_TAG = "mostRecentMasterServicerReturnDate"
+
+
+def _table_date(text: str) -> str | None:
+    text = text.strip()
+    return tape_date(dt.date.fromisoformat(text)) if text else None
+
+
+def roster_edits(table) -> list[Edit]:
+    """A month's tape with only a scenario table's loans, each reporting its row's property,
+    ending balance, transfer and return dates and workout strategy (a blank cell is a tag the
+    tape does not report)."""
+    edits = [only_loans({row["loan"].strip() for row in table})]
+    for row in table:
+        tags = {
+            "property/propertyName": row["property"].strip(),
+            "reportPeriodEndActualBalanceAmount": str(money(row["ending balance"])),
+            TRANSFER_TAG: _table_date(row["transfer date"]),
+            RETURN_TAG: _table_date(row["return date"]),
+            "workoutStrategyCode": row["workout strategy"].strip() or None,
+        }
+        edits.append(set_tags(row["loan"].strip(), tags))
+    return edits
+
+
 # ---------------------------------------------------------------------------- publishing
 
 
@@ -128,6 +155,8 @@ class Publication:
         self.spec = SPECS[deal]
         self.months: dict[Period, Month] = {}
         self.loaded = False
+        # The model the loading run extracts comments with; None loads the filings only.
+        self.model: ModelFor | None = None
         self.recorded_edgar = FirstRecorded(*(Replay(directory) for directory in EDGAR))
         self.recorded_archive = FirstRecorded(ArchiveReplay(ARCHIVE))
 
@@ -224,7 +253,11 @@ class Publication:
         return (dt.date(day.year, day.month, 1), recent["form"][i]) in replaced
 
     def sources(self) -> Sources:
-        return Sources(edgar=_Edgar(self), archive=_Archive(self.files(), self.recorded_archive))
+        return Sources(
+            edgar=_Edgar(self),
+            archive=_Archive(self.files(), self.recorded_archive),
+            model=self.model,
+        )
 
     # ------------------------------------------------------------------ loading
 

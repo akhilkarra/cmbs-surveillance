@@ -114,11 +114,18 @@ def backfill(
     return report
 
 
-def wait_for_review(db: Session, *, field: str, loan: str = "2", period: Period = SEPTEMBER):
+def wait_for_review(
+    db: Session,
+    *,
+    field: str,
+    loan: str = "2",
+    period: Period = SEPTEMBER,
+    deal_name: str = FIXTURE_DEAL,
+):
     """Make the field of the loan's latest extracted comment wait for review, as an unsettled
     answer would have: no panel value, an open review item. The model's answer is kept."""
-    deal = by_name(db, FIXTURE_DEAL)
-    assert deal is not None, "the fixture deal is not loaded"
+    deal = by_name(db, deal_name)
+    assert deal is not None, f"{deal_name!r} is not loaded"
     extraction = db.scalars(
         select(Extraction)
         .where(

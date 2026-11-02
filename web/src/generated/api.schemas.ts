@@ -712,6 +712,14 @@ export type PostBookPositions200 = { [key: string]: unknown };
 
 export type PostBookWholeLoans200 = { [key: string]: unknown };
 
+export type GetBriefDealParams = {
+  deal: string;
+  /** Known on this date. */
+  as_of?: string | null;
+};
+
+export type GetBriefDeal200 = { [key: string]: unknown };
+
 export type GetChecksFlagsParams = {
   deal: string;
   period?: string | null;

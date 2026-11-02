@@ -20,7 +20,7 @@ Exact versions live in `pyproject.toml`, `uv.lock` and `web/package.json`; this 
 | Mutation testing | mutmut on `src/cmbs` (fork-server isolation, database tests last), Stryker on `web/src`; nightly in `.github/workflows/mutation.yml`, floor 90% [Q51, Q89] | Built |
 | Lint and types | pre-commit runs ruff, basedpyright (pyright, standard mode), Biome, typos, actionlint, zizmor, gitleaks and file hygiene on commit; pytest and Vitest with coverage floors on push [Q56] | Built |
 | Containers | Docker Compose on OrbStack: `db`, `web`, and `api` (`Dockerfile`: `cmbs serve` with the built dashboard; it serves the API and dashboard only, and the CLI and Claude skills run on the host, so it holds no TypeSafe key) [Q19] | Built |
-| Claude skills | `/cmbs-refresh`, read-only `/cmbs-ask`, both calling only the `cmbs` CLI, in `.claude/skills/` [Q12] | Built |
+| Claude skills | `/cmbs-refresh`, read-only `/cmbs-ask` and read-only `/cmbs-brief` (the committee brief on a deal's special-servicing book), each calling only the `cmbs` CLI, in `.claude/skills/` [Q12, Q98] | Built |
 
 ## Running things
 
