@@ -26,12 +26,15 @@ from cmbs.ask.service import ASSET_TAGS, TAPE_FIELDS, UnknownDeal
 from cmbs.brief.service import (
     NOT_IN_PANEL,
     QUESTIONS,
+    SHOWN_MONTHS,
     TAPE_TAGS,
     Brief,
+    Held,
     Item,
     Section,
     answer_item,
     brief,
+    condensed,
     month_line,
     not_reported,
     other_line,
@@ -182,6 +185,31 @@ def test_months_and_other_loans_read_with_their_citations():
     )
 
 
+def months_of(count: int) -> list[Month]:
+    found, period = [], Period(2025, 1)
+    for number in range(count):
+        found.append(
+            Month(period.label, f"{period.year}-{period.month:02d}", [], cite(f"A-{number}"))
+        )
+        period = period.shift(1)
+    return found
+
+
+def test_the_history_is_condensed_to_the_months_held_and_the_last_six():
+    assert condensed([]) == (None, [])
+    one = months_of(1)
+    held, shown = condensed(one)
+    assert held is not None and held == Held(1, one[0], one[0]) and shown == one
+    assert held.text() == "1 month held, January 2025 (ABS-EE A-0)"
+    many = months_of(21)
+    held, shown = condensed(many)
+    assert held is not None and shown == many[-SHOWN_MONTHS:]
+    assert [month.period for month in shown][0] == "April 2026"
+    assert held.text() == (
+        "21 months held, January 2025 to September 2026 (ABS-EE A-0 to ABS-EE A-20)"
+    )
+
+
 def test_a_brief_opens_with_freshness_and_ends_each_section_with_the_gaps():
     fresh = "Panel current through September 2026 (run 1, 2026-10-01)"
     day = dt.date(2026, 10, 6)
@@ -198,11 +226,11 @@ def test_a_brief_opens_with_freshness_and_ends_each_section_with_the_gaps():
     ]
     special = row("2", State.SPECIAL_SERVICING, "2025-03-06")
     item = Item("Payment status", Answer("payment status", "F1", "2", Kind.NOT_IN_DATA))
-    section = Section(special, [item], [])
+    section = Section(special, [item], None, [])
     assert section.lines() == [
         special.text(),
         "Payment status:",
-        "Months of history the panel holds:",
+        "History the panel holds (up to the latest six months as filed):",
         f"Not in the panel: {', '.join(NOT_IN_PANEL)}.",
     ]
     lines = Brief("F1", day, fresh, "September 2026", [section]).text().splitlines()
@@ -233,14 +261,19 @@ def test_the_brief_composes_the_roster_facts_and_history_and_writes_nothing(pane
     assert [other.loan for other in found.others] == ["6", "1", "3", "4", "5", "7"]
     [section] = found.sections
     assert [month.period for month in section.history] == ["August 2026", "September 2026"]
+    assert section.held is not None and section.held.text() == (
+        f"2 months held, August 2026 to September 2026 (ABS-EE {AUGUST_TAPE} to ABS-EE {TAPE})"
+    )
     assert [item.heading for item in section.items] == [q.heading for q in QUESTIONS]
     transfer = section.items[0]
     assert {f.name for f in transfer.stated} >= {"transfer_date", "transfer_reason"}
     text = found.text()
     assert text.splitlines()[0] == found.freshness
     assert "paid off, zero balance since 2026-08" in text
-    # The appraisal reduction cites a report table, not a field or sentence: left to `ask`.
-    assert "6,500,000.00" not in text
+    # The appraisal reduction, cited to the 10-D's report table.
+    reduction = [line for line in text.splitlines() if line.startswith("- appraisal reduction")]
+    assert len(reduction) == 1 and "$6,500,000.00" in reduction[0], reduction
+    assert f"10-D {REPORT}, " in reduction[0] and "dated 2026-08-11" in reduction[0], reduction
     early = in_session(lambda db: brief(db, "pat", deal=FIXTURE_DEAL, as_of=dt.date(2026, 9, 1)))
     assert early.period == "August 2026"
     assert [month.period for month in early.sections[0].history] == ["August 2026"]

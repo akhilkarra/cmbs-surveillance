@@ -26,7 +26,7 @@ from typing import Any
 from cmbs import clock
 from cmbs.absee.schedule_al import NAMESPACE, AssetKind, asset_kind
 from cmbs.deals.service import get_or_create
-from cmbs.domain import Period
+from cmbs.domain import Period, money
 from cmbs.edgar.replay import MissingRecording, Replay
 from cmbs.refresh import service as refresh
 from cmbs.refresh.service import RunReport
@@ -107,6 +107,32 @@ def only_loans(loans: set[str]) -> Edit:
 
 def tape_date(day: dt.date) -> str:
     return build.tape_date(day)
+
+
+TRANSFER_TAG = "mostRecentSpecialServicerTransferDate"
+RETURN_TAG = "mostRecentMasterServicerReturnDate"
+
+
+def _table_date(text: str) -> str | None:
+    text = text.strip()
+    return tape_date(dt.date.fromisoformat(text)) if text else None
+
+
+def roster_edits(table) -> list[Edit]:
+    """A month's tape with only a scenario table's loans, each reporting its row's property,
+    ending balance, transfer and return dates and workout strategy (a blank cell is a tag the
+    tape does not report)."""
+    edits = [only_loans({row["loan"].strip() for row in table})]
+    for row in table:
+        tags = {
+            "property/propertyName": row["property"].strip(),
+            "reportPeriodEndActualBalanceAmount": str(money(row["ending balance"])),
+            TRANSFER_TAG: _table_date(row["transfer date"]),
+            RETURN_TAG: _table_date(row["return date"]),
+            "workoutStrategyCode": row["workout strategy"].strip() or None,
+        }
+        edits.append(set_tags(row["loan"].strip(), tags))
+    return edits
 
 
 # ---------------------------------------------------------------------------- publishing

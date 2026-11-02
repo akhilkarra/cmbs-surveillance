@@ -10,25 +10,27 @@ own: the roster, each loan's facts and its history, and the filings the panel st
 
 import re
 
-from behave import then, when  # pyright: ignore[reportAttributeAccessIssue]
+from behave import given, then, when  # pyright: ignore[reportAttributeAccessIssue]
 from sqlalchemy import select
 
 from cmbs.ask.answer import COMMENT_FORM, NO_SENTENCE, NOT_IN_DATA, TAPE_FORM, UNREVIEWED
 from cmbs.ask.history import history
 from cmbs.ask.roster import ROSTER_FIELDS, loans
 from cmbs.ask.service import ASSET_TAGS, TAPE_FIELDS, loan_facts
-from cmbs.brief.service import NOT_IN_PANEL, brief, month_line, other_line
+from cmbs.brief.service import NOT_IN_PANEL, SHOWN_MONTHS, brief, month_line, other_line
 from cmbs.db.models import SCHEMAS
 from cmbs.deals.service import by_name
+from cmbs.distribution.layouts import APPRAISAL_TABLES
 from cmbs.domain import Period
 from cmbs.extraction.service import comment_view
 from cmbs.filings.tables import Filing
 from cmbs.testing.bdd import changed_tables, data_snapshot, in_session
-from features.steps.published import publish
+from features.steps.published import publication, publish, roster_edits
 
 SEPTEMBER = Period(2026, 9)
 SCHEDULE_AL_TAGS = {spec.tag for spec in TAPE_FIELDS} | {spec.tag for spec in ASSET_TAGS}
 ROSTER_TAGS = set(ROSTER_FIELDS)
+APPRAISAL_TABLE_NAMES = {spec.name for specs in APPRAISAL_TABLES.values() for spec in specs}
 
 
 @when('"{user}" asks for the committee brief of "{deal}"')
@@ -146,13 +148,7 @@ def _names(item) -> set[str]:
     return {fact.name for fact in item.stated}
 
 
-@then(
-    'loan "{loan}"\'s section gives, each with its citation, the transfer date and reason, the '
-    "payment status, the latest DSCR and occupancy with their dates, the servicer's stated "
-    "plan, the borrower's request, the advances outstanding and the months of history the "
-    "panel holds"
-)
-def step_section_gives(context, loan):
+def _section_gives(context, loan: str) -> None:
     section = _section(context, loan)
     lines = section.lines()
 
@@ -182,26 +178,70 @@ def step_section_gives(context, loan):
     assert held == [f"- {line}" for line in advances.not_reported], advances.lines()
     assert len(held) == 1, held
     assert f"{TAPE_FORM} {tape}: {', '.join(tags)}" in held[0], held[0]
-    # The months, each as asking gives it, citing its own tape and the fields it read.
-    months = in_session(lambda db: history(db, context.user, deal=context.deal, loan=loan))
-    assert section.history == months.months, (section.history, months.text())
-    assert [month.period for month in section.history] == [SEPTEMBER.label], section.history
+    _history_shown(context, section)
+
+
+def _history_shown(context, section) -> None:
+    """The months held, the first and the last citing their own tapes, then the last months
+    as asking gives them, each citing its own tape and the fields it read."""
+    lines = section.lines()
+    months = in_session(
+        lambda db: history(db, context.user, deal=context.deal, loan=section.loan.loan)
+    ).months
+    held = section.held
+    assert held is not None and held.months == len(months), (held, len(months))
+    assert (held.first, held.last) == (months[0], months[-1]), held
+    assert f"- {held.text()}" in lines, lines
+    for month in (held.first, held.last):
+        filed = _accession(context, TAPE_FORM, Period.parse(month.period))
+        assert f"{TAPE_FORM} {filed}" in held.text(), (filed, held.text())
+    assert section.history == months[-SHOWN_MONTHS:], section.history
     for month in section.history:
-        assert month.citation.accession == _accession(
-            context, TAPE_FORM, Period.parse(month.period)
-        )
+        filed = _accession(context, TAPE_FORM, Period.parse(month.period))
+        assert month.citation.accession == filed, month
         line = f"- {month_line(month)}"
         assert line in lines, lines
         assert line.endswith(f": {', '.join(value.tape_field for value in month.values)})"), line
 
 
-# A citation as a line gives it: an ABS-EE and the field (or fields) read, or a 10-D and the
-# number of the comment's sentence.
+@then(
+    'loan "{loan}"\'s section gives, each with its citation, the transfer date and reason, the '
+    "payment status, the latest DSCR and occupancy with their dates, the servicer's stated "
+    "plan, the borrower's request, the advances outstanding and the months of history the "
+    "panel holds"
+)
+def step_section_gives(context, loan):
+    _section_gives(context, loan)
+
+
+@then(
+    'loan "{loan}"\'s section gives, each with its citation, the transfer date and reason, the '
+    "payment status, the latest DSCR and occupancy with their dates, the servicer's stated "
+    "plan, the borrower's request, the advances outstanding, the appraisal reduction and the "
+    "history the panel holds"
+)
+def step_section_gives_appraisal(context, loan):
+    _section_gives(context, loan)
+    section = _section(context, loan)
+    item = _item(section, "Appraisal reduction, loss and liquidation")
+    found = [fact for fact in item.stated if fact.name == "report.appraisal_reduction"]
+    assert len(found) == 1, item.lines()
+    cited = found[0].citation
+    report = _accession(context, COMMENT_FORM)
+    assert cited is not None and (cited.form, cited.accession) == (COMMENT_FORM, report), cited
+    assert cited.report_table in APPRAISAL_TABLE_NAMES and cited.dated is not None, cited
+    assert f"- {found[0].text()}" in section.lines(), section.lines()
+
+
+# A citation as a line gives it: an ABS-EE and the field (or fields) read, a 10-D and the
+# number of the comment's sentence, or a 10-D and the report table (with the date it gives).
 _ACCESSION = r"\d{10}-\d{2}-\d{6}"
 _TAGS = r"[a-zA-Z]+(?:, [a-zA-Z]+)*"
 CITATION = re.compile(
     rf"{TAPE_FORM} (?P<tape>{_ACCESSION})(?:, (?P<field>[a-zA-Z]+)\)|: (?P<fields>{_TAGS})\))"
     rf"|{COMMENT_FORM} (?P<report>{_ACCESSION}), sentence (?P<sentence>\d+)"
+    rf"|{COMMENT_FORM} (?P<table_report>{_ACCESSION}), (?P<table>[A-Z][^,]+), dated "
+    r"\d{4}-\d{2}-\d{2}\)"
 )
 # The lines that state no value, and so cite nothing: a field awaiting review whose comment has
 # no sentence on it, and a topic the panel holds nothing on that no tape field reports.
@@ -211,19 +251,24 @@ NO_VALUE = re.compile(
 )
 
 
-@then("every line of the section that states a value cites an ABS-EE field or a 10-D sentence")
-def step_every_line_cites(context):
-    """A line with a value cites a Schedule AL field of the month's ABS-EE, or a sentence of
-    the comment in the month's 10-D, quoted as the comment has it. A line without a citation is
-    a heading or the list of what the panel does not hold, and states no value."""
+def _every_line_cites(context, *, report_tables: bool) -> None:
+    """A line with a value cites a Schedule AL field of the month's ABS-EE, a sentence of the
+    comment in the month's 10-D, quoted as the comment has it, or (when `report_tables`) the
+    10-D's report table. The line of months held cites the first and last months' tapes (checked
+    by `_history_shown`). A line without a citation is a heading, the list of what the panel
+    does not hold, or one of NO_VALUE, and states no value."""
     section = _section(context, context.loan)
-    tape = _accession(context, TAPE_FORM)
     report = _accession(context, COMMENT_FORM)
     sentences = context.comment.sentences
+    held = f"- {section.held.text()}" if section.held is not None else None
+    _history_shown(context, section)
+    tapes = {_accession(context, TAPE_FORM, Period.parse(m.period)) for m in section.history}
     checked = 0
     for line in section.lines():
         if line.endswith(":") or line.startswith("Not in the panel:"):
             assert not re.search(r"\d", line), f"a line states a value uncited: {line}"
+            continue
+        if line == held:
             continue
         found = list(CITATION.finditer(line))
         if not found:
@@ -232,7 +277,7 @@ def step_every_line_cites(context):
         checked += 1
         for cited in found:
             if cited.group("tape"):
-                assert cited.group("tape") == tape, line
+                assert cited.group("tape") in tapes, line
                 named = (cited.group("field") or cited.group("fields")).split(", ")
                 assert set(named) <= SCHEDULE_AL_TAGS | ROSTER_TAGS, line
             elif cited.group("report"):
@@ -242,7 +287,79 @@ def step_every_line_cites(context):
                 assert quoted in line or (UNREVIEWED in line and f"sentence {number})" in line), (
                     line
                 )
+            else:
+                assert report_tables, f"cites a report table, not a field or sentence: {line}"
+                assert cited.group("table_report") == report, line
+                assert cited.group("table") in APPRAISAL_TABLE_NAMES, line
     assert checked >= 10, section.lines()
+
+
+@then("every line of the section that states a value cites an ABS-EE field or a 10-D sentence")
+def step_every_line_cites(context):
+    _every_line_cites(context, report_tables=False)
+
+
+@then(
+    "every line of the section that states a value cites an ABS-EE field, a 10-D sentence or a "
+    "10-D report table"
+)
+def step_every_line_cites_tables(context):
+    _every_line_cites(context, report_tables=True)
+
+
+# ---------------------------------------------------------------------------- the history
+
+
+@given('loan "{loan}" of "{deal}" was reported in each month from {start} to {end}')
+def step_reported_each_month(context, loan, deal, start, end):
+    """Every month from `start` up to the Background's is published too, on its fixture day,
+    with the Background's loans and values."""
+    first, last = Period.parse(start), Period.parse(end)
+    assert last == context.roster_period, f"the Background states {context.roster_period}"
+    assert loan in {row["loan"].strip() for row in context.roster_table}, loan
+    found = publication(context, deal)
+    month = first
+    while month < last:
+        found.month(month).tape.extend(roster_edits(context.roster_table))
+        month = month.shift(1)
+
+
+@then('loan "{loan}"\'s history says "{text}"')
+def step_history_says(context, loan, text):
+    section = _section(context, loan)
+    assert section.held is not None, section
+    assert section.held.text().startswith(f"{text} ("), section.held.text()
+    _history_shown(context, section)
+
+
+@then("it lists {first} to {last} as filed, each citing its own ABS-EE")
+def step_lists_months(context, first, last):
+    end = Period.parse(last)
+    start = Period.parse(first if first[-4:].isdigit() else f"{first} {end.year}")
+    section = _section(context, context.loan)
+    expected = []
+    month = start
+    while month <= end:
+        expected.append(month.label)
+        month = month.shift(1)
+    assert [month.period for month in section.history] == expected, section.history
+    _history_shown(context, section)
+
+
+@then("it lists no other month")
+def step_lists_no_other_month(context):
+    section = _section(context, context.loan)
+    shown = {month.period for month in section.history}
+    months = in_session(
+        lambda db: history(db, context.user, deal=context.deal, loan=section.loan.loan)
+    ).months
+    text = "\n".join(section.lines())
+    for month in months:
+        line = f"- {month_line(month)}"
+        assert (line in text) == (month.period in shown), month.period
+    # Beyond the shown months, only the first is named, in the line of months held.
+    named = set(re.findall(r"[A-Z][a-z]+ \d{4}", text)) - shown - {months[0].period}
+    assert named == set(), named
 
 
 # ---------------------------------------------------------------------------- the gaps
@@ -274,7 +391,14 @@ def step_no_computed_figure(context):
         return "\n".join(texts)
 
     given = in_session(sources) + f"\n{context.brief.as_of.isoformat()}"
-    figures = set(_FIGURE.findall(_text(context)))
+    text = _text(context)
+    # The one count the brief gives, the months held, counts the months asking gives.
+    for section in context.brief.sections:
+        if section.held is not None:
+            _history_shown(context, section)
+            count = section.held.text().split(" ", 1)[0]
+            text = text.replace(f"- {section.held.text()}", section.held.text()[len(count) :])
+    figures = set(_FIGURE.findall(text))
     computed = sorted(figure for figure in figures if figure not in given)
     assert computed == [], computed
     assert any(figure.startswith("$") for figure in figures), figures

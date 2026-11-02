@@ -11,13 +11,17 @@ Each loan in special servicing gets a section: its roster line, then the committ
 in a fixed order (`QUESTIONS`), each answered by the panel's own composer
 (`cmbs.ask.answer.compose`) over the topics it names, so a field awaiting review follows Q97
 exactly as in `ask`: no extracted value, the filer's sentence quoted and labelled, the tape's
-value beside it. A topic the panel holds nothing on for the loan says so, citing the tape fields
-the month left empty. Then every month of the loan's history, and last the topics the panel
-never holds (`NOT_IN_PANEL`). The other loans get one line each: returned with its date, paid
-off since its month, or never transferred.
+value beside it. The 10-D's appraisal reduction is cited to the report table that gives it. A
+topic the panel holds nothing on for the loan says so, citing the tape fields the month left
+empty. Then the loan's history, condensed to one page (committee_brief.feature's revision): how
+many months the panel holds, the first and the last, each cited to its tape, then the last
+`SHOWN_MONTHS` months as filed. Last, the topics the panel never holds (`NOT_IN_PANEL`). The
+other loans get one line each: returned with its date, paid off since its month, or never
+transferred.
 
-Every value is a value asking gives, as it reads there: nothing is summed, counted, compared or
-estimated, and nothing is written.
+Every value is a value asking gives, as it reads there, with one exception the revision asks
+for: the number of months held, which counts the months `history` gives. Nothing is summed,
+compared or estimated, and nothing is written.
 """
 
 import dataclasses
@@ -51,7 +55,8 @@ NOT_IN_PANEL = (
     "market",
 )
 NOT_IN_PANEL_HEAD = "Not in the panel:"
-HISTORY_HEADING = "Months of history the panel holds"
+HISTORY_HEADING = "History the panel holds (up to the latest six months as filed)"
+SHOWN_MONTHS = 6
 
 # The Schedule AL tags a tape reports each topic in, for saying which fields a month left empty.
 TAPE_TAGS: dict[str, tuple[str, ...]] = {}
@@ -75,9 +80,6 @@ class Question:
         return " and ".join(self.topics)
 
 
-# The 10-D's appraisal reduction is a fact `ask` gives, but it is cited to a report table, and
-# the brief cites every value to a tape field or a comment sentence (committee_brief.feature):
-# it stays with `cmbs ask facts`.
 QUESTIONS = (
     Question("Transfer date and reason", ("special servicing transfer",)),
     Question("Payment status", ("payment status",)),
@@ -85,7 +87,10 @@ QUESTIONS = (
     Question("The servicer's stated plan", ("workout strategy", "modification")),
     Question("The borrower's request", ("borrower request",)),
     Question("Advances outstanding", ("advances",)),
-    Question("Loss and liquidation", ("realized loss", "liquidation")),
+    Question(
+        "Appraisal reduction, loss and liquidation",
+        ("appraisal reduction", "realized loss", "liquidation"),
+    ),
 )
 
 
@@ -132,11 +137,39 @@ def answer_item(
 
 
 @dataclass(frozen=True)
+class Held:
+    """How many months of a loan the panel holds, and the first and last, each citing its tape."""
+
+    months: int
+    first: Month
+    last: Month
+
+    def text(self) -> str:
+        """'21 months held, January 2025 to September 2026 (ABS-EE ... to ABS-EE ...)'."""
+        first, last = self.first.citation, self.last.citation
+        if self.months == 1:
+            return f"1 month held, {self.first.period} ({first.form} {first.accession})"
+        return (
+            f"{self.months} months held, {self.first.period} to {self.last.period} "
+            f"({first.form} {first.accession} to {last.form} {last.accession})"
+        )
+
+
+def condensed(months: Sequence[Month]) -> tuple[Held | None, list[Month]]:
+    """The months held, and the last SHOWN_MONTHS of them, from a loan's months oldest first."""
+    if not months:
+        return None, []
+    return Held(len(months), months[0], months[-1]), list(months[-SHOWN_MONTHS:])
+
+
+@dataclass(frozen=True)
 class Section:
     """A loan in special servicing: its roster row, the committee's questions, its months."""
 
     loan: RosterLoan
     items: list[Item]
+    held: Held | None
+    # The last SHOWN_MONTHS months as filed, oldest first.
     history: list[Month]
 
     def lines(self) -> list[str]:
@@ -144,6 +177,8 @@ class Section:
         for item in self.items:
             lines += item.lines()
         lines.append(f"{HISTORY_HEADING}:")
+        if self.held is not None:
+            lines.append(f"- {self.held.text()}")
         lines += [f"- {month_line(month)}" for month in self.history]
         lines.append(f"{NOT_IN_PANEL_HEAD} {', '.join(NOT_IN_PANEL)}.")
         return lines
@@ -211,8 +246,8 @@ def section_of(
         answer_item(question, deal=deal, row=row, period=period, facts=facts)
         for question in QUESTIONS
     ]
-    months = history(db, reader, deal=deal, loan=row.loan, as_of=day).months
-    return Section(row, items, months)
+    held, shown = condensed(history(db, reader, deal=deal, loan=row.loan, as_of=day).months)
+    return Section(row, items, held, shown)
 
 
 def brief(db: Session, reader: str, *, deal: str, as_of: dt.date | None = None) -> Brief:
