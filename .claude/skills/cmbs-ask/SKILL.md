@@ -76,8 +76,9 @@ Use these instead of guessing from one loan's facts:
   property and balance, and a `citation` to that month's ABS-EE with the `tape_fields` read.
   No loan is left out (grill log Q99): a loan the tape reports but the load quarantined, or one
   an earlier tape reported that this one omits, comes with a `note` ("quarantined: <reason>",
-  "not on the <month> tape; last reported <month>, balance $X") and its last known state; relay
-  the note as it reads, and never treat such a loan as current. `--special-servicing` keeps
+  "not on the <month> tape; last reported <month>, balance $X") and its last known state; a loan
+  every tape that reported it quarantined reads "never read: ..." with no state. Relay the note
+  as it reads, and never treat such a loan as current. `--special-servicing` keeps
   the loans in special servicing, on the tape or last known. The state comes from the tape's
   dates, balance and realized loss only (a zero balance with a realized loss reads
   `liquidated`); the workout code is shown beside it and never decides it, so report a code

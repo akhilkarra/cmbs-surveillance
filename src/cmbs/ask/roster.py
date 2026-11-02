@@ -21,7 +21,10 @@ loan the tape reports but the load quarantined ("quarantined: <reason>", citing 
 each loan the panel holds from an earlier tape that the current one omits ("not on the
 <month> tape; last reported <month>, balance $X", citing that last tape). Either kind also
 gives the loan's last known state, when the panel holds a month of it, and the special-servicing
-filter keeps it when that state is in special servicing.
+filter keeps it when that state is in special servicing. A loan the current tape omits that every
+earlier tape reporting it quarantined, so that the panel never read it, is listed too ("never
+read: every tape that reported it quarantined it, last the <month> tape (<reasons>)", citing
+that last tape), with no state.
 
 The workout strategy code is shown beside the state and never decides it, so a code that
 disagrees with the dates ("resolved" while still transferred) stays visible. The roster opens
@@ -35,6 +38,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import StrEnum
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cmbs import clock
@@ -49,7 +53,7 @@ from cmbs.edgar.archives import filing_base_url
 from cmbs.panel import service as panel
 from cmbs.runs.service import freshness
 from cmbs.tape.service import quarantined_loans
-from cmbs.tape.tables import LoanPeriod, LoanTape
+from cmbs.tape.tables import LoanPeriod, LoanTape, QuarantinedLoan
 
 
 class State(StrEnum):
@@ -326,6 +330,56 @@ def held_back(db: Session, accession: str, on_tape: set[str]) -> dict[str, list[
     return {loan: reasons for loan, reasons in found.items() if reasons}
 
 
+NEVER_READ = "never read"
+
+
+def never_read(
+    db: Session, deal_id: int, tapes: Sequence[LoanTape], skip: set[str]
+) -> dict[str, tuple[LoanTape, list[str]]]:
+    """The loans the panel only ever saw quarantined, besides those in `skip`: for each, the
+    latest of `tapes` that reported it, and that tape's distinct reasons."""
+    by_accession = {tape.accession: tape for tape in tapes}
+    found: dict[str, tuple[LoanTape, list[str]]] = {}
+    for item in db.scalars(
+        select(QuarantinedLoan)
+        .where(
+            QuarantinedLoan.deal_id == deal_id,
+            QuarantinedLoan.accession.in_(list(by_accession)),
+        )
+        .order_by(QuarantinedLoan.accession, QuarantinedLoan.asset_position)
+    ):
+        if item.loan in skip:
+            continue
+        tape = by_accession[item.accession]
+        seen = found.get(item.loan)
+        if seen is None or tape.period > seen[0].period:
+            found[item.loan] = (tape, [item.reason])
+        elif tape.period == seen[0].period and item.reason not in seen[1]:
+            seen[1].append(item.reason)
+    return found
+
+
+def unread(
+    loan: str, tape: LoanTape, reasons: Sequence[str], name: str | None, cik: int
+) -> RosterLoan:
+    """A loan the panel never read: no state, citing the last tape that quarantined it."""
+    note = (
+        f"{NEVER_READ}: every tape that reported it quarantined it, last the "
+        f"{Period.of(tape.period).label} tape ({'; '.join(reasons)})"
+    )
+    return RosterLoan(
+        loan=loan,
+        property_name=name,
+        ending_balance=None,
+        state=None,
+        since=None,
+        workout_strategy=None,
+        citation=_citation(tape.accession, tape.filing_date, cik),
+        tape_fields=(),
+        note=note,
+    )
+
+
 def loans(
     db: Session,
     reader: str,
@@ -377,6 +431,11 @@ def loans(
         last = last_known(loan)
         if loan not in on_tape and loan not in kept and last is not None:
             rows.append(off_tape(last[0], last[1], tape.period))
+    tapes = panel.current_tapes(db, day, deal_id=deal_row.id)
+    unseen = never_read(db, deal_row.id, tapes, set(history) | on_tape | set(kept))
+    for loan, (last_tape, reasons) in unseen.items():
+        named = panel.property_names(db, last_tape.accession, {loan})
+        rows.append(unread(loan, last_tape, reasons, named.get(loan), cik))
     if special_servicing:
         rows = [row for row in rows if row.state is State.SPECIAL_SERVICING]
     return Roster(

@@ -549,6 +549,38 @@ def test_the_roster_lists_liquidated_quarantined_and_off_tape_loans(f2):
 
 
 @needs_db
+def test_a_loan_the_panel_never_read_is_listed_without_a_state(seeded):
+    """Loan 4 quarantined in July and August, then off the September tape: the panel never read
+    it, and the roster says so, citing the last tape that quarantined it (Q99)."""
+    published = Publication(F2)
+    for period in (JUL, AUG, SEP):
+        published.month(period)
+    for period in (JUL, AUG):
+        published.month(period).tape.append(
+            set_tags("4", {"reportPeriodEndActualBalanceAmount": "xyz"})
+        )
+    published.month(SEP).tape.append(only_loans({"1", "2", "3", "5", "6", "7"}))
+    published.load(LOADED)
+    clock.set_now(ASKED_F2)
+    roster = in_session(lambda db: loans(db, "pat", deal=F2))
+    rows = {row.loan: row for row in roster.loans}
+    unread = rows["4"]
+    assert unread.note == (
+        "never read: every tape that reported it quarantined it, last the August 2026 tape "
+        "(ending balance is not a number: 'xyz')"
+    )
+    assert (unread.state, unread.ending_balance, unread.tape_fields) == (None, None, ())
+    august = in_session(lambda db: history(db, "pat", deal=F2, loan="2")).months[1]
+    assert unread.citation.accession == august.citation.accession
+    assert unread.property_name == "Oak Lane Cooperative"
+    assert roster.loans[-1].loan == "4"
+    # On a day the August tape was current, it is that tape's quarantined loan, not unread.
+    early = in_session(lambda db: loans(db, "pat", deal=F2, as_of=dt.date(2026, 9, 15)))
+    held = {row.loan: row for row in early.loans}["4"]
+    assert held.note is not None and held.note.startswith("quarantined: ")
+
+
+@needs_db
 def test_a_past_day_s_roster_does_not_see_a_later_month(f2):
     early = in_session(lambda db: loans(db, "pat", deal=F2, as_of=dt.date(2026, 9, 15)))
     rows = {row.loan: row for row in early.loans}
