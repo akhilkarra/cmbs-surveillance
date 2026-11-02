@@ -43,6 +43,10 @@ either the comment's `sentence` number and its text (`quote`), the tape field (`
 the 10-D's report table (`report_table`, with the date it gives, `dated`), and the filing's
 EDGAR `url`.
 
+The liquidation/prepayment date and code cover a payoff as well as a liquidation, and the code
+list is not sourced: give the code as the tape's ("code 3"), never what it might mean. Whether a
+loan was liquidated with a loss is the roster's `liquidated` state, read from its realized loss.
+
 `uv run cmbs ask question "<question>" --deal "<deal name>" [--loan <loan>] --json --user <user>`
 gives the deterministic answer the panel's own rules compose. Run it when the question is a
 plain lookup; your answer must never contradict it.
@@ -59,10 +63,14 @@ Use these instead of guessing from one loan's facts:
   ```
 
   Every loan of the deal's latest month, each with its `state` (`in special servicing`,
-  `returned`, `paid off`, `never transferred`), `since` (a date, or the month a paid-off loan's
-  balance first read zero), the tape's workout strategy, property and balance, and a
-  `citation` to that month's ABS-EE with the `tape_fields` read. `--special-servicing` keeps only
-  the loans in special servicing. The state comes from the tape's dates and balance only; the
+  `returned`, `liquidated` with its `realized_loss`, `paid off`, `never transferred`), `since`
+  (a date, or the month a loan's balance first read zero), the tape's workout strategy,
+  property and balance, and a `citation` to that month's ABS-EE with the `tape_fields` read.
+  No loan is left out (grill log Q99): a loan the tape reports but the load quarantined, or one
+  an earlier tape reported that this one omits, comes with a `note` ("quarantined: <reason>",
+  "not on the <month> tape; last reported <month>, balance $X") and its last known state; relay
+  the note as it reads, and never treat such a loan as current. `--special-servicing` keeps
+  the loans in special servicing, on the tape or last known. The state comes from the tape's dates and balance only; the
   workout code is shown beside it and never decides it, so report a code that disagrees with the
   dates ("in special servicing since 2024-02-01; tape workout strategy: resolved (code 8)") as
   it reads.
@@ -72,9 +80,12 @@ Use these instead of guessing from one loan's facts:
   uv run cmbs ask history "<deal name>" <loan> [--as-of YYYY-MM-DD] --json --user <user>
   ```
 
-  One entry per month as filed, oldest first: balance, payment status, DSCR, occupancy and
-  financials date, each month citing its own ABS-EE. A value the month did not report reads
-  "not reported"; say so, and never treat it as zero or fill it from another month.
+  One entry per month as filed, oldest first: property name, balance, payment status, DSCR,
+  occupancy and financials date, each month citing its own ABS-EE. A value the month did not
+  report reads "not reported"; say so, and never treat it as zero or fill it from another
+  month. A month whose tape quarantined or omits the loan reads "quarantined: <reason>" or
+  "not on the tape". A month whose property name differs from its neighbours' may be another
+  deal's tape filed by mistake: say so, and do not read a trend through it.
 
 The roster opens with the panel's `freshness` ("Panel current through September 2026 (run 42,
 2026-10-01)"); open an answer from the roster with that line, as it reads. Rules 1 to 7 below
@@ -127,8 +138,8 @@ own words or the tape's own code, so for a field with status `needs review`:
 
 - **Never state the extracted value**, nor the model's answer, in any words.
 - **Quote the comment's sentence on it only when the fact's `citation` has a `quote`.** That
-  happens when the model's `support` for a sentence is `unsettled` or `high` in the settings in
-  force. Quote it verbatim, labelled exactly "unreviewed: not a panel fact", with its 10-D
+  happens when the model's `support` for a sentence is `unsettled` or `high` in the abstention
+  band the field was sent to review under (its extraction's settings version). Quote it verbatim, labelled exactly "unreviewed: not a panel fact", with its 10-D
   accession and sentence number, as what the servicer wrote, never as the answer.
 - **When `support` is `low`, quote nothing:** no sentence of the comment states the field
   (grill log Q87). Say "the comment has no sentence on it (unreviewed)", and never pick a
