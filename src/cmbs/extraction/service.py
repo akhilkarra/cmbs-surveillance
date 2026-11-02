@@ -558,6 +558,10 @@ class FieldView:
     overridden_by: str | None = None
     overridden_at: dt.datetime | None = None
     override_reason: str | None = None
+    # The sentence the model pointed to and its text as the filer wrote it, whatever the panel
+    # shows: what a field awaiting review may quote, labelled as unreviewed (grill log Q97).
+    model_sentence: int | None = None
+    model_quote: str | None = None
 
     @property
     def typed(self) -> str | dt.date | Decimal | None:
@@ -635,6 +639,12 @@ def field_view(
         overridden_by=override.overridden_by if override is not None else None,
         overridden_at=override.overridden_at if override is not None else None,
         override_reason=override.reason if override is not None else None,
+        model_sentence=row.model_sentence,
+        model_quote=(
+            sentences[row.model_sentence - 1]
+            if row.model_sentence is not None and 1 <= row.model_sentence <= len(sentences)
+            else None
+        ),
     )
 
 

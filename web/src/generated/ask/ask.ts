@@ -4,7 +4,16 @@
  * CMBS surveillance
  * OpenAPI spec version: 0.1.0
  */
-import type { GetAsk200, GetAskFacts200, GetAskFactsParams, GetAskParams } from "../api.schemas";
+import type {
+  GetAsk200,
+  GetAskFacts200,
+  GetAskFactsParams,
+  GetAskHistory200,
+  GetAskHistoryParams,
+  GetAskLoans200,
+  GetAskLoansParams,
+  GetAskParams,
+} from "../api.schemas";
 
 import { http } from "../../http";
 
@@ -59,6 +68,62 @@ export const getAskFacts = async (
   options?: Parameters<typeof http>[1],
 ): Promise<GetAskFacts200> => {
   return http<GetAskFacts200>(getGetAskFactsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAskHistoryUrl = (params: GetAskHistoryParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/ask/history?${stringifiedParams}` : `/ask/history`;
+};
+
+/**
+ * A loan's months as filed, each citing its own tape.
+ * @summary History
+ */
+export const getAskHistory = async (
+  params: GetAskHistoryParams,
+  options?: Parameters<typeof http>[1],
+): Promise<GetAskHistory200> => {
+  return http<GetAskHistory200>(getGetAskHistoryUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetAskLoansUrl = (params: GetAskLoansParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : String(value));
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/ask/loans?${stringifiedParams}` : `/ask/loans`;
+};
+
+/**
+ * A deal's loans with their special-servicing state, opening with the panel's freshness.
+ * @summary Loans
+ */
+export const getAskLoans = async (
+  params: GetAskLoansParams,
+  options?: Parameters<typeof http>[1],
+): Promise<GetAskLoans200> => {
+  return http<GetAskLoans200>(getGetAskLoansUrl(params), {
     ...options,
     method: "GET",
   });

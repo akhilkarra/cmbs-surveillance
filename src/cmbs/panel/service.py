@@ -26,7 +26,7 @@ from cmbs.deals.service import by_name
 from cmbs.deals.tables import Deal
 from cmbs.domain import Period
 from cmbs.errors import Refused
-from cmbs.tape.tables import LoanPeriod, LoanTape, QuarantinedLoan
+from cmbs.tape.tables import LoanPeriod, LoanTape, QuarantinedLoan, TapeAsset
 
 _DIGITS = re.compile(r"(\d+)")
 
@@ -37,6 +37,14 @@ class UnknownDeal(Refused):
 
 class NothingPublished(Refused):
     """No tape of the deal had been filed by the date asked about."""
+
+
+def snapshot(db: Session) -> None:
+    """Make the session's reads that follow one snapshot (REPEATABLE READ), so a roster's
+    freshness, tape and history agree even while a load commits. Only a session that has not
+    begun its transaction can be set so; one already reading keeps its own isolation."""
+    if not db.in_transaction():
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
 
 
 def loan_order(loan: str) -> tuple[tuple[int, str], ...]:
@@ -227,3 +235,19 @@ def staleness(
     """Staleness of the deal's tape as the panel showed it on `day` (latest period by default)."""
     tape = tape_as_of(db, deal, day, period)
     return tape, measure([tape_loan(row) for row in tape.rows])
+
+
+def property_names(db: Session, accession: str, loans: set[str]) -> dict[str, str]:
+    """The property name each of the loans' stored assets in a tape reports (its first
+    property's), by loan: what a quarantined loan is called, though it has no typed row."""
+    names: dict[str, str] = {}
+    for asset in db.scalars(
+        select(TapeAsset)
+        .where(TapeAsset.accession == accession, TapeAsset.asset_number.in_(loans))
+        .order_by(TapeAsset.position)
+    ):
+        first = asset.properties[0] if asset.properties else {}
+        name = str(first.get("propertyName") or "").strip()
+        if name:
+            names.setdefault(asset.asset_number, name)
+    return names

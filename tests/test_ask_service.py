@@ -6,6 +6,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from typer.testing import CliRunner
 
 from cmbs import clock
@@ -18,14 +19,20 @@ from cmbs.ask.service import (
     UnknownDeal,
     UnknownLoan,
     ask,
+    comment_facts,
     loan_facts,
+    settings_version,
+    support_band,
     tape_value,
 )
 from cmbs.cli import app as cli
 from cmbs.db.models import SCHEMAS
 from cmbs.domain import Period
+from cmbs.extraction.service import CommentView, field_view
+from cmbs.extraction.tables import ExtractedField
+from cmbs.settings.service import store_version
 from cmbs.testing.bdd import changed_tables, data_snapshot, in_session
-from cmbs.testing.world import FIXTURE_DEAL
+from cmbs.testing.world import BASELINE_SETTINGS, FIXTURE_DEAL
 from tests.conftest import needs_db
 from tests.fixtures.refresh.offline import offline_fixture  # noqa: F401
 from tests.test_routine_world import backfill, wait_for_review
@@ -92,7 +99,7 @@ def test_facts_cite_the_comment_by_sentence_and_the_tape_by_field(panel):
         "The loan transferred to Special Servicing effective 3/6/2025 due to imminent "
         "monetary default."
     )
-    tape = [(f.name, f.value, f.citation.tape_field) for f in found.facts[8:]]  # pyright: ignore[reportOptionalMemberAccess]
+    tape = [(f.name, f.value, f.citation.tape_field) for f in found.facts[8:-1]]  # pyright: ignore[reportOptionalMemberAccess]
     assert tape == [
         ("tape.ending_balance", "$30,000,000.00", "reportPeriodEndActualBalanceAmount"),
         ("tape.payment_status", "90+ days (code 3)", "paymentStatusLoanCode"),
@@ -107,7 +114,10 @@ def test_facts_cite_the_comment_by_sentence_and_the_tape_by_field(panel):
         ("tape.financials_end", "2024-12-31", "mostRecentFinancialsEndDate"),
     ]
     assert {f.period for f in found.facts} == {"September 2026"}
-    assert {f.citation.accession for f in found.facts[8:]} == {TAPE}  # pyright: ignore[reportOptionalMemberAccess]
+    assert {f.citation.accession for f in found.facts[8:-1]} == {TAPE}  # pyright: ignore[reportOptionalMemberAccess]
+    # The 10-D's appraisal reduction comes last, cited by its table and date.
+    reduction = found.facts[-1]
+    assert (reduction.name, reduction.value) == ("report.appraisal_reduction", "$6,500,000.00")
     assert found.text().splitlines()[0] == f"loan 2 of {FIXTURE_DEAL}, as known on 2026-10-06:"
 
 
@@ -118,7 +128,11 @@ def test_facts_are_point_in_time(panel):
     )
     # The comments were extracted on 2026-10-01; the September tape was public on 2026-09-29.
     assert [f.name for f in early.facts][:1] == ["tape.ending_balance"]
-    assert {f.citation.accession for f in early.facts} == {TAPE}  # pyright: ignore[reportOptionalMemberAccess]
+    # No comment fact yet: the tape's values and the 10-D's appraisal reduction only.
+    assert {f.citation.accession for f in early.facts} == {TAPE, REPORT}  # pyright: ignore[reportOptionalMemberAccess]
+    assert [f.name for f in early.facts if f.citation.accession == REPORT] == [  # pyright: ignore[reportOptionalMemberAccess]
+        "report.appraisal_reduction"
+    ]
     august = in_session(
         lambda db: loan_facts(db, "pat", deal=FIXTURE_DEAL, loan="2", as_of=dt.date(2026, 9, 1))
     )
@@ -137,15 +151,143 @@ def test_a_field_awaiting_review_is_a_fact_without_a_value(panel):
     in_session(lambda db: wait_for_review(db, field="workout_strategy"))
     found = in_session(lambda db: loan_facts(db, "alex", deal=FIXTURE_DEAL, loan="2"))
     waiting = [f for f in found.facts if f.name == "workout_strategy"]
-    assert [(f.value, f.status, f.citation) for f in waiting] == [(None, "needs review", None)]
-    answer = in_session(
-        lambda db: ask(db, "rae", "What is the workout strategy for loan 2?", deal=FIXTURE_DEAL)
-    )
-    assert (answer.kind, answer.stated, answer.awaiting_review) == (
+    # The recording's support is 0.12, low in version 7's band: no sentence states the field
+    # (Q87), so none is cited, though the model pointed to sentence 1.
+    assert [(f.value, f.status, f.support, f.citation) for f in waiting] == [
+        (None, "needs review", "low", None)
+    ]
+    question = "What is the workout strategy for loan 2?"
+    answer = in_session(lambda db: ask(db, "rae", question, deal=FIXTURE_DEAL))
+    assert (answer.kind, [f.name for f in answer.stated], answer.awaiting_review) == (
         Kind.ANSWERED,
-        [],
+        ["tape.workout_strategy"],
         ["workout strategy"],
     )
+    assert answer.unreviewed == waiting
+    assert "the comment has no sentence on it (unreviewed)" in answer.text()
+    assert "unreviewed: not a panel fact" not in answer.text()
+    assert "modification" not in answer.text()
+
+    # With support unsettled, the sentence the model pointed to is quoted, labelled (Q97).
+    def unsettled(db):
+        row = db.get_one(ExtractedField, waiting_field_id(db))
+        row.support_probability, row.model_sentence = Decimal("0.50"), 4
+
+    in_session(unsettled)
+    quoted = in_session(lambda db: ask(db, "rae", question, deal=FIXTURE_DEAL))
+    [fact] = quoted.unreviewed
+    assert fact.support == "unsettled"
+    assert fact.citation is not None and (fact.citation.accession, fact.citation.sentence) == (
+        REPORT,
+        4,
+    )
+    assert (
+        'unreviewed: not a panel fact: "The special servicer is evaluating the request." '
+        f"(10-D {REPORT}, sentence 4)"
+    ) in quoted.text()
+
+    # A band approved later does not change it: support is read in the band the field was sent
+    # to review under, its extraction's settings version.
+    stricter = BASELINE_SETTINGS.model_copy(
+        update={"abstention_low": Decimal("0.60"), "abstention_high": Decimal("0.80")}
+    )
+    in_session(
+        lambda db: store_version(
+            db,
+            version=8,
+            values=stricter,
+            proposed_by="quinn",
+            approved_by="rae",
+            approved_at=dt.datetime(2026, 10, 2, tzinfo=dt.UTC),
+        )
+    )
+    later = in_session(lambda db: ask(db, "rae", question, deal=FIXTURE_DEAL))
+    assert later.unreviewed[0].support == "unsettled"
+    assert "unreviewed: not a panel fact" in later.text()
+
+
+def waiting_field_id(db) -> int:
+    return db.scalars(
+        select(ExtractedField.id)
+        .where(ExtractedField.field == "workout_strategy")
+        .order_by(ExtractedField.id.desc())
+        .limit(1)
+    ).one()
+
+
+def test_support_is_read_against_the_band_given():
+    band = BASELINE_SETTINGS
+    assert support_band(Decimal("0.12"), band) == "low"
+    assert support_band(Decimal("0.30"), band) == "unsettled"
+    assert support_band(Decimal("0.71"), band) == "high"
+    assert support_band(None, band) is None
+    assert support_band(Decimal("0.50"), None) is None
+
+
+def waiting_view(support: Decimal | None, sentence: int | None = 4) -> CommentView:
+    """A comment whose workout strategy waits for review, the model pointing to `sentence`."""
+    sentences = ["One.", "Two.", "Three.", "The servicer is evaluating the request."]
+    row = ExtractedField(
+        field="workout_strategy",
+        status="needs review",
+        value=None,
+        sentence=None,
+        model_value="modification",
+        answer_probability=Decimal("0.55"),
+        support_probability=support,
+        model_sentence=sentence,
+        review_reason="unsettled support",
+        decided_by=None,
+        decided_at=None,
+    )
+    return CommentView(
+        deal=FIXTURE_DEAL,
+        loan="2",
+        period=SEP,
+        accession=REPORT,
+        filing_date=dt.date(2026, 9, 29),
+        comment=" ".join(sentences),
+        sentences=sentences,
+        model="jev-1.14.0",
+        prompt_version=3,
+        settings_version=7,
+        model_call="call",
+        fields={"workout_strategy": field_view(row, sentences, None)},
+    )
+
+
+def test_the_sentence_is_quoted_only_on_support_not_low_in_the_band_given():
+    unsettled = waiting_view(Decimal("0.50"))
+    [quoted] = comment_facts(unsettled, 9900001, BASELINE_SETTINGS)
+    assert (quoted.support, quoted.citation.sentence) == ("unsettled", 4)  # pyright: ignore[reportOptionalMemberAccess]
+    assert quoted.citation.quote == "The servicer is evaluating the request."  # pyright: ignore[reportOptionalMemberAccess]
+    # The same support under a band that starts higher is low: no sentence states the field.
+    stricter = BASELINE_SETTINGS.model_copy(
+        update={"abstention_low": Decimal("0.60"), "abstention_high": Decimal("0.80")}
+    )
+    [low] = comment_facts(unsettled, 9900001, stricter)
+    assert (low.support, low.citation) == ("low", None)
+    assert low.unreviewed_quote() == "the comment has no sentence on it (unreviewed)"
+    # With no band to read the support against, or no support, nothing is quoted.
+    for unknown in (
+        comment_facts(unsettled, 1, None),
+        comment_facts(waiting_view(None), 1, BASELINE_SETTINGS),
+    ):
+        [fact] = unknown
+        assert (fact.support, fact.citation, fact.unreviewed_quote()) == (None, None, None)
+
+
+def test_a_model_sentence_outside_the_comment_quotes_nothing():
+    for outside in (0, 5):
+        [fact] = comment_facts(waiting_view(Decimal("0.50"), outside), 1, BASELINE_SETTINGS)
+        assert (fact.support, fact.citation, fact.unreviewed_quote()) == ("unsettled", None, None)
+    assert waiting_view(Decimal("0.5"), 1).fields["workout_strategy"].model_quote == "One."
+
+
+@needs_db
+def test_settings_versions_are_read_by_number(seeded):
+    assert in_session(lambda db: settings_version(db, 7)) == BASELINE_SETTINGS
+    assert in_session(lambda db: settings_version(db, 99)) is None
 
 
 @needs_db

@@ -6,7 +6,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query
 
 from cmbs.api.deps import DB, User
-from cmbs.ask.commands import answer_data, as_data
+from cmbs.ask.commands import answer_data, as_data, history_data, roster_data
+from cmbs.ask.history import history as loan_history
+from cmbs.ask.roster import loans as deal_loans
 from cmbs.ask.service import ask, loan_facts
 
 router = APIRouter(prefix="/ask", tags=["ask"])
@@ -22,6 +24,34 @@ def facts(
 ) -> dict[str, Any]:
     """Every fact the panel holds for a loan, each with its filing and sentence."""
     return as_data(loan_facts(db, user, deal=deal, loan=loan, as_of=as_of))
+
+
+@router.get("/loans")
+def loans(
+    user: User,
+    db: DB,
+    deal: str,
+    as_of: Annotated[dt.date | None, Query(description="Known on this date.")] = None,
+    special_servicing: Annotated[
+        bool, Query(description="Only the loans in special servicing.")
+    ] = False,
+) -> dict[str, Any]:
+    """A deal's loans with their special-servicing state, opening with the panel's freshness."""
+    return roster_data(
+        deal_loans(db, user, deal=deal, as_of=as_of, special_servicing=special_servicing)
+    )
+
+
+@router.get("/history")
+def history(
+    user: User,
+    db: DB,
+    deal: str,
+    loan: str,
+    as_of: Annotated[dt.date | None, Query(description="Known on this date.")] = None,
+) -> dict[str, Any]:
+    """A loan's months as filed, each citing its own tape."""
+    return history_data(loan_history(db, user, deal=deal, loan=loan, as_of=as_of))
 
 
 @router.get("")
