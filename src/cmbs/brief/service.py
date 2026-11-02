@@ -16,8 +16,9 @@ topic the panel holds nothing on for the loan says so, citing the tape fields th
 empty. Then the loan's history, condensed to one page (committee_brief.feature's revision): how
 many months the panel holds, the first and the last, each cited to its tape, then the last
 `SHOWN_MONTHS` months as filed. Last, the topics the panel never holds (`NOT_IN_PANEL`). The
-other loans get one line each: returned with its date, paid off since its month, or never
-transferred.
+other loans get one line each: returned with its date, liquidated with its realized loss or
+paid off since its month, never transferred, or (Q99) off the current tape or quarantined, with
+why and the last state the panel knows.
 
 Every value is a value asking gives, as it reads there, with one exception the revision asks
 for: the number of months held, which counts the months `history` gives. Nothing is summed,
@@ -38,6 +39,7 @@ from cmbs.ask.answer import NOT_IN_DATA, Answer, Citation, Fact, Kind, compose
 from cmbs.ask.history import Month, history
 from cmbs.ask.roster import RosterLoan, State, loans
 from cmbs.ask.service import ASSET_TAGS, TAPE_FIELDS, loan_facts
+from cmbs.panel import service as panel
 
 # The topics a committee asks about that the panel never holds, in the order the brief lists
 # them; each is a concept `ask` answers "not in the data" for (`cmbs.ask.answer.OUTSIDE_WORDS`).
@@ -65,6 +67,7 @@ for _spec in (*TAPE_FIELDS, *ASSET_TAGS):
 RETURN_TAG = "mostRecentMasterServicerReturnDate"
 TRANSFER_TAG = "mostRecentSpecialServicerTransferDate"
 BALANCE_TAG = "reportPeriodEndActualBalanceAmount"
+LOSS_TAG = "realizedLossToTrustAmount"
 
 
 @dataclass(frozen=True)
@@ -186,25 +189,47 @@ class Section:
 
 def month_line(month: Month) -> str:
     """'September 2026: ending balance $30,000,000.00; ... (ABS-EE <accession>: <its fields>)'."""
-    cited = month.citation
-    tags = ", ".join(value.tape_field for value in month.values)
-    return f"{month.period}: {month.reading()} ({cited.form} {cited.accession}: {tags})"
+    return f"{month.period}: {month.reading()} ({_cites((month.citation, _tags(month)))})"
+
+
+def _tags(month: Month) -> tuple[str, ...]:
+    return tuple(value.tape_field for value in month.values)
+
+
+def _cites(*cited: tuple[Citation, Sequence[str]]) -> str:
+    """'ABS-EE <accession>: <field>, <field>; ABS-EE <accession>: <field>'; a tape cited for
+    no field (a month that omits the loan) is named alone."""
+    return "; ".join(
+        f"{c.form} {c.accession}" + (f": {', '.join(tags)}" if tags else "") for c, tags in cited
+    )
 
 
 def other_line(row: RosterLoan) -> str:
-    """'loan 4, Ridge Industrial: returned to the master servicer on 2023-09-15 (ABS-EE ...)'."""
+    """'loan 4, Ridge Industrial: returned to the master servicer on 2023-09-15 (ABS-EE ...)'.
+
+    A loan the current tape omits or whose load quarantined it reads as the roster reads it:
+    why, then its last known state (Q99), citing the tape the roster cites."""
     name = row.property_name or "property name not reported"
-    cited = row.citation
+    if row.note is not None:
+        return (
+            f"loan {row.loan}, {name}: {row.reading()} ({_cites((row.citation, row.tape_fields))})"
+        )
+    cites = [(row.citation, (TRANSFER_TAG, RETURN_TAG))]
     if row.state is State.RETURNED:
-        what, tags = f"returned to the master servicer on {row.since}", (RETURN_TAG,)
-    elif row.state is State.PAID_OFF:
-        what, tags = f"paid off, zero balance since {row.since}", (BALANCE_TAG,)
-        cited = row.paid_off_citation or cited
+        what = f"returned to the master servicer on {row.since}"
+        cites = [(row.citation, (RETURN_TAG,))]
+    elif row.state in (State.PAID_OFF, State.LIQUIDATED):
+        what = f"paid off, zero balance since {row.since}"
+        if row.state is State.LIQUIDATED:
+            what = f"liquidated, realized loss {row.realized_loss}, zero balance since {row.since}"
+        cites = [(row.paid_off_citation or row.citation, (BALANCE_TAG,))]
+        if row.loss_citation is not None:
+            cites.append((row.loss_citation, (LOSS_TAG,)))
     else:
-        what, tags = "never transferred to the special servicer", (TRANSFER_TAG, RETURN_TAG)
+        what = "never transferred to the special servicer"
     if row.workout_strategy is not None:
         what += f"; tape workout strategy: {row.workout_strategy}"
-    return f"loan {row.loan}, {name}: {what} ({cited.form} {cited.accession}: {', '.join(tags)})"
+    return f"loan {row.loan}, {name}: {what} ({_cites(*cites)})"
 
 
 @dataclass(frozen=True)
@@ -250,18 +275,27 @@ def section_of(
     return Section(row, items, held, shown)
 
 
+def split_book(rows: Sequence[RosterLoan]) -> tuple[list[RosterLoan], list[RosterLoan]]:
+    """The loans to brief (in special servicing on the current tape) and the others, in the
+    roster's order. A loan the current tape omits or quarantined is among the others, with its
+    last known state, whatever that is: the panel holds no current month of it to brief."""
+    special = [row for row in rows if row.state is State.SPECIAL_SERVICING and row.note is None]
+    return special, [row for row in rows if row not in special]
+
+
 def brief(db: Session, reader: str, *, deal: str, as_of: dt.date | None = None) -> Brief:
     """The committee brief on the deal's special-servicing book as known on `as_of` (today by
-    default)."""
+    default). All of it is read in one snapshot, so a load committing meanwhile cannot make its
+    roster, facts and histories disagree."""
+    panel.snapshot(db)
     authorize(db, reader, Action.ASK)
     day = as_of or clock.today()
     roster = loans(db, reader, deal=deal, as_of=day)
     if roster.period is None:
         return Brief(roster.deal, day, roster.freshness, None)
-    special = [row for row in roster.loans if row.state is State.SPECIAL_SERVICING]
+    special, others = split_book(roster.loans)
     sections = [
         section_of(db, reader, deal=roster.deal, row=row, period=roster.period, day=day)
         for row in special
     ]
-    others = [row for row in roster.loans if row.state is not State.SPECIAL_SERVICING]
     return Brief(roster.deal, day, roster.freshness, roster.period, sections, others)

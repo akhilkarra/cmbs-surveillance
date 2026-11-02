@@ -38,6 +38,7 @@ from cmbs.brief.service import (
     month_line,
     not_reported,
     other_line,
+    split_book,
 )
 from cmbs.cli import app as cli
 from cmbs.db.models import SCHEMAS
@@ -60,7 +61,7 @@ def cite(accession: str = TAPE, **more) -> Citation:
     return Citation("ABS-EE", accession, FILED, "https://t/", **more)
 
 
-def row(loan: str, state: State, since: str | None, **more) -> RosterLoan:
+def row(loan: str, state: State | None, since: str | None, **more) -> RosterLoan:
     values = {
         "property_name": "Harbor",
         "ending_balance": "$1.00",
@@ -208,6 +209,39 @@ def test_the_history_is_condensed_to_the_months_held_and_the_last_six():
     assert held.text() == (
         "21 months held, January 2025 to September 2026 (ABS-EE A-0 to ABS-EE A-20)"
     )
+
+
+def test_loans_off_the_tape_quarantined_or_liquidated_read_as_the_roster_has_them():
+    lost = row(
+        "8", State.LIQUIDATED, "2026-01", realized_loss="$2.00",
+        paid_off_citation=cite(AUGUST_TAPE), loss_citation=cite("L"),
+    )  # fmt: skip
+    assert other_line(lost) == (
+        "loan 8, Harbor: liquidated, realized loss $2.00, zero balance since 2026-01 "
+        f"(ABS-EE {AUGUST_TAPE}: reportPeriodEndActualBalanceAmount; ABS-EE L: "
+        "realizedLossToTrustAmount)"
+    )
+    held = row(
+        "9", State.SPECIAL_SERVICING, "2025-03-06", ending_balance="not on the tape",
+        tape_fields=(), note="quarantined: balance unreadable",
+    )  # fmt: skip
+    assert other_line(held) == (
+        "loan 9, Harbor: quarantined: balance unreadable; last known: in special servicing "
+        f"since 2025-03-06 (ABS-EE {TAPE})"
+    )
+    gone = row("10", None, None, note="not on the September 2026 tape; last reported July 2026")
+    assert other_line(gone).startswith(
+        "loan 10, Harbor: not on the September 2026 tape; last reported July 2026 (ABS-EE "
+    )
+    omitted = Month("August 2026", "2026-08", [], cite(AUGUST_TAPE), "not on the tape")
+    assert month_line(omitted) == f"August 2026: not on the tape (ABS-EE {AUGUST_TAPE})"
+
+
+def test_only_loans_in_special_servicing_on_the_current_tape_get_a_section():
+    special = row("2", State.SPECIAL_SERVICING, "2025-03-06")
+    noted = row("9", State.SPECIAL_SERVICING, "2025-03-06", note="not on the September tape")
+    back = row("4", State.RETURNED, "2023-09-15")
+    assert split_book([special, noted, back]) == ([special], [noted, back])
 
 
 def test_a_brief_opens_with_freshness_and_ends_each_section_with_the_gaps():
