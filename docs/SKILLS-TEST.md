@@ -64,3 +64,45 @@ The practitioner trusted every fact it was given: each carried an accession numb
   - A `/cmbs-brief` committee brief.
   - Finding 7: a revision of the review rule in the ask feature.
 - **Deferred:** a desk watchlist that PMs write to, and a dashboard deal page.
+
+# Session 2, after the features (2026-11-02)
+
+**Setup.** The same goal and persona, with fresh agents. The assistant now had three skills: `/cmbs-refresh`, `/cmbs-ask` (with the roster, history, loss and value facts, and the Q97 and Q100 rules) and `/cmbs-brief`. There were five exchanges, ending with a committee pack.
+
+## Verdict, in the practitioner's words
+
+> "For a cited deep dive on a named loan: yes. For 'is this the whole special-servicing book':
+> not until the co-op gap is explained and fixed."
+
+## What now works that failed in session 1
+
+| Session 1 finding | Session 2 |
+|---|---|
+| 1. An invented dashboard feature | None invented. The assistant pointed only to `cmbs review queue` ("an analyst's job") and to quant or operator for refreshes |
+| 2–3. No deal-wide list, no state | `ask loans` listed loan 11 in special servicing, and loan 57, off the tape while last known in special servicing, unprompted |
+| 4. Paid-off loans read as gaps | The brief lists paid-off, liquidated (loan 17, $13,049,503.19) and returned loans with their dates |
+| 5. No history | A 7-year DSCR and occupancy trend for Ditson, plus "as of May 2026". It flagged the wrong-deal August 2021 row and the quarantined December 2022 month as months not to chart |
+| 6. No loss-sizing facts | The $19,000,000 MAI value against $62,000,000 at securitization, the $20,928,570.80 appraisal reduction, the advances and the non-recoverability flag, each cited. The panel computed no ratio |
+| 7. The review rule hid the servicer's words | The unreviewed sentence was quoted with its label. The tape's foreclosure code was given as the tape's |
+| 8. A refusal with no way forward | It named the quant and operator roles |
+| 9. "OF" | It read "office (code OF)" |
+
+The practitioner checked the brief against the chat on balance, DSCR, appraisal reduction, advances and valuation, and the figures matched. Pressed on completeness, the assistant answered: "no, I can't stand behind 'two loans in special servicing' as complete for October 2026".
+
+## What failed, ranked
+
+1. **"Panel current through October 2026" sat at the top while 20 loans had been missing for two months.**
+   - The 20 are the deal's co-op loans, dropped from the September tape on (M-022).
+   - The brief counts them in its header, but nothing says the book may be incomplete.
+   - The practitioner's first-choice feature: a completeness check on every load, with a red banner. It compares the tape's loan count with the previous month's and with the 10-D's loan list.
+2. **The co-op rows are in different units.**
+   - The same tape files conduit loans' rate and occupancy as fractions (0.0543, 0.28), and co-op rows as percents (4.39, 95). So the co-op rows read 419–462% and 9,500% (M-035).
+   - The load contract has no range check.
+3. **The brief leaves out the October comment of a loan not on the October tape.** Loan 57's default and reservation-of-rights letter, which conflicts with its last tape saying "current", had to be added by hand.
+4. **No watchlist or early-warning screen, and no "% of pool".** The panel can't list loans below 1.0x DSCR or with falling occupancy, and computes no ratios.
+5. **The panel holds none of the 10-D's delinquency or special-servicing summaries,** so the roster can't be cross-checked against them.
+6. **No property location, and no news after the last tape.** For example, whether the largest tenant's lease, which expired 2026-09-30, was renewed.
+
+## Process note
+
+The assistant chained several allowed `cmbs ask facts` calls with `;` in one shell command. Each call was allowed, but the skills' `allowed-tools` patterns are meant one command at a time.
