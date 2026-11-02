@@ -125,7 +125,10 @@ def _row(context, loan: str):
 
 @then("the roster lists, in this order:")
 def step_roster_lists(context):
-    listed = [(row.loan, row.state.value, row.since or "") for row in context.roster.loans]
+    listed = [
+        (row.loan, row.state.value if row.state else "", row.since or "")
+        for row in context.roster.loans
+    ]
     expected = [
         (row["loan"].strip(), row["state"].strip(), row["since"].strip()) for row in context.table
     ]
