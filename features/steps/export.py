@@ -111,6 +111,10 @@ def step_waiting_for_review(context, loan, label):
     _ensure_extracted(context, loan)
     row = in_session(lambda db: wait_for_review(db, field=spec.name, loan=loan))
     assert row.value is None, row
+    # A feature may say why the field waits, in its own world (features/steps/ask.py).
+    waits = getattr(context, "why_waiting", None)
+    if waits is not None:
+        in_session(lambda db: waits(db, row.id))
 
 
 @given('loan "{loan}"\'s {label} was overridden by "{user}"')

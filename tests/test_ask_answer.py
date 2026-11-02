@@ -160,7 +160,7 @@ def test_a_topic_awaiting_review_states_no_extracted_value_but_the_tape_s():
     assert [f.name for f in both.stated] == ["tape.workout_strategy", "tape.ending_balance"]
 
 
-def test_a_field_awaiting_review_quotes_its_sentence_labelled_unreviewed():
+def test_a_field_awaiting_review_with_unsettled_support_quotes_its_sentence():
     waiting = Fact(
         "workout_strategy",
         "workout strategy",
@@ -169,6 +169,7 @@ def test_a_field_awaiting_review_quotes_its_sentence_labelled_unreviewed():
         None,
         "needs review",
         Citation("10-D", "R-1", FILED, "https://r/", sentence=4, quote="It is reviewing."),
+        support="unsettled",
     )
     extracted = fact("transfer_reason", "workout strategy", "imminent default")
     answer = compose(
@@ -188,6 +189,30 @@ def test_a_field_awaiting_review_quotes_its_sentence_labelled_unreviewed():
     )
     assert extracted.unreviewed_quote() is None
     assert not waiting.from_tape and not extracted.from_tape
+
+
+def test_a_field_awaiting_review_with_low_support_has_no_sentence_quoted():
+    """Grill log Q87: with support low no sentence states the field, so none is quoted, even
+    one the fact cites; the tape's value is still given."""
+    cited = Citation("10-D", "R-1", FILED, "https://r/", sentence=1, quote="It transferred.")
+    waiting = Fact(
+        "workout_strategy", "workout strategy", "workout strategy", "September 2026", None,
+        "needs review", cited, support="low",
+    )  # fmt: skip
+    tape = fact("tape.workout_strategy", "workout strategy", "full payoff (code 11)", "reported",
+                citation=TAPE)  # fmt: skip
+    answer = compose("What is the workout strategy?", deal="F1", loan="2", facts=[waiting, tape])
+    assert waiting.unreviewed_quote() == "the comment has no sentence on it (unreviewed)"
+    assert answer.unreviewed == [waiting]
+    assert answer.text().splitlines()[1:] == [
+        "- tape.workout strategy: full payoff (code 11) (September 2026, reported; ABS-EE T-1, "
+        "workoutStrategyCode)",
+        "- the workout strategy is awaiting human review; the comment has no sentence on it "
+        "(unreviewed)",
+    ]
+    assert "It transferred." not in answer.text()
+    unjudged = Fact("w", "w", "w", "September 2026", None, "needs review", None)
+    assert unjudged.unreviewed_quote() is None
 
 
 def test_a_question_no_fact_covers_is_not_in_the_data():

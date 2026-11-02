@@ -36,8 +36,11 @@ COMMENT_FORM = REPORT_FORM
 TAPE_FORM = "ABS-EE"
 READ_ONLY = "asking is read-only"
 NOT_IN_DATA = "not in the data"
-# How the filer's own sentence on a field awaiting review is labelled (grill log Q97).
+# How the filer's own sentence on a field awaiting review is labelled (grill log Q97), and what
+# is said instead when the model found no sentence that states the field (support low, Q87).
 UNREVIEWED = "unreviewed: not a panel fact"
+NO_SENTENCE = "the comment has no sentence on it (unreviewed)"
+LOW_SUPPORT = "low"
 
 
 @dataclass(frozen=True)
@@ -74,7 +77,9 @@ class Fact:
 
     A field awaiting review may still carry a citation: the comment's sentence on it, which the
     filer wrote and the model pointed to. It is quoted only as the filer's words, labelled
-    "unreviewed: not a panel fact" (grill log Q97), never read as the field's value."""
+    "unreviewed: not a panel fact" (grill log Q97), never read as the field's value. `support` is
+    the band of the model's support for that sentence (low, unsettled or high): with support
+    low no sentence states the field (Q87), so none is quoted."""
 
     name: str
     label: str
@@ -84,6 +89,7 @@ class Fact:
     status: str
     citation: Citation | None
     set_by: str | None = None
+    support: str | None = None
 
     @property
     def awaiting_review(self) -> bool:
@@ -104,10 +110,15 @@ class Fact:
         return f"{self.label}: {self.value} ({self.period}, {how}{cited})"
 
     def unreviewed_quote(self) -> str | None:
-        """'the comment's sentence on it, unreviewed: not a panel fact: "..." (10-D ...,
-        sentence 4)', for a field awaiting review whose sentence is known; None otherwise."""
+        """For a field awaiting review: 'the comment's sentence on it, unreviewed: not a panel
+        fact: "..." (10-D ..., sentence 4)' when its support is not low and its sentence is
+        known; NO_SENTENCE when its support is low; None otherwise."""
+        if not self.awaiting_review:
+            return None
+        if self.support == LOW_SUPPORT:
+            return NO_SENTENCE
         cited = self.citation
-        if not self.awaiting_review or cited is None or cited.quote is None:
+        if cited is None or cited.quote is None:
             return None
         return (
             f'the comment\'s sentence on it, {UNREVIEWED}: "{cited.quote}" '

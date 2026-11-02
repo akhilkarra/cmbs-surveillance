@@ -9,14 +9,19 @@ a comment, its sentence), a value awaiting review is not stated, a question no f
 
 import datetime as dt
 import re
+from decimal import Decimal
 
 from behave import given, then, when  # pyright: ignore[reportAttributeAccessIssue]
+from sqlalchemy import select
 
 from cmbs import clock
 from cmbs.ask.answer import COMMENT_FORM, NOT_IN_DATA, READ_ONLY, UNREVIEWED, Kind
 from cmbs.ask.service import ask, loan_facts
 from cmbs.db.models import SCHEMAS
+from cmbs.extraction.decision import UNSETTLED_SUPPORT
+from cmbs.extraction.sentences import split
 from cmbs.extraction.service import comment_view
+from cmbs.extraction.tables import ExtractedField, Extraction, ReviewItem
 from cmbs.testing.bdd import attempt, changed_tables, data_snapshot, in_session
 from features.steps.published import publish
 from tests.test_routine_world import SEPTEMBER, accession, backfill
@@ -29,6 +34,7 @@ def step_comment_extracted(context, loan, deal, month):
 
     assert month == SEPTEMBER.label, "the fixture panel's latest month is September 2026"
     context.deal, context.loan = deal, loan
+    context.why_waiting = on_unsettled_support
     backfill(in_session, SEPTEMBER.shift(-1), SEPTEMBER, deal=deal)
     view = in_session(lambda db: comment_view(db, "quinn", deal=deal, loan=loan, period=SEPTEMBER))
     assert view is not None, "the comment was not extracted"
@@ -44,6 +50,29 @@ def step_asks_about(context, user, question, deal):
     publish(context)
     context.deal = deal
     _ask(context, user, question)
+
+
+# The sentence of loan 2's September comment about its workout: the servicer evaluating the
+# borrower's request, the one the fixture's synthetic recording cites for it.
+WORKOUT_SENTENCE = 4
+UNSETTLED_SUPPORT_P = Decimal("0.50")  # inside the 0.30 to 0.70 band of settings version 7
+
+
+def on_unsettled_support(db, field_id: int) -> None:
+    """A field waiting for review waits on unsettled support (the decision table's review row,
+    grill log Q87): the model's support for its sentence is inside the band, and the sentence it
+    cites is the comment's sentence on the workout. Steps that make a field wait in this
+    feature's world call it after `wait_for_review` (features/steps/export.py)."""
+    row = db.get_one(ExtractedField, field_id)
+    sentences = split(db.get_one(Extraction, row.extraction_id).comment)
+    row.support_probability = UNSETTLED_SUPPORT_P
+    row.model_sentence = WORKOUT_SENTENCE
+    row.model_evidence = sentences[WORKOUT_SENTENCE - 1].text
+    row.review_reason = UNSETTLED_SUPPORT
+    item = db.scalars(select(ReviewItem).where(ReviewItem.field_id == field_id)).one()
+    item.reason = UNSETTLED_SUPPORT
+    item.probability = UNSETTLED_SUPPORT_P
+    db.flush()
 
 
 @when('"{user}" asks "{question}"')
