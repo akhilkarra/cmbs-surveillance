@@ -54,10 +54,13 @@ from cmbs.distribution.service import appraisal_reductions, canonical_loan
 from cmbs.domain import Period, format_money
 from cmbs.edgar.archives import filing_base_url
 from cmbs.errors import Refused
+from cmbs.extraction import decision
 from cmbs.extraction.service import CommentView, comment_view
 from cmbs.extraction.tables import Extraction
 from cmbs.filings.tables import Filing
 from cmbs.panel import service as panel
+from cmbs.settings.service import NoSettings, in_force
+from cmbs.settings.values import Settings
 from cmbs.tape.convert import Unreadable, read_date, read_money
 from cmbs.tape.tables import LoanPeriod, TapeAsset
 
@@ -338,18 +341,31 @@ def appraisal_facts(db: Session, deal: Deal, loan: str, day: dt.date) -> list[Fa
     return facts
 
 
-def comment_facts(view: CommentView, cik: int) -> list[Fact]:
+def support_band(probability: Decimal | None, band: Settings | None) -> str | None:
+    """The support's band in the abstention band given (low, unsettled or high); None when
+    either is unknown."""
+    if probability is None or band is None:
+        return None
+    return decision.band(probability, low=band.abstention_low, high=band.abstention_high).value
+
+
+def comment_facts(view: CommentView, cik: int, band: Settings | None = None) -> list[Fact]:
     """The comment's fields with a value (cited by sentence) or awaiting review (no value). A
-    field the comment does not state, or that a reviewer found it cannot settle, is no fact."""
+    field the comment does not state, or that a reviewer found it cannot settle, is no fact.
+
+    A field awaiting review cites the sentence the model pointed to, the filer's words quoted as
+    unreviewed (Q97), never its value; but only when the model's support for it is unsettled or
+    high in `band` (the settings in force). With support low no sentence states the field
+    (Q87), and none is cited; with no band to read it against, none either."""
     facts = []
     for shown in view.fields.values():
         waiting = shown.status == NEEDS_REVIEW
         if shown.field not in COMMENT_TOPICS or not (waiting or shown.display is not None):
             continue
-        # A field awaiting review cites the sentence the model pointed to, if any: the filer's
-        # words, quoted as unreviewed (Q97), never its value.
+        support = support_band(shown.support_probability, band) if waiting else None
+        quotable = support not in (None, decision.Band.LOW.value)
         sentence, quote = (
-            (shown.model_sentence, shown.model_quote)
+            (shown.model_sentence, shown.model_quote if quotable else None)
             if waiting
             else (shown.sentence, shown.evidence)
         )
@@ -375,9 +391,18 @@ def comment_facts(view: CommentView, cik: int) -> list[Fact]:
                 status=shown.status,
                 citation=citation,
                 set_by=shown.overridden_by or shown.decided_by,
+                support=support,
             )
         )
     return facts
+
+
+def band_in_force(db: Session, day: dt.date) -> Settings | None:
+    """The settings in force at the end of `day` (UTC), whose abstention band reads support."""
+    try:
+        return in_force(db, dt.datetime.combine(day, dt.time.max, tzinfo=dt.UTC)).values
+    except NoSettings:
+        return None
 
 
 @dataclass(frozen=True)
@@ -443,7 +468,7 @@ def loan_facts(
         facts = tape_facts(latest, cik) + asset_facts(stored_asset(db, latest), latest, cik)
     facts += appraisal_facts(db, deal_row, loan, day)
     if view is not None:
-        facts = comment_facts(view, cik) + facts
+        facts = comment_facts(view, cik, band_in_force(db, day)) + facts
     return LoanFacts(deal=deal_row.name, loan=loan, as_of=day, facts=facts)
 
 

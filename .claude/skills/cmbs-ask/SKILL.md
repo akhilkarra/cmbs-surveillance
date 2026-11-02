@@ -126,22 +126,28 @@ The review gate keeps the model's reading from passing as fact. It does not hide
 own words or the tape's own code, so for a field with status `needs review`:
 
 - **Never state the extracted value**, nor the model's answer, in any words.
-- **Quote the comment's sentence on it**, when the fact's `citation` has a `quote`, verbatim and
-  labelled exactly "unreviewed: not a panel fact", with its 10-D accession and sentence number.
-  Present it as what the servicer wrote, never as the answer.
+- **Quote the comment's sentence on it only when the fact's `citation` has a `quote`.** That
+  happens when the model's `support` for a sentence is `unsettled` or `high` in the settings in
+  force. Quote it verbatim, labelled exactly "unreviewed: not a panel fact", with its 10-D
+  accession and sentence number, as what the servicer wrote, never as the answer.
+- **When `support` is `low`, quote nothing:** no sentence of the comment states the field
+  (grill log Q87). Say "the comment has no sentence on it (unreviewed)", and never pick a
+  sentence yourself.
 - **Give the tape's value for the same topic**, when `ask facts` has one, labelled as the
   tape's, with its tape field: "the tape reports workout strategy full payoff (code 11)
-  (ABS-EE <accession>, workoutStrategyCode)".
+  (ABS-EE <accession>, workoutStrategyCode)". This holds whatever the support.
 
-Example, for "What is the workout strategy for loan 2?" while it awaits review:
+Example, for "What is the workout strategy for loan 2?" while it awaits review on unsettled
+support:
 
 ```
 The workout strategy of loan 2 is awaiting human review, so the panel states none. The
-servicer's comment on it, unreviewed: not a panel fact: "The loan transferred to Special
-Servicing effective 3/6/2025 due to imminent monetary default." (10-D 0009900001-26-000418,
-sentence 1). The tape reports workout strategy full payoff (code 11) (ABS-EE
-0009900001-26-000419, workoutStrategyCode).
+servicer's comment on it, unreviewed: not a panel fact: "The special servicer is evaluating the
+request." (10-D 0009900001-26-000418, sentence 4). The tape reports workout strategy full payoff
+(code 11) (ABS-EE 0009900001-26-000419, workoutStrategyCode).
 ```
+
+With support low, the second sentence becomes "The comment has no sentence on it (unreviewed)."
 
 Example, for "Why is loan 2 in special servicing and what does the borrower want?":
 
