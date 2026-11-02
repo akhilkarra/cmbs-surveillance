@@ -220,20 +220,10 @@ def _history_shown(context, section) -> None:
 @then(
     'loan "{loan}"\'s section gives, each with its citation, the transfer date and reason, the '
     "payment status, the latest DSCR and occupancy with their dates, the servicer's stated "
-    "plan, the borrower's request, the advances outstanding and the months of history the "
-    "panel holds"
-)
-def step_section_gives(context, loan):
-    _section_gives(context, loan)
-
-
-@then(
-    'loan "{loan}"\'s section gives, each with its citation, the transfer date and reason, the '
-    "payment status, the latest DSCR and occupancy with their dates, the servicer's stated "
     "plan, the borrower's request, the advances outstanding, the appraisal reduction and the "
     "history the panel holds"
 )
-def step_section_gives_appraisal(context, loan):
+def step_section_gives(context, loan):
     _section_gives(context, loan)
     section = _section(context, loan)
     item = _item(section, "Appraisal reduction, loss and liquidation")
@@ -264,12 +254,12 @@ NO_VALUE = re.compile(
 )
 
 
-def _every_line_cites(context, *, report_tables: bool) -> None:
+def _every_line_cites(context) -> None:
     """A line with a value cites a Schedule AL field of the month's ABS-EE, a sentence of the
-    comment in the month's 10-D, quoted as the comment has it, or (when `report_tables`) the
-    10-D's report table. The line of months held cites the first and last months' tapes (checked
-    by `_history_shown`). A line without a citation is a heading, the list of what the panel
-    does not hold, or one of NO_VALUE, and states no value."""
+    comment in the month's 10-D, quoted as the comment has it, or the 10-D's report table. The
+    line of months held cites the first and last months' tapes (checked by `_history_shown`).
+    A line without a citation is a heading, the list of what the panel does not hold, or one of
+    NO_VALUE, and states no value."""
     section = _section(context, context.loan)
     report = _accession(context, COMMENT_FORM)
     sentences = context.comment.sentences
@@ -301,23 +291,17 @@ def _every_line_cites(context, *, report_tables: bool) -> None:
                     line
                 )
             else:
-                assert report_tables, f"cites a report table, not a field or sentence: {line}"
                 assert cited.group("table_report") == report, line
                 assert cited.group("table") in APPRAISAL_TABLE_NAMES, line
     assert checked >= 10, section.lines()
-
-
-@then("every line of the section that states a value cites an ABS-EE field or a 10-D sentence")
-def step_every_line_cites(context):
-    _every_line_cites(context, report_tables=False)
 
 
 @then(
     "every line of the section that states a value cites an ABS-EE field, a 10-D sentence or a "
     "10-D report table"
 )
-def step_every_line_cites_tables(context):
-    _every_line_cites(context, report_tables=True)
+def step_every_line_cites(context):
+    _every_line_cites(context)
 
 
 # ---------------------------------------------------------------------------- the history
