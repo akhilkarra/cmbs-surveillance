@@ -35,10 +35,11 @@ ROSTER_TAGS = set(ROSTER_FIELDS)
 def step_asks_brief(context, user, deal):
     publish(context)
     context.deal = deal
+    loan = context.loan  # the loan whose comment the Background extracted
     context.comment = in_session(
-        lambda db: comment_view(db, "quinn", deal=deal, loan="2", period=SEPTEMBER)
+        lambda db: comment_view(db, "quinn", deal=deal, loan=loan, period=SEPTEMBER)
     )
-    assert context.comment is not None, "loan 2's September 2026 comment was not extracted"
+    assert context.comment is not None, f"loan {loan}'s September 2026 comment was not extracted"
     # The brief writes nothing at all: not the data layers, which "no stored data changes"
     # checks, and not the application state (audit log, runs, review items, cache).
     context.snapshot = data_snapshot()
