@@ -3,11 +3,15 @@
 `loan_facts` gathers, as known on a day (today by default):
 - the latest tape row of the loan (`cmbs.panel.service.as_of`): balance, payment status, paid-
   through date, special-servicer transfer and master-servicer return dates, workout strategy
-  and modification codes, realized loss, property, and its most recent financials, each cited
-  by the ABS-EE accession and the field;
+  and modification codes, realized loss, property, its most recent financials and the interest
+  rate (as a percent), each cited by the ABS-EE accession and the field;
 - from the same tape asset as stored in bronze (`bronze.loan_tape_asset.tags`, the asset the
   row was typed from, so the same filing): the advances outstanding, the non-recoverability
-  indicator and the liquidation/prepayment date and code (`ASSET_TAGS`). They are read at ask
+  indicator, the liquidation/prepayment date and code and the maturity date (`ASSET_TAGS`);
+  and from its property records (`bronze.loan_tape_asset.properties`, grill log Q100) the latest
+  valuation with its date and source, the valuation at securitization and the largest tenant
+  with its lease expiry (`PROPERTY_TAGS`), each property's labelled when there are several.
+  They are read at ask
   time rather than typed into silver: the silver contract quarantines a loan whose typed value
   cannot be read, and these are facts to cite, not values the panel computes with, so an
   unreadable one is shown as reported instead of dropping the loan;
@@ -144,6 +148,9 @@ TAPE_FIELDS = (
         "occupancy",
         "mostRecentPhysicalOccupancyPercentage",
     ),
+    TapeField(
+        "interest_rate", "interest rate", "interest rate", "reportPeriodInterestRatePercentage"
+    ),
 )
 
 
@@ -166,7 +173,7 @@ def tape_value(column: str, value: object) -> str:
         return f"{found.name} (code {code})" if found is not None else name_of(CODED[column], code)
     if column == "dscr" and isinstance(value, Decimal):
         return f"{value}x"
-    if column == "occupancy" and isinstance(value, Decimal):
+    if column in ("occupancy", "interest_rate") and isinstance(value, Decimal):
         return f"{(value * 100).normalize():f}%"
     return str(value)
 
@@ -205,6 +212,7 @@ class TagKind(StrEnum):
     INDICATOR = "indicator"
     DATE = "date"
     CODE = "code"
+    TEXT = "text"
 
 
 @dataclass(frozen=True)
@@ -251,6 +259,24 @@ ASSET_TAGS = (
     AssetTag(
         "liquidationPrepaymentCode", "liquidation/prepayment code", "liquidation", TagKind.CODE
     ),
+    AssetTag("maturityDate", "maturity date", "maturity date", TagKind.DATE),
+)
+# What a property record of the asset gives (grill log Q100): its latest valuation and the one
+# at securitization, and its largest tenant.
+PROPERTY_TAGS = (
+    AssetTag("mostRecentValuationAmount", "latest valuation", "valuation", TagKind.MONEY),
+    AssetTag("mostRecentValuationDate", "latest valuation date", "valuation", TagKind.DATE),
+    AssetTag("mostRecentValuationSourceCode", "latest valuation source", "valuation", TagKind.TEXT),
+    AssetTag(
+        "valuationSecuritizationAmount", "valuation at securitization", "valuation", TagKind.MONEY
+    ),
+    AssetTag("largestTenant", "largest tenant", "largest tenant", TagKind.TEXT),
+    AssetTag(
+        "leaseExpirationLargestTenantDate",
+        "largest tenant's lease expires",
+        "largest tenant",
+        TagKind.DATE,
+    ),
 )
 # XML Schema booleans, as Schedule AL indicators are written.
 _YES = frozenset({"true", "1"})
@@ -276,7 +302,9 @@ def tag_value(kind: TagKind, text: str, label: str) -> str:
         if lowered in _NO:
             return "no"
         return f"{text!r} as reported, not readable as yes or no"
-    return f"code {text}"
+    if kind is TagKind.CODE:
+        return f"code {text}"
+    return text
 
 
 def asset_facts(asset: TapeAsset | None, row: LoanPeriod, cik: int) -> list[Fact]:
@@ -306,6 +334,44 @@ def asset_facts(asset: TapeAsset | None, row: LoanPeriod, cik: int) -> list[Fact
                 ),
             )
         )
+    return facts
+
+
+def property_facts(asset: TapeAsset | None, row: LoanPeriod, cik: int) -> list[Fact]:
+    """The PROPERTY_TAGS the asset's property records report. A loan with one property record
+    states them plainly; a loan with several states each property's, labelled with its number
+    and name. A tag not reported is not a fact."""
+    if asset is None:
+        return []
+    records = asset.properties or []
+    period = Period.of(row.period).label
+    facts = []
+    for number, record in enumerate(records, start=1):
+        which = ""
+        if len(records) > 1:
+            name = str(record.get("propertyName") or "").strip() or "name not reported"
+            which = f" (property {number}, {name})"
+        for spec in PROPERTY_TAGS:
+            text = str(record.get(spec.tag) or "").strip()
+            if not text:
+                continue
+            facts.append(
+                Fact(
+                    name=f"tape.{spec.tag}" + (f".{number}" if which else ""),
+                    label=spec.label + which,
+                    topic=spec.topic,
+                    period=period,
+                    value=tag_value(spec.kind, text, spec.label),
+                    status="reported",
+                    citation=Citation(
+                        form=TAPE_FORM,
+                        accession=row.accession,
+                        filing_date=row.filing_date,
+                        url=filing_base_url(cik, row.accession),
+                        tape_field=spec.tag,
+                    ),
+                )
+            )
     return facts
 
 
@@ -492,7 +558,12 @@ def loan_facts(
     facts: list[Fact] = []
     if rows:
         latest = rows[-1]
-        facts = tape_facts(latest, cik) + asset_facts(stored_asset(db, latest), latest, cik)
+        asset = stored_asset(db, latest)
+        facts = (
+            tape_facts(latest, cik)
+            + asset_facts(asset, latest, cik)
+            + property_facts(asset, latest, cik)
+        )
     facts += appraisal_facts(db, deal_row, loan, day)
     if view is not None:
         facts = comment_facts(view, cik, settings_version(db, view.settings_version)) + facts
