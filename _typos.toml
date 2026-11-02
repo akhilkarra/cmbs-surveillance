@@ -3,6 +3,7 @@
 MOR = "MOR"      # Morningstar's servicer rating prefix, as in "MOR CS1"
 plas = "plas"    # plasTeX, the LaTeX-to-HTML tool behind leanblueprint
 pn = "pn"        # property name in tools/browser/absee_loan_rows.js
+assum = "assum"  # regex prefix for "assumption" in research/lead_lag/analyze.py
 
 [files]
 extend-exclude = [

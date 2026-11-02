@@ -63,6 +63,11 @@ extend-exclude = [".claude", "private", "src/cmbs/model/clef_reference.py"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# A study's scripts are kept exactly as they ran, so the record matches its results: style
+# rules that would mean rewriting them (long SQL lines, imports after loading .env) are off.
+"research/**" = ["E501", "E402", "E731", "SIM115", "B905"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

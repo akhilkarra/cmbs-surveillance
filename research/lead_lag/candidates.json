@@ -1,0 +1,642 @@
+[
+[
+2017,
+"BANK 2017-BNK4",
+"0001698685"
+],
+[
+2017,
+"BANK 2017-BNK5",
+"0001706303"
+],
+[
+2017,
+"BANK 2017-BNK6",
+"0001710261"
+],
+[
+2017,
+"BANK 2017-BNK7",
+"0001714679"
+],
+[
+2017,
+"BANK 2017-BNK8",
+"0001718322"
+],
+[
+2017,
+"BANK 2017-BNK9",
+"0001721373"
+],
+[
+2017,
+"BBCMS Mortgage Trust 2017-C1",
+"0001696707"
+],
+[
+2017,
+"Bank of America Merrill Lynch Commercial Mortgage Trust 2017-BNK3",
+"0001694649"
+],
+[
+2017,
+"CCUBS Commercial Mortgage Trust 2017-C1",
+"0001720748"
+],
+[
+2017,
+"CD 2017-CD3 Mortgage Trust",
+"0001693368"
+],
+[
+2017,
+"CD 2017-CD4 Mortgage Trust",
+"0001702745"
+],
+[
+2017,
+"CD 2017-CD6 Mortgage Trust",
+"0001719959"
+],
+[
+2017,
+"CFCRE 2017-C8 Mortgage Trust",
+"0001703075"
+],
+[
+2017,
+"COMM 2017-COR2 Mortgage Trust",
+"0001714154"
+],
+[
+2017,
+"CSAIL 2017-C8 Commercial Mortgage Trust",
+"0001708131"
+],
+[
+2017,
+"CSAIL 2017-CX10 Commercial Mortgage Trust",
+"0001720474"
+],
+[
+2017,
+"CSAIL 2017-CX9 Commercial Mortgage Trust",
+"0001716602"
+],
+[
+2017,
+"DBJPM 2017-C6 Mortgage Trust",
+"0001706403"
+],
+[
+2017,
+"GS Mortgage Securities Trust 2017-GS5",
+"0001693737"
+],
+[
+2017,
+"GS Mortgage Securities Trust 2017-GS6",
+"0001704459"
+],
+[
+2017,
+"GS Mortgage Securities Trust 2017-GS7",
+"0001710765"
+],
+[
+2017,
+"GS Mortgage Securities Trust 2017-GS8",
+"0001718483"
+],
+[
+2017,
+"JPMCC Commercial Mortgage Securities Trust 2017-JP5",
+"0001695154"
+],
+[
+2017,
+"JPMCC Commercial Mortgage Securities Trust 2017-JP6",
+"0001701638"
+],
+[
+2017,
+"JPMCC Commercial Mortgage Securities Trust 2017-JP7",
+"0001709967"
+],
+[
+2017,
+"JPMDB Commercial Mortgage Securities Trust 2017-C5",
+"0001699099"
+],
+[
+2017,
+"JPMDB Commercial Mortgage Securities Trust 2017-C7",
+"0001716186"
+],
+[
+2017,
+"Morgan Stanley Bank of America Merrill Lynch Trust 2017-C33",
+"0001702746"
+],
+[
+2017,
+"Morgan Stanley Bank of America Merrill Lynch Trust 2017-C34",
+"0001715846"
+],
+[
+2017,
+"Morgan Stanley Capital I Trust 2017-H1",
+"0001705163"
+],
+[
+2017,
+"Morgan Stanley Capital I Trust 2017-HR2",
+"0001723306"
+],
+[
+2017,
+"UBS Commercial Mortgage Trust 2017-C1",
+"0001706060"
+],
+[
+2017,
+"UBS Commercial Mortgage Trust 2017-C2",
+"0001711142"
+],
+[
+2017,
+"UBS Commercial Mortgage Trust 2017-C3",
+"0001713226"
+],
+[
+2017,
+"UBS Commercial Mortgage Trust 2017-C4",
+"0001716263"
+],
+[
+2017,
+"UBS Commercial Mortgage Trust 2017-C5",
+"0001719195"
+],
+[
+2017,
+"UBS Commercial Mortgage Trust 2017-C6",
+"0001721905"
+],
+[
+2017,
+"UBS Commercial Mortgage Trust 2017-C7",
+"0001724177"
+],
+[
+2017,
+"Wells Fargo Commercial Mortgage Trust 2017-C38",
+"0001707817"
+],
+[
+2017,
+"Wells Fargo Commercial Mortgage Trust 2017-C39",
+"0001710798"
+],
+[
+2017,
+"Wells Fargo Commercial Mortgage Trust 2017-C40",
+"0001716187"
+],
+[
+2017,
+"Wells Fargo Commercial Mortgage Trust 2017-C41",
+"0001719199"
+],
+[
+2017,
+"Wells Fargo Commercial Mortgage Trust 2017-C42",
+"0001723291"
+],
+[
+2017,
+"Wells Fargo Commercial Mortgage Trust 2017-RB1",
+"0001699462"
+],
+[
+2017,
+"Wells Fargo Commercial Mortgage Trust 2017-RC1",
+"0001695924"
+],
+[
+2018,
+"BANK 2018-BNK10",
+"0001728085"
+],
+[
+2018,
+"BANK 2018-BNK11",
+"0001731627"
+],
+[
+2018,
+"BANK 2018-BNK12",
+"0001739423"
+],
+[
+2018,
+"BANK 2018-BNK13",
+"0001744707"
+],
+[
+2018,
+"BANK 2018-BNK14",
+"0001749973"
+],
+[
+2018,
+"BANK 2018-BNK15",
+"0001756271"
+],
+[
+2018,
+"BBCMS Mortgage Trust 2018-C2",
+"0001754913"
+],
+[
+2018,
+"BENCHMARK 2018-B2 Mortgage Trust",
+"0001728339"
+],
+[
+2018,
+"Benchmark 2018-B1 Mortgage Trust",
+"0001722194"
+],
+[
+2018,
+"Benchmark 2018-B4 Mortgage Trust",
+"0001740849"
+],
+[
+2018,
+"Benchmark 2018-B5 Mortgage Trust",
+"0001745529"
+],
+[
+2018,
+"Benchmark 2018-B7 Mortgage Trust",
+"0001757018"
+],
+[
+2018,
+"Benchmark 2018-B8 Mortgage Trust",
+"0001758901"
+],
+[
+2018,
+"CD 2018-CD7 Mortgage Trust",
+"0001746406"
+],
+[
+2018,
+"COMM 2018-COR3 Mortgage Trust",
+"0001735733"
+],
+[
+2018,
+"CSAIL 2018-C14 Commercial Mortgage Trust",
+"0001752594"
+],
+[
+2018,
+"CSAIL 2018-CX11 Commercial Mortgage Trust",
+"0001732963"
+],
+[
+2018,
+"CSAIL 2018-CX12 Commercial Mortgage Trust",
+"0001745511"
+],
+[
+2018,
+"DBGS 2018-C1 Mortgage Trust",
+"0001752363"
+],
+[
+2018,
+"GS Mortgage Securities Trust 2018-GS10",
+"0001742373"
+],
+[
+2018,
+"GS Mortgage Securities Trust 2018-GS9",
+"0001731056"
+],
+[
+2018,
+"JPMDB Commercial Mortgage Securities Trust 2018-C8",
+"0001735646"
+],
+[
+2018,
+"Morgan Stanley Capital I Trust 2018-H3",
+"0001742383"
+],
+[
+2018,
+"Morgan Stanley Capital I Trust 2018-H4",
+"0001758882"
+],
+[
+2018,
+"Morgan Stanley Capital I Trust 2018-L1",
+"0001751743"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C10",
+"0001736862"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C11",
+"0001740040"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C12",
+"0001744982"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C13",
+"0001749360"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C14",
+"0001758292"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C15",
+"0001760337"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C8",
+"0001727836"
+],
+[
+2018,
+"UBS Commercial Mortgage Trust 2018-C9",
+"0001731058"
+],
+[
+2018,
+"Wells Fargo Commercial Mortgage Trust 2018-C43",
+"0001729832"
+],
+[
+2018,
+"Wells Fargo Commercial Mortgage Trust 2018-C44",
+"0001736659"
+],
+[
+2018,
+"Wells Fargo Commercial Mortgage Trust 2018-C45",
+"0001741690"
+],
+[
+2018,
+"Wells Fargo Commercial Mortgage Trust 2018-C46",
+"0001748940"
+],
+[
+2018,
+"Wells Fargo Commercial Mortgage Trust 2018-C47",
+"0001753233"
+],
+[
+2018,
+"Wells Fargo Commercial Mortgage Trust 2018-C48",
+"0001757928"
+],
+[
+2019,
+"BANK 2019-BNK16",
+"0001763333"
+],
+[
+2019,
+"BANK 2019-BNK17",
+"0001769961"
+],
+[
+2019,
+"BANK 2019-BNK18",
+"0001774962"
+],
+[
+2019,
+"BANK 2019-BNK19",
+"0001780859"
+],
+[
+2019,
+"BANK 2019-BNK20",
+"0001784958"
+],
+[
+2019,
+"BANK 2019-BNK21",
+"0001787490"
+],
+[
+2019,
+"BANK 2019-BNK22",
+"0001789307"
+],
+[
+2019,
+"BANK 2019-BNK23",
+"0001792414"
+],
+[
+2019,
+"BANK 2019-BNK24",
+"0001793165"
+],
+[
+2019,
+"BBCMS Mortgage Trust 2019-C3",
+"0001772527"
+],
+[
+2019,
+"BBCMS Mortgage Trust 2019-C4",
+"0001780131"
+],
+[
+2019,
+"BBCMS Mortgage Trust 2019-C5",
+"0001790441"
+],
+[
+2019,
+"Benchmark 2019-B10 Mortgage Trust",
+"0001766367"
+],
+[
+2019,
+"Benchmark 2019-B11 Mortgage Trust",
+"0001775756"
+],
+[
+2019,
+"Benchmark 2019-B13 Mortgage Trust",
+"0001785881"
+],
+[
+2019,
+"Benchmark 2019-B14 Mortgage Trust",
+"0001790013"
+],
+[
+2019,
+"CD 2019-CD8 Mortgage Trust",
+"0001782003"
+],
+[
+2019,
+"CF 2019-CF3 Mortgage Trust",
+"0001793744"
+],
+[
+2019,
+"COMM 2019-GC44 Mortgage Trust",
+"0001792157"
+],
+[
+2019,
+"CSAIL 2019-C15 Commercial Mortgage Trust",
+"0001763502"
+],
+[
+2019,
+"CSAIL 2019-C16 Commercial Mortgage Trust",
+"0001776086"
+],
+[
+2019,
+"CSAIL 2019-C17 Commercial Mortgage Trust",
+"0001786008"
+],
+[
+2019,
+"CSAIL 2019-C18 Commercial Mortgage Trust",
+"0001792905"
+],
+[
+2019,
+"GS Mortgage Securities Trust 2019-GC38",
+"0001763207"
+],
+[
+2019,
+"GS Mortgage Securities Trust 2019-GC39",
+"0001771501"
+],
+[
+2019,
+"GS Mortgage Securities Trust 2019-GC40",
+"0001778232"
+],
+[
+2019,
+"GS Mortgage Securities Trust 2019-GC42",
+"0001787000"
+],
+[
+2019,
+"GS Mortgage Securities Trust 2019-GSA1",
+"0001789954"
+],
+[
+2019,
+"JPMCC Commercial Mortgage Securities Trust 2019-COR4",
+"0001763501"
+],
+[
+2019,
+"JPMCC Commercial Mortgage Securities Trust 2019-COR5",
+"0001774801"
+],
+[
+2019,
+"JPMDB Commercial Mortgage Securities Trust 2019-COR6",
+"0001792158"
+],
+[
+2019,
+"Morgan Stanley Capital I Trust 2019-H6",
+"0001773339"
+],
+[
+2019,
+"Morgan Stanley Capital I Trust 2019-H7",
+"0001778749"
+],
+[
+2019,
+"Morgan Stanley Capital I Trust 2019-L2",
+"0001766660"
+],
+[
+2019,
+"Morgan Stanley Capital I Trust 2019-L3",
+"0001791295"
+],
+[
+2019,
+"UBS Commercial Mortgage Trust 2019-C16",
+"0001769322"
+],
+[
+2019,
+"UBS Commercial Mortgage Trust 2019-C17",
+"0001785812"
+],
+[
+2019,
+"UBS Commercial Mortgage Trust 2019-C18",
+"0001793856"
+],
+[
+2019,
+"Wells Fargo Commercial Mortgage Trust 2019-C49",
+"0001763001"
+],
+[
+2019,
+"Wells Fargo Commercial Mortgage Trust 2019-C50",
+"0001770572"
+],
+[
+2019,
+"Wells Fargo Commercial Mortgage Trust 2019-C51",
+"0001776721"
+],
+[
+2019,
+"Wells Fargo Commercial Mortgage Trust 2019-C52",
+"0001780678"
+],
+[
+2019,
+"Wells Fargo Commercial Mortgage Trust 2019-C53",
+"0001789356"
+],
+[
+2019,
+"Wells Fargo Commercial Mortgage Trust 2019-C54",
+"0001791239"
+]
+]

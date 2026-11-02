@@ -27,6 +27,10 @@ Commercial data vendors (Trepp, Intex and the like) already give a desk cleaned 
 
 Why each choice was made is in `docs/GRILL-LOG.md`; the quirks of real filings are in `docs/MESS-REGISTER.md`; mistakes caught in AI-written work are in `docs/ai-catch-log.md`. How AI-written code gets to main, stage by stage, with its gates and known gaps: open `AIDLC.html` in a browser.
 
+## What the data says
+
+Once a loan is in special servicing, the servicer's 10-D comment does not reliably name foreclosure, REO or a note sale before the loan tape codes it, and adding the comments to the tape has not been shown to improve loss prediction; borrower requests are the one place the text comes first. Tested on 109 public conduits and 868 special-servicing episodes, with the analysis plan written before the final run: `research/30-lead-lag-study.md`.
+
 ## Layout
 
 The package `cmbs` is organised by job; each feature package holds its `service.py` and, where it has them, `tables.py`, `routes.py` and `commands.py`, found by convention.
