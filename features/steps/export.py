@@ -30,6 +30,7 @@ from cmbs.extraction.tables import Extraction
 from cmbs.tape.tables import LoanTape
 from cmbs.testing.bdd import attempt, in_session
 from cmbs.testing.world import FIXTURE_DEAL
+from features.steps.published import publish
 from tests.test_routine_world import (
     QUANT,
     SEPTEMBER,
@@ -79,6 +80,7 @@ def _ensure_extracted(context, loan: str) -> None:
             .where(ReportComment.loan_id == loan, ReportComment.period == SEPTEMBER.first_day)
         )
 
+    publish(context)  # the months the scenario published itself, if any
     if not in_session(stored):
         _ensure_panel(context)
     context.deal = getattr(context, "deal", None) or FIXTURE_DEAL
@@ -109,7 +111,9 @@ def step_loaded_from(context, deal, start, end):
 def step_waiting_for_review(context, loan, label):
     spec = fields.by_label(label)
     _ensure_extracted(context, loan)
-    row = in_session(lambda db: wait_for_review(db, field=spec.name, loan=loan))
+    row = in_session(
+        lambda db: wait_for_review(db, field=spec.name, loan=loan, deal_name=context.deal)
+    )
     assert row.value is None, row
     # A feature may say why the field waits, in its own world (features/steps/ask.py).
     waits = getattr(context, "why_waiting", None)

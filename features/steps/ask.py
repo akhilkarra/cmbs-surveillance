@@ -24,7 +24,7 @@ from cmbs.extraction.service import comment_view
 from cmbs.extraction.tables import ExtractedField, Extraction, ReviewItem
 from cmbs.testing.bdd import attempt, changed_tables, data_snapshot, in_session
 from features.steps.published import publish
-from tests.test_routine_world import SEPTEMBER, accession, backfill
+from tests.test_routine_world import SEPTEMBER, accession, backfill, synthetic_model
 
 ASKED = dt.datetime(2026, 10, 6, 12, 0, tzinfo=dt.UTC)
 
@@ -35,6 +35,12 @@ def step_comment_extracted(context, loan, deal, month):
     assert month == SEPTEMBER.label, "the fixture panel's latest month is September 2026"
     context.deal, context.loan = deal, loan
     context.why_waiting = on_unsettled_support
+    pending = (getattr(context, "publications", None) or {}).get(deal)
+    if pending is not None and not pending.loaded:
+        # The scenario publishes the deal's months itself (features/steps/published.py): the
+        # run that loads them extracts the comment, replaying the synthetic recordings.
+        pending.model = synthetic_model
+        return
     backfill(in_session, SEPTEMBER.shift(-1), SEPTEMBER, deal=deal)
     view = in_session(lambda db: comment_view(db, "quinn", deal=deal, loan=loan, period=SEPTEMBER))
     assert view is not None, "the comment was not extracted"
