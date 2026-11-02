@@ -5,6 +5,10 @@ Feature: A committee brief on a deal's special-servicing book
   roster, each loan's facts, its history), cites every line, lists what the panel does not
   know, and changes nothing (grill log Q98).
 
+  Revision: the section also gives the 10-D's appraisal reduction, cited to the 10-D's report
+  table, and condenses the history to fit one page: the first and last months the panel holds,
+  then the last six months as filed. A real loan can hold eight years of monthly tapes.
+
   Background:
     Given "Fixture Trust 2026-F2" reported these loans in September 2026, filed 2026-09-29:
       | loan | property            | ending balance | transfer date | return date | workout strategy |
@@ -22,8 +26,15 @@ Feature: A committee brief on a deal's special-servicing book
 
   Scenario: Each loan's section answers the committee's questions, every line cited
     When "pat" asks for the committee brief of "Fixture Trust 2026-F2"
-    Then loan "2"'s section gives, each with its citation, the transfer date and reason, the payment status, the latest DSCR and occupancy with their dates, the servicer's stated plan, the borrower's request, the advances outstanding and the months of history the panel holds
-    And every line of the section that states a value cites an ABS-EE field or a 10-D sentence
+    Then loan "2"'s section gives, each with its citation, the transfer date and reason, the payment status, the latest DSCR and occupancy with their dates, the servicer's stated plan, the borrower's request, the advances outstanding, the appraisal reduction and the history the panel holds
+    And every line of the section that states a value cites an ABS-EE field, a 10-D sentence or a 10-D report table
+
+  Scenario: A long history is condensed to one page
+    Given loan "2" of "Fixture Trust 2026-F2" was reported in each month from January 2025 to September 2026
+    When "pat" asks for the committee brief of "Fixture Trust 2026-F2"
+    Then loan "2"'s history says "21 months held, January 2025 to September 2026"
+    And it lists April to September 2026 as filed, each citing its own ABS-EE
+    And it lists no other month
 
   Scenario: What the panel does not know is listed, not filled in
     When "pat" asks for the committee brief of "Fixture Trust 2026-F2"
