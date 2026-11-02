@@ -8,6 +8,7 @@ names the comment, features/steps/ask.py). The brief is checked against what ask
 own: the roster, each loan's facts and its history, and the filings the panel stored.
 """
 
+import datetime as dt
 import re
 
 from behave import given, then, when  # pyright: ignore[reportAttributeAccessIssue]
@@ -16,19 +17,27 @@ from sqlalchemy import select
 from cmbs.ask.answer import COMMENT_FORM, NO_SENTENCE, NOT_IN_DATA, TAPE_FORM, UNREVIEWED
 from cmbs.ask.history import history
 from cmbs.ask.roster import ROSTER_FIELDS, loans
-from cmbs.ask.service import ASSET_TAGS, TAPE_FIELDS, loan_facts
+from cmbs.ask.service import ASSET_TAGS, PROPERTY_TAGS, TAPE_FIELDS, loan_facts
 from cmbs.brief.service import NOT_IN_PANEL, SHOWN_MONTHS, brief, month_line, other_line
 from cmbs.db.models import SCHEMAS
 from cmbs.deals.service import by_name
 from cmbs.distribution.layouts import APPRAISAL_TABLES
-from cmbs.domain import Period
+from cmbs.domain import Period, money
 from cmbs.extraction.service import comment_view
 from cmbs.filings.tables import Filing
 from cmbs.testing.bdd import changed_tables, data_snapshot, in_session
-from features.steps.published import publication, publish, roster_edits
+from features.steps.published import (
+    TRANSFER_TAG,
+    only_loans,
+    publication,
+    publish,
+    roster_edits,
+    set_tags,
+    tape_date,
+)
 
 SEPTEMBER = Period(2026, 9)
-SCHEDULE_AL_TAGS = {spec.tag for spec in TAPE_FIELDS} | {spec.tag for spec in ASSET_TAGS}
+SCHEDULE_AL_TAGS = {spec.tag for spec in (*TAPE_FIELDS, *ASSET_TAGS, *PROPERTY_TAGS)}
 ROSTER_TAGS = set(ROSTER_FIELDS)
 APPRAISAL_TABLE_NAMES = {spec.name for specs in APPRAISAL_TABLES.values() for spec in specs}
 
@@ -202,8 +211,9 @@ def _history_shown(context, section) -> None:
         lambda db: history(db, context.user, deal=context.deal, loan=section.loan.loan)
     ).months
     held = section.held
-    assert held is not None and held.months == len(months), (held, len(months))
-    assert (held.first, held.last) == (months[0], months[-1]), held
+    rows = [month for month in months if month.note is None]
+    assert held is not None and held.months == len(rows), (held, len(rows))
+    assert (held.first, held.last) == (rows[0], rows[-1]), held
     assert f"- {held.text()}" in lines, lines
     for month in (held.first, held.last):
         filed = _accession(context, TAPE_FORM, Period.parse(month.period))
@@ -326,6 +336,7 @@ def step_history_says(context, loan, text):
     section = _section(context, loan)
     assert section.held is not None, section
     assert section.held.text().startswith(f"{text} ("), section.held.text()
+    assert "besides" not in section.held.text(), section.held.text()
     _history_shown(context, section)
 
 
@@ -357,6 +368,117 @@ def step_lists_no_other_month(context):
     # Beyond the shown months, only the first is named, in the line of months held.
     named = set(re.findall(r"[A-Z][a-z]+ \d{4}", text)) - shown - {months[0].period}
     assert named == set(), named
+
+
+# ---------------------------------------------------------------------------- value and term (Q100)
+
+
+@given(
+    'loan "{loan}" of "{deal}" was reported in {period} with a latest valuation of {amount} '
+    "dated {day} from {source}, maturity date {maturity}, interest rate {rate} and largest "
+    'tenant "{tenant}" with its lease expiring {expiry}'
+)
+def step_reported_value_term_tenancy(
+    context, loan, deal, period, amount, day, source, maturity, rate, tenant, expiry
+):
+    """The month's tape reports these for the loan, in its asset and first property record,
+    as Schedule AL writes them (dates MM-DD-YYYY)."""
+    tags = {
+        "maturityDate": maturity,
+        "reportPeriodInterestRatePercentage": rate,
+        "property/mostRecentValuationAmount": str(money(amount)),
+        "property/mostRecentValuationDate": day,
+        "property/mostRecentValuationSourceCode": source,
+        "property/largestTenant": tenant,
+        "property/leaseExpirationLargestTenantDate": expiry,
+    }
+    publication(context, deal).month(Period.parse(period)).tape.append(set_tags(loan, tags))
+
+
+@then(
+    'loan "{loan}"\'s section gives the latest valuation {amount} dated {day} from {source}, the '
+    "maturity date {maturity}, the interest rate {rate} and the largest tenant {tenant} with its "
+    "lease expiring {expiry}, each cited to its ABS-EE field"
+)
+def step_section_gives_value(context, loan, amount, day, source, maturity, rate, tenant, expiry):
+    section = _section(context, loan)
+    item = _item(section, "Value, term and tenancy")
+    expected = {
+        "latest valuation": (amount, "mostRecentValuationAmount"),
+        "latest valuation date": (day, "mostRecentValuationDate"),
+        "latest valuation source": (source, "mostRecentValuationSourceCode"),
+        "maturity date": (maturity, "maturityDate"),
+        "interest rate": (rate, "reportPeriodInterestRatePercentage"),
+        "largest tenant": (tenant, "largestTenant"),
+        "largest tenant's lease expires": (expiry, "leaseExpirationLargestTenantDate"),
+    }
+    stated = {fact.label: fact for fact in item.stated}
+    for label, (value, tag) in expected.items():
+        fact = stated.get(label)
+        assert fact is not None, (label, item.lines())
+        assert fact.value == value, fact
+        _cites_tape(fact, _accession(context, TAPE_FORM))
+        assert fact.citation is not None and fact.citation.tape_field == tag, fact
+        assert f"- {fact.text()}" in section.lines(), section.lines()
+
+
+@then('the "Not in the panel" list names no valuation, maturity date, interest rate or tenant')
+def step_gaps_name_no_tape_fact(context):
+    for section in context.brief.sections:
+        last = section.lines()[-1]
+        assert last.startswith("Not in the panel: "), last
+        for word in ("valuation", "appraise", "maturity", "interest", "tenant", "lease"):
+            assert word not in last.lower(), last
+
+
+# ---------------------------------------------------------------------------- last known (Q100)
+
+
+@given(
+    'loan "{loan}" of "{deal}" was reported in {period}, filed {filed}, in special servicing '
+    "since {since}, and is not on the {current} tape"
+)
+def step_last_known_special(context, loan, deal, period, filed, since, current):
+    """The month is published on its day with the Background's loans and this one, which has
+    a special-servicer transfer date and no return; the Background's month omits it."""
+    month, latest = Period.parse(period), Period.parse(current)
+    assert latest == context.roster_period, f"the Background states {context.roster_period}"
+    table = context.roster_table
+    assert loan not in {row["loan"].strip() for row in table}, f"the Background lists {loan}"
+    names = {row["loan"].strip() for row in table} | {loan}
+    edits = [only_loans(names), *roster_edits(table)[1:]]
+    edits.append(set_tags(loan, {TRANSFER_TAG: tape_date(dt.date.fromisoformat(since))}))
+    found = publication(context, deal).month(month, dt.date.fromisoformat(filed))
+    found.tape.extend(edits)
+
+
+@then(
+    "the brief says {count:d} loan is not on the {period} tape and was last known in special "
+    "servicing"
+)
+def step_brief_says_unseen(context, count, period):
+    noun = "loan is" if count == 1 else "loans are"
+    was = "was" if count == 1 else "were"
+    line = f"{count} {noun} not on the {period} tape and {was} last known in special servicing."
+    assert line in context.brief.notices, context.brief.notices
+    assert _text(context).splitlines()[2] == line or line in _text(context).splitlines()[:5]
+    assert "no loan is in special servicing" not in _text(context), _text(context)
+
+
+@then('loan "{loan}" has a short section marked "{marker}", citing that tape')
+def step_short_section(context, loan, marker):
+    found = [known for known in context.brief.last_known if known.loan.loan == loan]
+    assert len(found) == 1, _text(context)
+    known = found[0]
+    lines = known.lines()
+    assert "\n".join(lines) in _text(context), _text(context)
+    assert marker in lines[0], lines[0]
+    month = Period.parse(marker.removeprefix("last known on the ").removesuffix(" tape"))
+    tape = _accession(context, TAPE_FORM, month)
+    assert f"{TAPE_FORM} {tape}: " in lines[0], lines[0]
+    assert lines[0].startswith(f"loan {loan}, ") and "in special servicing since" in lines[0]
+    assert loan not in {section.loan.loan for section in context.brief.sections}
+    assert loan not in {row.loan for row in context.brief.others}
 
 
 # ---------------------------------------------------------------------------- the gaps
