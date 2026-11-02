@@ -8,10 +8,12 @@ The brief is composed only from what asking gives, as known on one day (today by
 - for each loan in special servicing, its facts (`cmbs.ask.service.loan_facts`) and its months
   as filed (`cmbs.ask.history.history`).
 
-Under the opening lines, notices: when most loans on both the current and the previous tape
-carry another property name on the current one, that it may be another deal's tape
-(docs/MESS-REGISTER.md M-029); and how many loans the current tape omits or quarantined, and how
-many of them were last known in special servicing (Q100).
+Under the opening lines, notices: when most loans on both the current tape and the latest
+earlier tape that is not itself flagged carry another property name on the current one, that
+it may be another deal's tape (docs/MESS-REGISTER.md M-029; `reference`, so the good tape after
+a swapped one is not flagged); how many loans the current tape omits or quarantined, and how
+many of them were last known in special servicing (Q100); and how many it omits that the panel
+never read, every tape that reported them having quarantined them.
 
 Each loan in special servicing gets a section: its roster line, then the committee's questions
 in a fixed order (`QUESTIONS`), each answered by the panel's own composer
@@ -34,7 +36,7 @@ The other loans fit a page (`others_lines`): one line each for a loan of interes
 its date, liquidated with its realized loss, paid off since its month, or a loan the tape does
 not show last known in another state), then one cited line for the loans never transferred, one
 for those off the tape and last known never transferred or paid off, and one for those the tape
-quarantined for the same reasons and last known so.
+quarantined for the same reasons and last known so, and one for the loans never read.
 
 Every value is a value asking gives, as it reads there, with counts as the only exceptions: the
 months held, the loans a grouped line names, the loans a notice counts and the names that
@@ -44,7 +46,7 @@ differ. Nothing is summed, compared beyond those counts, or estimated, and nothi
 import dataclasses
 import datetime as dt
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -274,6 +276,11 @@ def other_line(row: RosterLoan) -> str:
 
 # A loan off the current tape, as the roster notes it (`cmbs.ask.roster.off_tape`).
 _OFF_TAPE = re.compile(r"^(?P<missing>not on the .+ tape); last reported (?P<last>.+?), balance ")
+# A loan the panel never read, as the roster notes it (`cmbs.ask.roster.unread`).
+_NEVER_READ = re.compile(
+    r"^never read: every tape that reported it quarantined it, last the (?P<last>.+?) tape "
+    r"\((?P<reasons>.*)\)$"
+)
 # Last known states of a loan the tape does not show that hold no surveillance interest: grouped.
 _QUIET = (State.NEVER_TRANSFERRED, State.PAID_OFF)
 _QUIET_TAGS = {
@@ -294,19 +301,25 @@ def others_lines(rows: Sequence[RosterLoan], period: str) -> list[str]:
     in another state), in the roster's order; then one line for the loans never transferred,
     one for each tape that omits loans last known never transferred or paid off, and one for
     the loans the `period` tape quarantined for the same reasons and last known so, grouped by
-    that state."""
+    that state, and one for the loans the panel never read (every tape that reported them
+    quarantined them) whose last tape and reasons are the same."""
     lines: list[str] = []
     never: dict[str, list[RosterLoan]] = {}
     gone: dict[tuple[str, str, State, str], list[RosterLoan]] = {}
     held: dict[tuple[str, State, str], list[RosterLoan]] = {}
+    unread: dict[tuple[str, str, str], list[RosterLoan]] = {}
     for row in rows:
         found = _OFF_TAPE.match(row.note or "")
+        not_read = _NEVER_READ.match(row.note or "")
         quiet = row.state is not None and row.state in _QUIET
         if row.note is None and row.state is State.NEVER_TRANSFERRED:
             never.setdefault(row.citation.accession, []).append(row)
         elif found is not None and quiet and row.state is not None:
             key = (found["missing"], found["last"], row.state, row.citation.accession)
             gone.setdefault(key, []).append(row)
+        elif not_read is not None and row.state is None:
+            key = (not_read["last"], not_read["reasons"], row.citation.accession)
+            unread.setdefault(key, []).append(row)
         elif row.note is not None and row.note.startswith(QUARANTINED) and quiet:
             assert row.state is not None
             held.setdefault((row.note, row.state, row.citation.accession), []).append(row)
@@ -326,6 +339,11 @@ def others_lines(rows: Sequence[RosterLoan], period: str) -> list[str]:
             f"quarantined on the {period} tape ({reasons}), last known {state.value}: "
             f"{_loans(group)}) ({_cites((group[0].citation, ()))})"
         )
+    for (last, reasons, _), group in unread.items():
+        lines.append(
+            f"never read, every tape that reported them quarantined them, last the {last} tape "
+            f"({reasons}): {_loans(group)}) ({_cites((group[0].citation, ()))})"
+        )
     return lines
 
 
@@ -341,7 +359,10 @@ class LastKnown:
 
     def lines(self) -> list[str]:
         row, month = self.loan, self.month
-        name = row.property_name or "property name not reported"
+        # The name that month's tape gives, not the roster's, which may come from a later tape
+        # (one that is another deal's, M-029).
+        named = [v.value for v in month.values if v.tape_field == "propertyName" and v.value]
+        name = named[0] if named else row.property_name or "property name not reported"
         last = _cites((month.citation, ROSTER_FIELDS))
         lines = [
             f"loan {row.loan}, {name}, last known on the {month.period} tape: "
@@ -379,6 +400,20 @@ def unseen_notice(rows: Sequence[RosterLoan], period: str, *, quarantined: bool)
     return f"{head}, none last known in special servicing."
 
 
+def unread_notice(rows: Sequence[RosterLoan], period: str) -> str | None:
+    """'13 loans not on the November 2022 tape were never read: every tape that reported them
+    quarantined them.'"""
+    count = len(rows)
+    if not count:
+        return None
+    noun, _, was = _were(count)
+    them = "it" if count == 1 else "them"
+    return (
+        f"{count} {noun} not on the {period} tape {was} never read: every tape that reported "
+        f"{them} quarantined {them}."
+    )
+
+
 def renamed_notice(current: Roster, previous: Roster) -> str | None:
     """When most loans on both tapes carry another property name on the current one, the
     current tape may be another deal's (docs/MESS-REGISTER.md M-029): say so."""
@@ -399,6 +434,27 @@ def renamed_notice(current: Roster, previous: Roster) -> str | None:
         f"and {previous.period} tapes differ: the {current.period} tape may be another deal's "
         "(docs/MESS-REGISTER.md M-029)."
     )
+
+
+# How many tapes back the brief looks for one whose names it can trust.
+REFERENCE_DEPTH = 3
+
+
+def reference(
+    roster: Roster, previous_of: Callable[[Roster], Roster | None], depth: int = REFERENCE_DEPTH
+) -> Roster | None:
+    """The earlier tape to compare the roster's property names with: the one before it, unless
+    that one's names mostly differ from its own reference (it is itself flagged, as another
+    deal's tape may be), then that reference. A tape is never compared with a flagged one, so
+    the good tape after a swapped one is not called another deal's."""
+    previous = previous_of(roster)
+    if previous is None or previous.period is None or previous.period == roster.period:
+        return None
+    if depth > 0:
+        before = reference(previous, previous_of, depth - 1)
+        if before is not None and renamed_notice(previous, before) is not None:
+            return before
+    return previous
 
 
 @dataclass(frozen=True)
@@ -511,14 +567,21 @@ def brief(db: Session, reader: str, *, deal: str, as_of: dt.date | None = None) 
                 period,
                 quarantined=True,
             ),
+            unread_notice([r for r in roster.loans if _NEVER_READ.match(r.note or "")], period),
         )
         if notice is not None
     ]
-    if tape is not None:
-        previous = loans(db, reader, deal=deal, as_of=tape.filing_date - dt.timedelta(days=1))
-        renamed = renamed_notice(roster, previous)
-        if renamed is not None:
-            notices.insert(0, renamed)
+
+    def previous_of(found: Roster) -> Roster | None:
+        filed = _tape_of(found)
+        if filed is None:
+            return None
+        return loans(db, reader, deal=deal, as_of=filed.filing_date - dt.timedelta(days=1))
+
+    compared = reference(roster, previous_of)
+    renamed = renamed_notice(roster, compared) if compared is not None else None
+    if renamed is not None:
+        notices.insert(0, renamed)
     known: list[LastKnown] = []
     for row in unseen:
         found = None

@@ -43,8 +43,10 @@ from cmbs.brief.service import (
     not_reported,
     other_line,
     others_lines,
+    reference,
     renamed_notice,
     split_book,
+    unread_notice,
     unseen_notice,
 )
 from cmbs.cli import app as cli
@@ -318,6 +320,33 @@ def test_the_other_loans_fit_a_page():
     ]
 
 
+def test_loans_the_panel_never_read_are_grouped_and_counted():
+    note = (
+        "never read: every tape that reported it quarantined it, last the November 2022 tape "
+        "(reporting period end is not reported)"
+    )
+    rows = [
+        row(loan, None, None, ending_balance=None, tape_fields=(), note=note, citation=cite("N"))
+        for loan in ("47", "48")
+    ]
+    other = dataclasses.replace(rows[0], loan="57", citation=cite("O"))
+    assert others_lines([*rows, other], "December 2022") == [
+        "never read, every tape that reported them quarantined them, last the November 2022 "
+        "tape (reporting period end is not reported): loans 47, 48 (2 loans) (ABS-EE N)",
+        "never read, every tape that reported them quarantined them, last the November 2022 "
+        "tape (reporting period end is not reported): loan 57 (1 loan) (ABS-EE O)",
+    ]
+    assert unread_notice([], "December 2022") is None
+    assert unread_notice(rows, "December 2022") == (
+        "2 loans not on the December 2022 tape were never read: every tape that reported them "
+        "quarantined them."
+    )
+    assert unread_notice(rows[:1], "December 2022") == (
+        "1 loan not on the December 2022 tape was never read: every tape that reported it "
+        "quarantined it."
+    )
+
+
 def test_a_filing_cited_twice_is_named_once_with_each_field_once():
     assert _cites((cite(), ("a", "b")), (cite("Y"), ()), (cite(), ("b", "c"))) == (
         f"ABS-EE {TAPE}: a, b, c; ABS-EE Y"
@@ -363,6 +392,16 @@ def test_a_loan_last_known_in_special_servicing_gets_a_short_section():
         f"- {off} (ABS-EE {TAPE}; ABS-EE {AUGUST_TAPE}: reportPeriodEndActualBalanceAmount)",
         f"- {month_line(august)}",
     ]
+    # The name is that month's own, not the roster's (which a later tape may have changed).
+    named = dataclasses.replace(
+        august, values=[Value("property", "Courtyard", "propertyName"), *august.values]
+    )
+    renamed = dataclasses.replace(gone, property_name="Cherry Valley")
+    assert (
+        LastKnown(renamed, cite(), named)
+        .lines()[0]
+        .startswith("loan 5, Courtyard, last known on the August 2026 tape: ")
+    )
     held = dataclasses.replace(gone, note="quarantined: unreadable", citation=cite())
     assert LastKnown(held, cite(), august).lines()[1] == (
         f"- quarantined: unreadable (ABS-EE {TAPE})"
@@ -407,6 +446,33 @@ def roster_of(period: str | None, names: dict[str, str | None]) -> Roster:
     return Roster("F1", dt.date(2021, 8, 31), "fresh", period, "A", False, rows)
 
 
+def test_names_are_compared_with_the_latest_earlier_tape_not_itself_flagged():
+    """The month after a swapped tape is compared with the month before the swap."""
+    june = roster_of("June 2021", {"1": "Mall", "2": "Tower", "3": "Inn"})
+    july = roster_of("July 2021", {"1": "Mall", "2": "Tower", "3": "Inn"})
+    swapped = roster_of("August 2021", {"1": "Depot", "2": "Plaza", "3": "Shed"})
+    september = roster_of("September 2021", {"1": "Mall", "2": "Tower", "3": "Inn"})
+    before = {
+        "September 2021": swapped, "August 2021": july, "July 2021": june, "June 2021": None,
+    }  # fmt: skip
+
+    def previous_of(found):
+        return before[found.period]
+
+    assert reference(september, previous_of) is july
+    assert renamed_notice(september, july) is None
+    # The swapped month itself is still flagged against the month before it.
+    assert reference(swapped, previous_of) is july
+    assert renamed_notice(swapped, july) is not None
+    assert reference(july, previous_of) is june
+    assert reference(june, previous_of) is None
+    # Looking no further back, the swapped month is the one compared.
+    assert reference(september, previous_of, depth=0) is swapped
+    # A roster with no tape, or an amendment of the same month, has nothing earlier.
+    assert reference(september, lambda found: roster_of(None, {})) is None
+    assert reference(september, lambda found: september) is None
+
+
 def test_the_current_tape_is_the_one_its_rows_cite():
     off = "not on the September 2026 tape; last reported August 2026, balance $1.00"
     gone = row("5", State.NEVER_TRANSFERRED, None, note=off, citation=cite(AUGUST_TAPE))
@@ -427,6 +493,14 @@ def test_a_tape_whose_names_mostly_differ_may_be_another_deal_s():
     # Half or fewer differing is not most; no earlier tape, or the same one, says nothing.
     same = roster_of("August 2021", {"1": "Depot", "2": "Tower", "3": "Inn", "4": "X"})
     assert renamed_notice(same, july) is None
+    four = roster_of("July 2021", {"1": "A", "2": "B", "3": "C", "4": "D"})
+    half = roster_of("August 2021", {"1": "W", "2": "Z", "3": "C", "4": "D"})
+    assert renamed_notice(half, four) is None
+    most = roster_of("August 2021", {"1": "W", "2": "Z", "3": "Y", "4": "D"})
+    assert renamed_notice(most, four) is not None
+    # An amendment of the same month is not an earlier tape, whatever its names.
+    amended = roster_of("August 2021", {"1": "A", "2": "B", "3": "C", "4": "D"})
+    assert renamed_notice(most, amended) is None
     assert renamed_notice(august, roster_of(None, {})) is None
     assert renamed_notice(august, august) is None
     assert renamed_notice(august, roster_of("July 2021", {"9": "Z"})) is None
@@ -534,6 +608,27 @@ def test_a_brief_as_of_a_past_day_reads_that_day_s_month(months_apart):
 
 
 @needs_db
+def test_a_last_known_section_reads_the_day_asked_not_a_later_month(months_apart, monkeypatch):
+    """On 2026-09-20, loan 2 read as off the August tape is last known on August's; September's
+    tape, filed later, shows it again but is not yet known."""
+    from cmbs.brief import service
+
+    real = service.loans
+    off = "not on the August 2026 tape; last reported August 2026, balance $1.00"
+
+    def roster(db, reader, *, deal, as_of=None):
+        found = real(db, reader, deal=deal, as_of=as_of)
+        rows = [dataclasses.replace(r, note=off) if r.loan == "2" else r for r in found.loans]
+        return dataclasses.replace(found, loans=rows)
+
+    monkeypatch.setattr(service, "loans", roster)
+    found = in_session(lambda db: brief(db, "pat", deal=FIXTURE_DEAL, as_of=dt.date(2026, 9, 20)))
+    [known] = found.last_known
+    assert known.month.period == "August 2026"
+    assert known.month.citation.accession == AUGUST_TAPE
+
+
+@needs_db
 def test_the_brief_reads_in_one_snapshot(panel):
     """The brief makes its session REPEATABLE READ before its first read, so the roster, facts
     and histories it composes agree even while a load commits."""
@@ -561,6 +656,8 @@ def test_loans_the_tape_does_not_show_are_noted_and_last_known_ones_get_a_sectio
         if found.period == "August 2026":
             renamed = [dataclasses.replace(r, property_name=f"Other {r.loan}") for r in found.loans]
             return dataclasses.replace(found, loans=renamed)
+        if found.period != "September 2026":
+            return found
         rows = [dataclasses.replace(r, note=off) if r.loan == "2" else r for r in found.loans]
         ghost = dataclasses.replace(rows[0], loan="99", note=off)
         return dataclasses.replace(found, loans=[*rows, ghost])

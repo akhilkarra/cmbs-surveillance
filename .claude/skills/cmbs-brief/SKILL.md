@@ -17,7 +17,8 @@ filing gives. A loan the tape does not show but last known in special servicing 
 section marked "last known on the <month> tape". Last, the other loans: a line each for a loan
 returned to the master servicer, liquidated with its realized loss, paid off, or not shown and
 last known in another state; then one line naming the loans never transferred, and one each for
-the loans off the tape or quarantined and last known never transferred or paid off. Relay those
+the loans off the tape or quarantined and last known never transferred or paid off, and one for
+the loans the panel never read (every tape that reported them quarantined them). Relay those
 as they read, with every loan each grouped line names. Every value in it cites the filing it
 came from. Run the one command, relay the brief, and do nothing else. Briefing is
 read-only.
