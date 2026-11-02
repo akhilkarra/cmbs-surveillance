@@ -222,7 +222,7 @@ def test_loans_off_the_tape_quarantined_or_liquidated_read_as_the_roster_has_the
         "realizedLossToTrustAmount)"
     )
     held = row(
-        "9", State.SPECIAL_SERVICING, "2025-03-06", ending_balance="not on the tape",
+        "9", State.SPECIAL_SERVICING, "2025-03-06", ending_balance=None,
         tape_fields=(), note="quarantined: balance unreadable",
     )  # fmt: skip
     assert other_line(held) == (
