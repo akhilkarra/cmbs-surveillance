@@ -2,11 +2,12 @@
 
 import datetime as dt
 import json
+import warnings
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 from typer.testing import CliRunner
 
 from cmbs import clock
@@ -39,10 +40,11 @@ from cmbs.db.models import SCHEMAS
 from cmbs.deals.service import by_name
 from cmbs.domain import Period
 from cmbs.filings.tables import FilingFile
+from cmbs.panel.service import snapshot
 from cmbs.refresh.tables import RunMonth
 from cmbs.runs.service import Freshness, finish_run, start_run
 from cmbs.tape.service import AMENDMENT, load_tape
-from cmbs.tape.tables import LoanPeriod, LoanTape, TapeAsset
+from cmbs.tape.tables import LoanPeriod, LoanTape, QuarantinedLoan, TapeAsset
 from cmbs.testing.bdd import changed_tables, data_snapshot, in_session
 from cmbs.testing.world import FIXTURE_DEAL
 from features.steps.published import Publication, only_loans, set_tags
@@ -404,13 +406,13 @@ def test_rows_off_the_tape_say_why_and_their_last_known_state():
     assert liquidated.reading() == "liquidated, realized loss $13,049,503.19, since 2026-01"
     assert liquidated.text().endswith(f"; realized loss in ABS-EE {AUGUST_TAPE})")
     held = RosterLoan(
-        "20", None, "not on the tape", None, None, None, cite(), (),
+        "20", None, None, None, None, None, cite(), (),
         note="quarantined: loan is reported more than once",
     )  # fmt: skip
     assert held.reading() == "quarantined: loan is reported more than once"
     assert held.text() == (
-        "loan 20, property name not reported, not on the tape: quarantined: loan is reported "
-        f"more than once (ABS-EE {TAPE})"
+        "loan 20, property name not reported, quarantined: loan is reported more than once "
+        f"(ABS-EE {TAPE})"
     )
     rows = [held, roster_loan("3", State.NEVER_TRANSFERRED, None), liquidated]
     assert [row.loan for row in ordered(rows)] == ["17", "3", "20"]
@@ -440,16 +442,17 @@ def no_appraisal_reduction(content: bytes) -> bytes:
 
 @pytest.fixture
 def f2(seeded):
-    """Loan 4 quarantined in July, its first month; loan 6 liquidated in August with a realized
-    loss; loan 3 paid off in September; loan 7
-    in special servicing in August and then off the September tape; loan 5 quarantined in
-    September; loan 2's appraisal reduction gone from the September 10-D."""
+    """Loan 1 first reported in August; loan 4 quarantined in July, its first month; loan 6
+    liquidated in August with a realized loss; loan 3 paid off in September; loan 7 in special
+    servicing in August and then off the September tape; loan 5 quarantined in September; loan
+    2's appraisal reduction gone from the September 10-D."""
     published = Publication(F2)
     for period in (JUL, AUG, SEP):
         published.month(period)
     published.month(JUL).tape += [
         set_tags("6", {"reportPeriodEndActualBalanceAmount": "1.00"}),
         set_tags("4", {"reportPeriodEndActualBalanceAmount": "xyz"}),
+        only_loans({"2", "3", "4", "5", "6", "7"}),
     ]
     published.month(AUG).tape += [
         set_tags("6", {"realizedLossToTrustAmount": "2350000.00"}),
@@ -524,39 +527,6 @@ def test_an_appraisal_reduction_the_latest_10d_omits_is_not_stated(f2):
 
 
 @needs_db
-def test_freshness_names_the_run_that_loaded_the_current_tape(f2):
-    first = in_session(lambda db: loans(db, "pat", deal=F2)).freshness
-    assert first == "Panel current through September 2026 (run 1, 2026-10-01)"
-    # A later run loads an older month, and another fails to load October.
-    older = Publication(F2)
-    older.month(Period(2026, 6))
-    older.load(dt.datetime(2026, 10, 3, 9, 0, tzinfo=dt.UTC))
-
-    def failed(db):
-        run = start_run(db, kind="refresh deal", started_by="olly")
-        deal = by_name(db, F2)
-        assert deal is not None
-        db.add(
-            RunMonth(
-                run_id=run.id,
-                deal_id=deal.id,
-                period=Period(2026, 10).first_day,
-                outcome="not loaded",
-                reason="10-D failed to parse",
-                loan_rows=0,
-                at=dt.datetime(2026, 10, 4, 9, 0, tzinfo=dt.UTC),
-            )
-        )
-        finish_run(db, run, status="failed", summary={})
-
-    in_session(failed)
-    later = in_session(lambda db: loans(db, "pat", deal=F2))
-    assert later.freshness == first
-    before = in_session(lambda db: loans(db, "pat", deal=F2, as_of=dt.date(2026, 9, 30)))
-    assert before.freshness == "Panel current through September 2026"
-
-
-@needs_db
 def test_a_loan_quarantined_in_its_first_month_has_no_last_known_state(f2):
     july = in_session(lambda db: loans(db, "pat", deal=F2, as_of=dt.date(2026, 8, 15)))
     rows = {row.loan: row for row in july.loans}
@@ -596,3 +566,121 @@ def test_a_loan_an_amendment_omits_is_off_the_tape(f2):
         "last known: never transferred"
     )
     assert rows["1"].citation.accession == original
+
+
+@needs_db
+def test_a_history_starts_at_the_loan_s_first_tape(f2):
+    found = in_session(lambda db: history(db, "pat", deal=F2, loan="1"))
+    assert [m.period for m in found.months] == ["August 2026", "September 2026"]
+    assert found.months[0].note is None
+
+
+@needs_db
+def test_a_loan_typed_from_one_asset_is_not_listed_as_quarantined_for_another(f2):
+    """A tape whose load typed the loan from one asset and quarantined another of its assets
+    lists the loan once, as typed."""
+
+    def quarantine_a_second_asset(db):
+        tape = db.scalars(select(LoanTape).where(LoanTape.period == SEP.first_day)).one()
+        portfolio = db.scalars(
+            select(TapeAsset).where(
+                TapeAsset.accession == tape.accession, TapeAsset.asset_number == "2-001"
+            )
+        ).one()
+        db.add(
+            QuarantinedLoan(
+                accession=tape.accession,
+                file_name=tape.file_name,
+                asset_position=portfolio.position,
+                deal_id=tape.deal_id,
+                loan="2",
+                period=tape.period,
+                filing_date=tape.filing_date,
+                reason="loan is reported more than once",
+            )
+        )
+
+    in_session(quarantine_a_second_asset)
+    roster = in_session(lambda db: loans(db, "pat", deal=F2))
+    twos = [row for row in roster.loans if row.loan == "2"]
+    assert [(row.note, row.state) for row in twos] == [(None, State.SPECIAL_SERVICING)]
+
+
+@needs_db
+def test_a_roster_reads_in_one_snapshot(seeded):
+    def isolation(begin_first: bool):
+        def read(db):
+            if begin_first:
+                db.execute(text("SELECT 1"))
+            with warnings.catch_warnings():
+                # Asking an open transaction for another isolation only warns (SAWarning).
+                warnings.simplefilter("error")
+                snapshot(db)
+            return db.execute(text("SHOW transaction_isolation")).scalar_one()
+
+        return in_session(read)
+
+    assert isolation(False) == "repeatable read"
+    # A session already reading keeps its own isolation: it cannot be changed mid-transaction.
+    assert isolation(True) == "read committed"
+
+
+# Freshness over runs that load the second fixture deal's months one by one: run 1 loads August
+# on 2026-09-16, once settings are in force; run 2 loads September (filed 2026-09-29) at the
+# first instant of 2026-09-30.
+AUGUST_RUN = dt.datetime(2026, 9, 16, 9, 0, tzinfo=dt.UTC)
+SEPTEMBER_RUN = dt.datetime(2026, 9, 30, 0, 0, tzinfo=dt.UTC)
+
+
+def record_month(deal: str, outcome: str, tape: str | None, at: dt.datetime) -> int:
+    """A run that records September as `outcome`, citing `tape`, at `at`; its number."""
+
+    def record(db):
+        found = by_name(db, deal)
+        assert found is not None
+        run = start_run(db, kind="refresh deal", started_by="olly")
+        db.add(
+            RunMonth(
+                run_id=run.id,
+                deal_id=found.id,
+                period=SEP.first_day,
+                outcome=outcome,
+                reason=None if outcome == "loaded" else "10-D failed to parse",
+                tape_accession=tape,
+                loan_rows=0,
+                at=at,
+            )
+        )
+        finish_run(db, run, status="succeeded", summary={})
+        return run.id
+
+    return in_session(record)
+
+
+@needs_db
+def test_freshness_names_the_run_that_loaded_the_current_tape(seeded):
+    august = Publication(F2)
+    august.month(AUG)
+    august.load(AUGUST_RUN)
+    september = Publication(F2)
+    september.month(SEP)
+    september.load(SEPTEMBER_RUN)
+    tape = in_session(
+        lambda db: db.scalars(
+            select(LoanTape.accession).where(LoanTape.period == SEP.first_day)
+        ).one()
+    )
+    # A run that tried September before run 2 and did not load it, and a later run that
+    # records loading the same tape again: neither loaded the tape the panel shows first.
+    failed = record_month(F2, "not loaded", tape, SEPTEMBER_RUN - dt.timedelta(hours=1))
+    again = record_month(F2, "loaded", tape, dt.datetime(2026, 10, 2, 9, 0, tzinfo=dt.UTC))
+    assert (failed, again) == (3, 4)
+
+    def line(day: dt.date) -> str:
+        return in_session(lambda db: loans(db, "pat", deal=F2, as_of=day)).freshness
+
+    assert line(dt.date(2026, 10, 6)) == "Panel current through September 2026 (run 2, 2026-09-30)"
+    assert line(dt.date(2026, 9, 30)) == "Panel current through September 2026 (run 2, 2026-09-30)"
+    # September is filed on 2026-09-29, but no run had loaded it by the end of that day.
+    assert line(dt.date(2026, 9, 29)) == "Panel current through September 2026"
+    assert line(dt.date(2026, 9, 28)) == "Panel current through August 2026 (run 1, 2026-09-16)"
