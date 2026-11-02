@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from cmbs import clock
 from cmbs.access.roles import Action
 from cmbs.access.service import authorize
-from cmbs.alerts.codes import PAYMENT_STATUS, WORKOUT_STRATEGY, name_of
+from cmbs.alerts.codes import PAYMENT_STATUS, PROPERTY_TYPE, WORKOUT_STRATEGY, Code, lookup, name_of
 from cmbs.ask.answer import (
     COMMENT_FORM,
     NEEDS_REVIEW,
@@ -123,14 +123,22 @@ TAPE_FIELDS = (
 )
 
 
+CODED: dict[str, dict[str, Code]] = {
+    "payment_status": PAYMENT_STATUS,
+    "workout_strategy": WORKOUT_STRATEGY,
+    "property_type": PROPERTY_TYPE,
+}
+
+
 def tape_value(column: str, value: object) -> str:
     """A stored tape value as it reads: money in dollars, codes by name, ratios with 'x'."""
     if column in ("ending_balance", "noi") and isinstance(value, Decimal):
         return format_money(value)
-    if column == "payment_status":
-        return f"{name_of(PAYMENT_STATUS, str(value))} (code {value})"
-    if column == "workout_strategy":
-        return f"{name_of(WORKOUT_STRATEGY, str(value))} (code {value})"
+    if column in CODED:
+        code = str(value)
+        found = lookup(CODED[column], code)
+        # A code not on the list reads "code XX" once, not "code XX (code XX)".
+        return f"{found.name} (code {code})" if found is not None else name_of(CODED[column], code)
     if column == "dscr" and isinstance(value, Decimal):
         return f"{value}x"
     if column == "occupancy" and isinstance(value, Decimal):

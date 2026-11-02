@@ -53,6 +53,26 @@ WORKOUT_STRATEGY: dict[str, Code] = {
     "98": Code("other"),
 }
 
+# `propertyTypeCode`, as the certificate administrator's legend names them (Computershare's
+# "Property Type Codes", BANK 2018-BNK13 10-D 0001888524-26-019174, page 15).
+PROPERTY_TYPE: dict[str, Code] = {
+    "HC": Code("health care"),
+    "MU": Code("mixed use"),
+    "WH": Code("warehouse"),
+    "MF": Code("multi-family"),
+    "SS": Code("self storage"),
+    "LO": Code("lodging"),
+    "RT": Code("retail"),
+    "SF": Code("single family rental"),
+    "98": Code("other"),
+    "IN": Code("industrial"),
+    "OF": Code("office"),
+    "MH": Code("mobile home park"),
+    "SE": Code("securities"),
+    "CH": Code("cooperative housing"),
+    "ZZ": Code("missing information/undefined"),
+}
+
 NOT_REPORTED = "not reported"
 
 

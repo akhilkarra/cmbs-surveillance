@@ -32,7 +32,8 @@ uv run cmbs refresh deal "<deal name>" --live --user <user>
   wording is ambiguous (a shelf name, a partial name), ask which deal before running.
 - `--user` is the person asking, by their panel user name. Leave it out when `CMBS_USER` is set
   in the environment; if neither is known, ask. A user whose role may not run refreshes is
-  refused; relay the refusal as it is.
+  refused; relay the refusal as it is, then say who can: refreshes are run by a user with the
+  quant or operator role, so the user can ask one of them.
 - `--live` lets the routine ask the model about comments it has no recorded answer for (it needs
   `TYPESAFE_API_KEY`). Drop it only if the user asks for a replay-only refresh.
 
