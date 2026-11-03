@@ -302,7 +302,7 @@ footer p { margin: 0; }
         </li>
         <li class="stage done" data-status="Tests pass on recorded AI answers.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Build to pass the tests</span><span class="tag agent-c">AI</span></span><span class="desc">Code written until tests pass.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>AI answers are recorded and replayed, so tests repeat.</p><p>Proved: scheduled balances roll forward (loss months excepted), delinquency buckets sum to the pool, WAC stays in the note-rate range, each comment reading has one outcome. The Python is tested against the proofs, not proved.</p></div>
+          <div class="info"><p>AI answers are recorded and replayed.</p><p>Four pool rules are machine-proved, such as balances rolling forward; the Python is tested against them, not proved.</p></div>
         </li>
         <!-- grep -cE '^\s+- id: ' .pre-commit-config.yaml -> 27 hooks; grep -c 'stages: \[pre-push\]' -> 2 on push, so 25 on commit -->
         <li class="stage done" data-status="25 automatic checks passed on commit.">
@@ -348,13 +348,13 @@ footer p { margin: 0; }
   <div class="wrap two">
     <div>
       <p class="eyebrow"><b>Evidence</b></p>
-      <h2>15 AI mistakes caught. <em>Only 2 by automatic checks.</em></h2>
-      <p class="intro">The rest: 6 by the AI rechecking its own work, 4 by a person, 2 by a second AI, 1 by the first live run of the AI model.</p>
+      <h2>16 AI mistakes caught. <em>Only 2 by automatic checks.</em></h2>
+      <p class="intro">The rest: 6 by the AI rechecking its own work, 4 by a person, 3 by a second AI, 1 by the first live run of the AI model.</p>
     </div>
     <div class="card">
       <div class="card-head"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="title">Mistake log</span></div>
       <ol class="log" id="log">
-        <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the first live model run.</b> The AI's rule sent 9 unmentioned fields to manual review, besides 3 unclear ones. Fixed; the real answers are now tests.</span></li>
+        <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the first live model run.</b> The AI's rule sent 9 unmentioned fields to manual review. Fixed; real answers are now tests.</span></li>
         <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by the automatic checks.</b> A newer Python than the AI assumed broke a dependency. Now pinned.</span></li>
         <li><i aria-hidden="true">&#10003;</i><span><b class="by">Caught by a second AI.</b> A research AI called a deal publicly registered; no 10-D or loan tape exists under its name.</span></li>
       </ol>
@@ -369,7 +369,7 @@ footer p { margin: 0; }
     <ul class="points warn">
       <li><b>Sign-off came late.</b> All but one requirement was signed off after it was built.</li>
       <li><b>The AI holds admin keys.</b> With the owner's access, it could switch off the checks.</li>
-      <li><b>Accuracy is barely measured.</b> Checked on five servicer comments, only two from real filings.</li>
+      <li><b>Accuracy is barely measured.</b> 12 of 14 hand-checked answers right; no scored test set.</li>
       <li><b>Sign-off can be faked.</b> Nothing ties it to a person.</li>
       <li><b>The nightly break-the-code run is failing.</b> Every night since 31 October.</li>
     </ul>
@@ -382,8 +382,9 @@ footer p { margin: 0; }
     <h2>Skills: reusable <em>playbooks for the AI.</em></h2>
     <ul class="points">
       <li><b>While building:</b> a questioning skill ran the design debate; the AI vendor's skill reviewed the model calls.</li>
-      <li><b>At run time:</b> analysts type <code>/cmbs-refresh</code> to pull new filings, <code>/cmbs-ask</code> to ask about a loan or a deal's loans, or <code>/cmbs-brief</code> for a committee brief on the specially serviced loans; answers cite the SEC filing.</li>
+      <li><b>At run time:</b> analysts type <code>/cmbs-refresh</code> to pull new filings, <code>/cmbs-ask</code> to ask about a loan or a deal's loans, or <code>/cmbs-brief</code> for a committee brief; answers cite the SEC filing.</li>
       <li><b>The limit:</b> each is pre-approved to run only the app's commands; anything else needs the user's OK.</li>
+      <li><b>Tested under pressure:</b> a practitioner agent briefed committee twice; the second run closed every first-run gap.</li>
     </ul>
   </div>
 </section>
@@ -393,16 +394,16 @@ footer p { margin: 0; }
     <p class="eyebrow"><b>As of 1 November 2026</b></p>
     <h2>By the <em>numbers</em></h2>
     <div class="stats">
-      <!-- grep -rhE '^\s*Scenario( Outline)?:' features --include='*.feature' | wc -l  ->  135 -->
-      <div class="stat"><span class="n">135</span><span class="l">requirements as plain-English tests</span></div>
-      <!-- uv run pytest --collect-only | tail -1  ->  2178 tests collected -->
-      <div class="stat"><span class="n">2,178</span><span class="l">automated tests</span></div>
+      <!-- grep -rhE '^\s*Scenario( Outline)?:' features --include='*.feature' | wc -l  ->  156 -->
+      <div class="stat"><span class="n">156</span><span class="l">requirements as plain-English tests</span></div>
+      <!-- uv run pytest --collect-only -q, per-file counts summed  ->  2246 -->
+      <div class="stat"><span class="n">2,246</span><span class="l">automated tests</span></div>
       <!-- The four theorems in lean/Invariants/Theorems.lean (balance_rollforward, delinquency_partition, wac_bounds, decision_table_total).
            grep -rhE '^\s*theorem ' lean --include='*.lean' | wc -l -> 34, helper lemmas included; wac_bounds appears twice (Wac.lean and Theorems.lean) -->
       <div class="stat"><span class="n">4</span><span class="l">core results, machine-checked (34 theorems with helpers)</span></div>
-      <!-- grep -cE '^\| 2026-' docs/ai-catch-log.md  ->  15; caught by CI: the 2026-10-27 and 2026-10-28 (Python 3.15) entries; by the first live run: 2026-10-29 decision table; by a second AI: 2026-10-24 deal registration, 2026-11-01 Q87 count (Copilot).
+      <!-- grep -cE '^\| 2026-' docs/ai-catch-log.md  ->  16; caught by CI: the 2026-10-27 and 2026-10-28 (Python 3.15) entries; by the first live run: 2026-10-29 decision table; by a second AI: 2026-10-24 deal registration, 2026-11-01 Q87 count (Copilot).
            12 of 33 vs 3 of 33: replay tests/fixtures/model/live/ through cmbs.extraction.judgments.decide_fields with the pre-Q87 decide() (git show 23d535d^:src/cmbs/extraction/decision.py) and today's -->
-      <div class="stat"><span class="n">15</span><span class="l">AI mistakes logged, each with its fix</span></div>
+      <div class="stat"><span class="n">16</span><span class="l">AI mistakes logged, each with its fix</span></div>
     </div>
 
     <details class="eng" id="engineers">
@@ -422,7 +423,7 @@ footer p { margin: 0; }
             <tr><td>Second-opinion review</td><td>Independent Claude subagent per feature PR (Q64, Q68); fixes in #16, #19; proxy finding in PR 42 (Q90); Copilot reviewed #3, #51, #52. Review texts not saved</td></tr>
             <tr><td>Final checks</td><td><code>.github/workflows/ci.yml</code>; ruleset "main" requires <code>py</code>, <code>lint</code>, <code>web</code>, pre-commit.ci, CodeQL, secret scan; up to date with main</td></tr>
             <tr><td>Ship</td><td>The agent merges (Q95); merge script (outside the repo) added after catch-log entries of 2026-10-29 and 2026-10-31</td></tr>
-            <tr><td>Mistakes caught</td><td><code>docs/ai-catch-log.md</code>: 15 entries, 2 caught by CI (2026-10-27 trailer rule, 2026-10-28 Python 3.15)</td></tr>
+            <tr><td>Mistakes caught</td><td><code>docs/ai-catch-log.md</code>: 16 entries, 2 caught by CI (2026-10-27 trailer rule, 2026-10-28 Python 3.15)</td></tr>
             <tr><td>Nightly break-the-code run</td><td>mutmut and Stryker in <code>.github/workflows/mutation.yml</code> (mutmut floor 90%); Python shards fail before scoring since 2026-10-31</td></tr>
             <tr><td>Sign-off came late</td><td>Approval commits d3ca045, 689270a, e6fe2cf, 557d366; only the Q87 revision (#28) was approved before merging</td></tr>
             <tr><td>Admin keys; forgeable sign-off</td><td>Owner's admin <code>gh</code> credential; trailer is typed text, no CODEOWNERS, local commits unsigned</td></tr>
