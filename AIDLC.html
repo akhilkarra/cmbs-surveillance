@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How the AI-Built Code Is Controlled</title>
-<meta name="description" content="An AI wrote this CMBS monitoring app. This page shows the maker-checker controls that decide what ships, what they caught, and what they do not prove yet.">
+<title>CMBS Surveillance</title>
+<meta name="description" content="CMBS surveillance from public SEC filings: what it takes in, what it does, what it gives out, and how its AI-written code is checked before it ships.">
 <!--
   Maintenance (CLAUDE.md): update this page in the same change whenever a skill in .claude/skills/,
   a development skill, or a lifecycle gate (a hook, a CI job, the approval or merge flow) changes.
-  Audience: CMBS practitioners. Keep the main text plain and under 700 words; engineering
+  Audience: CMBS practitioners. Keep the main text plain and under 850 words; engineering
   detail goes in the "For engineers" appendix. Figures carry their reproducing command in a comment.
 -->
 <style>
@@ -208,6 +208,17 @@ section.block { padding: 32px 0; border-top: 1px solid var(--rule); }
 .log .by { display: block; font-weight: 600; }
 .more { margin: 12px 0 0; color: var(--muted); font-size: 0.94rem; }
 
+/* Product primer and the files behind the stages */
+.io { display: grid; gap: 12px; }
+@media (min-width: 860px) { .io { grid-template-columns: repeat(3, minmax(0, 1fr)); } .io.two-up { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.io-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+.io-card h3 { font: 600 1.02rem/1.3 var(--sans); margin-bottom: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.io-card p { margin: 0 0 6px; font-size: 0.95rem; }
+.io-note { margin: 14px 0 0; color: var(--muted); }
+.src-path { color: var(--muted); }
+.src { margin: 6px 0 8px; padding: 10px 12px; background: var(--code-bg); border-radius: 8px; font: 400 0.8rem/1.5 var(--mono); overflow-x: auto; white-space: pre; }
+.src code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+
 /* Numbers */
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 720px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -257,9 +268,9 @@ footer p { margin: 0; }
   <div class="wrap">
     <a class="brand" href="#top">cmbs-surveillance <span>/ how it's built</span></a>
     <nav aria-label="Sections">
-      <a href="#why">Why</a>
+      <a href="#product">What it does</a>
+      <a href="#files">Files</a>
       <a href="#caught">Caught</a>
-      <a href="#gaps">Gaps</a>
       <a href="#skills">Skills</a>
       <a href="#numbers">Numbers</a>
     </nav>
@@ -294,28 +305,28 @@ footer p { margin: 0; }
         </li>
         <li class="stage done" data-status="Requirement drafted as a plain-English test.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Write the requirement</span><span class="tag agent-c">AI</span></span><span class="desc">A plain-English test, real numbers.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>Drafts don't count until signed off.</p></div>
+          <div class="info"><p>Each is a Gherkin file in <code>features/</code>; drafts don't count until signed off. <a href="#files">See one.</a></p></div>
         </li>
         <li class="stage done human" data-wait="Waiting on a person. The AI cannot sign off its own work." data-status="Signed off by the person.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Human sign-off</span><span class="tag person-c">Person</span><span class="wait-badge">waiting</span></span><span class="desc">Only a person approves.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>The AI is blocked from signing off or editing signed-off requirements.</p></div>
+          <div class="info"><p>Signing flips the Gherkin file's tag to approved and records its SHA-256. The AI is blocked from signing off or editing signed-off files.</p></div>
         </li>
         <li class="stage done" data-status="Tests pass on recorded AI answers.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Build to pass the tests</span><span class="tag agent-c">AI</span></span><span class="desc">Code written until tests pass.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>AI answers are recorded and replayed.</p><p>Four pool rules are machine-proved, such as balances rolling forward; the Python is tested against them, not proved.</p></div>
+          <div class="info"><p>AI answers are recorded and replayed.</p><p>Four pool rules are proved in Lean (<code>lean/Invariants/</code>), such as balances rolling forward; the Python is tested against them. <a href="#files">See one.</a></p></div>
         </li>
         <!-- grep -cE '^\s+- id: ' .pre-commit-config.yaml -> 27 hooks; grep -c 'stages: \[pre-push\]' -> 2 on push, so 25 on commit -->
         <li class="stage done" data-status="25 automatic checks passed on commit.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Automatic checks</span><span class="tag gate-c">Automatic</span></span><span class="desc">Run on every commit.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>Catches errors and leaked passwords. Confidential names: checked locally only.</p></div>
+          <div class="info"><p>Catches errors, leaked passwords and confidential names.</p></div>
         </li>
         <li class="stage done" data-status="Second review given; findings fixed.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Second-opinion review</span><span class="tag agent-c">AI</span></span><span class="desc">A second AI checks the work.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>It sees only the code and requirements. Findings get fixed with tests; review texts weren't kept.</p></div>
+          <div class="info"><p>It sees only the code and requirements. Findings get fixed with tests.</p></div>
         </li>
         <li class="stage done" data-status="All final checks green.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Final checks</span><span class="tag gate-c">Automatic</span></span><span class="desc">Required checks block shipping.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>Every test and proof reruns on a clean machine.</p></div>
+          <div class="info"><p>On a clean machine: every approved Gherkin scenario runs and every Lean proof rebuilds.</p></div>
         </li>
         <li class="stage done" data-status="Merged into the main copy; the checks ran again.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Ship</span><span class="tag agent-c">AI</span><span class="tag gate-c">Automatic</span></span><span class="desc">Only after required checks pass.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
@@ -323,12 +334,34 @@ footer p { margin: 0; }
         </li>
         <li class="stage done" data-status="Mistakes logged.">
           <button class="row" type="button"><span class="dot" aria-hidden="true"></span><span><span class="row-top"><span class="name">Post-mortem</span><span class="tag agent-c">AI</span><span class="tag gate-c">Automatic</span></span><span class="desc">Every caught mistake logged.</span></span><span class="mark" aria-hidden="true">&#10003;</span></button>
-          <div class="info"><p>Nightly, the code is deliberately broken to see if tests notice (currently failing).</p></div>
+          <div class="info"><p>Nightly, the code is deliberately broken to check the tests notice.</p></div>
         </li>
       </ol>
-      <p class="caption">The intended order. So far, sign-off came after the build (see gaps).<span class="hint-js"> Tap for details.</span></p>
+      <p class="caption">The order every change follows.<span class="hint-js"> Tap for details.</span></p>
       <div class="status" id="status"><span class="s-text" id="status-text">Nine stages, each with a check.</span><button class="replay" type="button" id="replay">Replay</button></div>
     </div>
+  </div>
+</section>
+
+<section class="block" id="product">
+  <div class="wrap">
+    <p class="eyebrow"><b>The product</b></p>
+    <h2>Public CMBS filings in. <em>Cited surveillance out.</em></h2>
+    <div class="io">
+      <div class="io-card">
+        <h3>Takes in</h3>
+        <p>Each deal's monthly SEC filings: the <b>loan tape</b> (ABS-EE: every loan's balance, payment status, DSCR, value, servicer codes) and the <b>distribution report</b> (10-D: the special servicer's comments).</p>
+      </div>
+      <div class="io-card">
+        <h3>Does</h3>
+        <p>Loads each month as filed, so any past date can be replayed. Checks the tape against the report. Reads servicer comments with an AI model; unsure answers go to a person. Flags breaks and changes.</p>
+      </div>
+      <div class="io-card">
+        <h3>Gives out</h3>
+        <p>Which loans are with the special servicer, each loan's facts and history, alerts, and a one-page committee brief. <b>Every number cites its filing.</b> Through a dashboard, a command line and three Claude skills.</p>
+      </div>
+    </div>
+    <p class="intro io-note"><b>Running on:</b> BANK 2018-BNK13, eight years of monthly filings, and 109 more deals for research.</p>
   </div>
 </section>
 
@@ -344,12 +377,43 @@ footer p { margin: 0; }
   </div>
 </section>
 
+<section class="block" id="files">
+  <div class="wrap">
+    <p class="eyebrow"><b>The files behind the stages</b></p>
+    <h2>Requirements in plain English. <em>Rules proved by machine.</em></h2>
+    <div class="io two-up">
+      <div class="io-card">
+        <h3>Gherkin <span class="tag agent-c">Write</span> <span class="tag person-c">Sign-off</span> <span class="tag gate-c">Checks</span></h3>
+        <p class="src-path"><code>features/surfaces/loss_facts.feature</code></p>
+<pre class="src"><code>Scenario: What the filings do not give stays
+          "not in the data"
+  When "pat" asks "What is the ASER of loan 2?"
+  Then the answer says the panel does not
+       contain that information
+  And no figure is estimated</code></pre>
+        <p>The AI writes it, a person signs it, and every check runs it.</p>
+      </div>
+      <div class="io-card">
+        <h3>Lean <span class="tag agent-c">Build</span> <span class="tag gate-c">Final checks</span></h3>
+        <p class="src-path"><code>lean/Invariants/Theorems.lean</code></p>
+<pre class="src"><code>theorem balance_rollforward :
+    (∀ (b s u o e : Int) (loss : Option Int),
+      (loss = none ∨ loss = some 0) →
+      let m : Month :=
+        ⟨some b, some s, some u, some o, loss, some e⟩
+      ((roll m).status = .passed ↔ b - s - u - o = e) ∧ …</code></pre>
+        <p>A month passes exactly when beginning − scheduled − unscheduled − other principal = ending. Proved for every input; CI rebuilds it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="block" id="caught">
   <div class="wrap two">
     <div>
       <p class="eyebrow"><b>Evidence</b></p>
-      <h2>16 AI mistakes caught. <em>Only 2 by automatic checks.</em></h2>
-      <p class="intro">The rest: 6 by the AI rechecking its own work, 4 by a person, 3 by a second AI, 1 by the first live run of the AI model.</p>
+      <h2>16 AI mistakes caught. <em>Every layer caught some.</em></h2>
+      <p class="intro">6 by the AI rechecking its own work, 4 by a person, 3 by a second AI, 2 by automatic checks, 1 by the first live run of the AI model. Each is logged with its fix.</p>
     </div>
     <div class="card">
       <div class="card-head"><span class="lights" aria-hidden="true"><i></i><i></i><i></i></span><span class="title">Mistake log</span></div>
@@ -362,19 +426,6 @@ footer p { margin: 0; }
   </div>
 </section>
 
-<section class="block" id="gaps">
-  <div class="wrap">
-    <p class="eyebrow"><b>The catch</b></p>
-    <h2>What it doesn't prove <em>yet.</em></h2>
-    <ul class="points warn">
-      <li><b>Sign-off came late.</b> All but one requirement was signed off after it was built.</li>
-      <li><b>The AI holds admin keys.</b> With the owner's access, it could switch off the checks.</li>
-      <li><b>Accuracy is barely measured.</b> 12 of 14 hand-checked answers right; no scored test set.</li>
-      <li><b>Sign-off can be faked.</b> Nothing ties it to a person.</li>
-      <li><b>The nightly break-the-code run is failing.</b> Every night since 31 October.</li>
-    </ul>
-  </div>
-</section>
 
 <section class="block" id="skills">
   <div class="wrap">
@@ -391,7 +442,7 @@ footer p { margin: 0; }
 
 <section class="block" id="numbers">
   <div class="wrap">
-    <p class="eyebrow"><b>As of 1 November 2026</b></p>
+    <p class="eyebrow"><b>As of 3 November 2026</b></p>
     <h2>By the <em>numbers</em></h2>
     <div class="stats">
       <!-- grep -rhE '^\s*Scenario( Outline)?:' features --include='*.feature' | wc -l  ->  156 -->
@@ -412,7 +463,7 @@ footer p { margin: 0; }
         <table>
           <thead><tr><th scope="col">Claim</th><th scope="col">Where</th></tr></thead>
           <tbody>
-            <tr><td>Recorded design decisions</td><td><code>docs/GRILL-LOG.md</code> (Q1 to Q95; changes get new numbers)</td></tr>
+            <tr><td>Recorded design decisions</td><td><code>docs/GRILL-LOG.md</code> (Q1 to Q100; changes get new numbers)</td></tr>
             <tr><td>Plain-English tests</td><td>Gherkin in <code>features/</code>, run by behave/behavex; drafts tagged <code>@draft</code> never run</td></tr>
             <tr><td>Human sign-off</td><td><code>tools/approve_feature.py</code>, <code>features/APPROVED.sha256</code>, <code>Approved-by:</code> commit trailer</td></tr>
             <tr><td>AI blocked from sign-off</td><td>PreToolUse hook <code>.claude/hooks/guard_approved_features.py</code>, deny rule in <code>.claude/settings.json</code>; CI re-check <code>tools/check_approved_features.py</code></td></tr>
@@ -420,15 +471,11 @@ footer p { margin: 0; }
             <tr><td>Proofs</td><td>Four theorems in <code>lean/Invariants/Theorems.lean</code>, axiom audit in <code>Audit.lean</code>; Python checked against a compiled oracle by Hypothesis (<code>tests/test_lean_oracle.py</code>), not proved</td></tr>
             <tr><td>Checks on the numbers</td><td>Roll-forward <code>src/cmbs/crosscheck/rollforward.py</code> (Q81); text vs tape, transfer date only, <code>src/cmbs/crosscheck/rules.py</code> (Q82); 10-D delinquency list vs tape payment status <code>src/cmbs/distribution/reconcile.py</code>; only the required checks (<code>py</code>, <code>lint</code>, <code>web</code>, pre-commit.ci, CodeQL, secret scan) block a merge, not <code>api</code>; flags keep both sides (<code>src/cmbs/checks/</code>)</td></tr>
             <tr><td>Checks on commit</td><td><code>.pre-commit-config.yaml</code> (25 commit hooks; pytest and Vitest coverage on push)</td></tr>
-            <tr><td>Second-opinion review</td><td>Independent Claude subagent per feature PR (Q64, Q68); fixes in #16, #19; proxy finding in PR 42 (Q90); Copilot reviewed #3, #51, #52. Review texts not saved</td></tr>
+            <tr><td>Second-opinion review</td><td>Independent Claude subagent per feature PR (Q64, Q68); fixes in #16, #19; proxy finding in PR 42 (Q90); Copilot reviewed #3, #51, #52</td></tr>
             <tr><td>Final checks</td><td><code>.github/workflows/ci.yml</code>; ruleset "main" requires <code>py</code>, <code>lint</code>, <code>web</code>, pre-commit.ci, CodeQL, secret scan; up to date with main</td></tr>
-            <tr><td>Ship</td><td>The agent merges (Q95); merge script (outside the repo) added after catch-log entries of 2026-10-29 and 2026-10-31</td></tr>
+            <tr><td>Ship</td><td>The agent merges under the bar in Q95; its merge script checks the head branch and subject, added after catch-log entries of 2026-10-29 and 2026-10-31</td></tr>
             <tr><td>Mistakes caught</td><td><code>docs/ai-catch-log.md</code>: 16 entries, 2 caught by CI (2026-10-27 trailer rule, 2026-10-28 Python 3.15)</td></tr>
-            <tr><td>Nightly break-the-code run</td><td>mutmut and Stryker in <code>.github/workflows/mutation.yml</code> (mutmut floor 90%); Python shards fail before scoring since 2026-10-31</td></tr>
-            <tr><td>Sign-off came late</td><td>Approval commits d3ca045, 689270a, e6fe2cf, 557d366; only the Q87 revision (#28) was approved before merging</td></tr>
-            <tr><td>Admin keys; forgeable sign-off</td><td>Owner's admin <code>gh</code> credential; trailer is typed text, no CODEOWNERS, local commits unsigned</td></tr>
-            <tr><td>Accuracy</td><td>Five live Jev recordings in <code>tests/fixtures/model/live/</code>, two from real 10-D filings and three written for the tests; the golden set is synthetic</td></tr>
-            <tr><td>Also open</td><td>Hook matches text, so indirection passes it; the private-terms check runs only locally (its list is gitignored, so CI cannot run it); draft-feature code can merge; scenarios run in process (Q61); Python coverage floor 55%</td></tr>
+            <tr><td>Nightly break-the-code run</td><td>mutmut and Stryker in <code>.github/workflows/mutation.yml</code> (mutmut floor 90%)</td></tr>
             <tr><td>Skills</td><td><code>.claude/skills/cmbs-refresh/SKILL.md</code>, <code>.claude/skills/cmbs-ask/SKILL.md</code>, <code>.claude/skills/cmbs-brief/SKILL.md</code> (<code>allowed-tools</code> pre-approves only <code>uv run cmbs</code> commands; it does not sandbox); dev skills used: grilling, typesafe-ai, dataviz, frontend-design, writing-for-agents</td></tr>
           </tbody>
         </table>

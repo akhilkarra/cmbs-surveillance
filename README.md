@@ -25,7 +25,7 @@ Commercial data vendors (Trepp, Intex and the like) already give a desk cleaned 
 - **Mutation testing** with mutmut and Stryker, nightly and on demand (`.github/workflows/mutation.yml`), never on pull requests.
 - **Real data.** Real BANK 2018-BNK13 and BANK5 2026-5YR23 filings are test fixtures, and the first live Jev answers are kept as regression tests.
 
-Why each choice was made is in `docs/GRILL-LOG.md`; the quirks of real filings are in `docs/MESS-REGISTER.md`; mistakes caught in AI-written work are in `docs/ai-catch-log.md`. How AI-written code gets to main, stage by stage, with its gates and known gaps: open `AIDLC.html` in a browser.
+Why each choice was made is in `docs/GRILL-LOG.md`; the quirks of real filings are in `docs/MESS-REGISTER.md`; mistakes caught in AI-written work are in `docs/ai-catch-log.md`. What the product does, and how AI-written code gets to main, stage by stage: the project's GitHub Pages site, built from `AIDLC.html`.
 
 ## What the data says
 
